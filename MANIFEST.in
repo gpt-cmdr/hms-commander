@@ -1,0 +1,44 @@
+# MANIFEST.in - Control what goes in source distribution
+
+# Include essential files
+include README.md
+include LICENSE
+include pyproject.toml
+
+# Include the package
+recursive-include hms_commander *.py
+
+# Exclude test projects (large files, users download via HmsExamples)
+prune tests/projects
+
+# Exclude example projects (large, downloaded separately)
+prune examples/example_projects
+prune hms_example_projects
+
+# Exclude development directories
+prune feature_dev_notes
+prune .old
+prune .agent
+prune .claude
+prune agent_tasks
+
+# Exclude production agents (separate distribution)
+prune hms_agents
+
+# Exclude documentation build
+prune site
+prune docs/_build
+
+# Exclude common development artifacts
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude *.so
+global-exclude .DS_Store
+global-exclude *.egg-info
+global-exclude .git*
+
+# Exclude large binary files
+global-exclude *.dss
+global-exclude *.jar
+global-exclude *.zip
+global-exclude *.results

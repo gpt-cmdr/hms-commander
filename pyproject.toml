@@ -1,0 +1,94 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hms-commander"
+version = "0.1.0"
+description = "HEC-HMS automation library for hydrologic modeling - Python API for project management, simulation execution, and results analysis"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+    {name = "hms-commander contributors"},
+]
+keywords = [
+    "HEC-HMS",
+    "hydrology",
+    "hydrologic modeling",
+    "water resources",
+    "engineering",
+    "automation",
+    "simulation",
+    "DSS",
+    "GIS"
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Topic :: Scientific/Engineering :: Hydrology",
+]
+
+dependencies = [
+    "pandas>=1.5.0",
+    "numpy>=1.21.0",
+    "pathlib",
+    "tqdm",
+    "requests",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "black>=22.0",
+    "flake8>=4.0",
+    "jupyter",
+]
+gis = [
+    "geopandas>=0.12.0",
+    "pyproj>=3.3.0",
+    "shapely>=2.0.0",
+]
+dss = [
+    "ras-commander>=0.83.0",
+    "pyjnius",
+]
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.0.0",
+    "mkdocstrings[python]>=0.24.0",
+    "mkdocs-jupyter>=0.24.0",
+    "mkdocs-git-revision-date-localized-plugin>=1.2.0",
+]
+all = [
+    "hms-commander[dev,gis,dss,docs]",
+]
+
+[project.urls]
+Homepage = "https://github.com/gpt-cmdr/hms-commander"
+Documentation = "https://gpt-cmdr.github.io/hms-commander/"
+Repository = "https://github.com/gpt-cmdr/hms-commander"
+Issues = "https://github.com/gpt-cmdr/hms-commander/issues"
+
+[tool.setuptools]
+packages = ["hms_commander"]
+
+[tool.setuptools.package-dir]
+hms_commander = "hms_commander"
+
+[tool.black]
+line-length = 88
+target-version = ['py310', 'py311', 'py312']
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"

@@ -1,0 +1,167 @@
+site_name: HMS Commander Documentation
+site_description: Python library for automating HEC-HMS operations
+site_url: https://gpt-cmdr.github.io/hms-commander/
+repo_url: https://github.com/gpt-cmdr/hms-commander
+repo_name: gpt-cmdr/hms-commander
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    # Light mode
+    - scheme: default
+      primary: blue
+      accent: light blue
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - scheme: slate
+      primary: blue
+      accent: light blue
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+  icon:
+    repo: fontawesome/brands/github
+  logo: assets/hms-commander_logo.svg
+  favicon: assets/favicon.ico
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            heading_level: 2
+  - mkdocs-jupyter:
+      include: ["*.ipynb"]
+      execute: false
+      allow_errors: false
+      ignore:
+        - "examples/*/hms413_*/**"
+        - "examples/*/multi_version_test/**"
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: timeago
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - admonition
+  - pymdownx.details
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/gpt-cmdr/hms-commander
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/hms-commander/
+  version:
+    provider: mike
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting_started/installation.md
+      - Quick Start: getting_started/quick_start.md
+      - Project Initialization: getting_started/project_initialization.md
+  - User Guide:
+      - Overview: user_guide/overview.md
+      - Project Management: user_guide/project_management.md
+      - Basin Models: user_guide/basin_models.md
+      - Meteorologic Models: user_guide/meteorologic_models.md
+      - Control Specifications: user_guide/control_specs.md
+      - Time-Series Gages: user_guide/gages.md
+      - Run Configuration: user_guide/run_configuration.md
+      - Execution: user_guide/execution.md
+      - Geospatial Operations: user_guide/geospatial.md
+      - DSS Operations: user_guide/dss_operations.md
+      - Results Analysis: user_guide/results_analysis.md
+      - Clone Workflows: user_guide/clone_workflows.md
+      - Atlas 14 Updates: user_guide/atlas14_updates.md
+  - Example Notebooks:
+      - Overview: examples/overview.md
+      - Basic Usage:
+          - Multi-Version Execution: examples/01_multi_version_execution.ipynb
+          - Project DataFrames: examples/03_project_dataframes.ipynb
+          - HMS Workflow: examples/04_hms_workflow.ipynb
+      - Execution:
+          - Run All Projects: examples/02_run_all_hms413_projects.ipynb
+      - File Operations:
+          - Basin File Parsing: examples/basin_file_parsing.ipynb
+          - Met File Operations: examples/met_file_operations.ipynb
+      - Analysis & Results:
+          - DSS Results Extraction: examples/dss_results.ipynb
+          - Peak Flow Analysis: examples/peak_flow_analysis.ipynb
+      - Advanced Workflows:
+          - Clone & Compare: examples/clone_workflow.ipynb
+          - Atlas 14 Update: examples/atlas14_update.ipynb
+  - API Reference:
+      - Core Classes:
+          - HmsPrj: api/hms_prj.md
+          - HmsBasin: api/hms_basin.md
+          - HmsMet: api/hms_met.md
+          - HmsControl: api/hms_control.md
+          - HmsGage: api/hms_gage.md
+          - HmsRun: api/hms_run.md
+      - Execution:
+          - HmsCmdr: api/hms_cmdr.md
+          - HmsJython: api/hms_jython.md
+      - Data & Results:
+          - HmsDss: api/hms_dss.md
+          - HmsResults: api/hms_results.md
+      - Geospatial:
+          - HmsGeo: api/hms_geo.md
+      - Utilities:
+          - HmsUtils: api/hms_utils.md
+          - HmsExamples: api/hms_examples.md
+      - Internal:
+          - HmsFileParser: api/_parsing.md
+          - Constants: api/_constants.md
+  - HMS Data Formats:
+      - Overview: data_formats/overview.md
+      - Project File (.hms): data_formats/project_file.md
+      - Basin File (.basin): data_formats/basin_file.md
+      - Meteorologic File (.met): data_formats/met_file.md
+      - Control File (.control): data_formats/control_file.md
+      - Gage File (.gage): data_formats/gage_file.md
+      - Run File (.run): data_formats/run_file.md
+      - Geographic Files (.geo/.map): data_formats/geo_files.md
+      - DSS Integration: data_formats/dss_integration.md
+  - LLM Forward Approach:
+      - Overview: llm_dev/overview.md
+      - Contributing: llm_dev/contributing.md
+      - CLAUDE.md Guide: llm_dev/claude_md.md
+      - Style Guide: llm_dev/style_guide.md
+      - Architecture: llm_dev/architecture.md
+      - Release Notes: llm_dev/release_notes.md
+
+extra_css:
+  - stylesheets/extra.css
+
+copyright: Copyright &copy; 2024 hms-commander contributors

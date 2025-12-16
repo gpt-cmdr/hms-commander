@@ -1,0 +1,117 @@
+# ------------------------------------------------------------------------------
+# HMS Commander
+# Keep the repo source-focused: no large HMS models, generated sites, or local artifacts
+# ------------------------------------------------------------------------------
+
+# Example projects and models (large, managed separately)
+examples/example_projects/
+examples/example_projects_*/
+examples/hms413_all_projects/
+hms_example_projects/
+
+# Local workspaces / scratch project folders (user-specific)
+workspace/
+projects/
+my_projects/
+test_projects/
+custom_extraction_folder/
+working/
+examples/working/
+
+# Test projects and regenerable outputs (large)
+tests/
+tests/projects/
+test_project/
+test_hms33/
+test_output/
+tests/test_output.txt
+
+# Development notes / decompilation artifacts (too large/noisy for git right now)
+feature_dev_notes/
+hms_agents/hms_decompiler/
+decompile_temp/
+decompile_work/
+migration_baseline/
+
+# Generated documentation
+docs/_build/
+docs/notebooks/
+/site
+
+# Agent coordination artifacts
+.agent/
+agent_tasks/
+.claude/commands/
+
+# .claude user settings (track rules/skills, ignore local config)
+.claude/settings.local.json
+.claude/settings.json
+
+# HMS output/binary artifacts
+*.dss
+*.dsc
+*.dss.msg
+*.out
+*.log
+*.results
+*.zip
+*.jar
+
+# Python cache/bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+
+# Distribution / packaging
+build/
+dist/
+.eggs/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+*.whl
+.wheels/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.conda/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Archive directories
+.old/
+
+# Analysis outputs (regenerable)
+HMS_LOG_FILE_ANALYSIS_SUMMARY.txt
+
+# Local scratch files
+*.tmp
+*.temp
+*.backup
+.tmp_*
+nul
+lfs/

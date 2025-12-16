@@ -1,0 +1,71 @@
+/* HMS Commander Custom Styles */
+
+:root {
+    --hms-blue: #0B93C7;
+    --hms-dark-blue: #05386B;
+    --hms-light-blue: #5CDB95;
+    --hms-accent: #8EE4AF;
+}
+
+/* Custom styling for code blocks */
+.highlight {
+    border-left: 3px solid var(--hms-blue);
+}
+
+/* Style for admonitions */
+.admonition {
+    border-left: 4px solid var(--hms-light-blue);
+}
+
+/* Custom button styling */
+.md-button--primary {
+    background-color: var(--hms-blue) !important;
+}
+
+/* Navigation tabs */
+.md-tabs {
+    background-color: var(--hms-dark-blue);
+}
+
+/* Headers */
+h1, h2 {
+    color: var(--hms-dark-blue);
+}
+
+/* Links */
+a {
+    color: var(--hms-blue);
+}
+
+a:hover {
+    color: var(--hms-light-blue);
+}
+
+/* Grid cards styling */
+.grid.cards > * {
+    border: 1px solid var(--hms-accent);
+    border-radius: 8px;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.grid.cards > *:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(11, 147, 199, 0.2);
+}
+
+/* Code inline */
+code {
+    background-color: rgba(11, 147, 199, 0.1);
+    border: 1px solid rgba(11, 147, 199, 0.2);
+    border-radius: 3px;
+}
+
+/* Tables */
+table thead {
+    background-color: rgba(11, 147, 199, 0.1);
+}
+
+/* Search highlight */
+.md-search-result__article--document {
+    border-left: 3px solid var(--hms-blue);
+}
