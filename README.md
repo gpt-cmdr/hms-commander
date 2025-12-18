@@ -5,8 +5,11 @@
 </p>
 
 [![PyPI version](https://badge.fury.io/py/hms-commander.svg)](https://pypi.org/project/hms-commander/)
+[![Documentation Status](https://readthedocs.org/projects/hms-commander/badge/?version=latest)](https://hms-commander.readthedocs.io/en/latest/?badge=latest)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+**[📖 Full Documentation](https://hms-commander.readthedocs.io/)**
 
 > **Beta Software - Engineering Oversight Required**
 >
