@@ -8,9 +8,9 @@ build:
   tools:
     python: "3.11"
   jobs:
-    post_install:
-      # Install mkdocs dependencies
-      - pip install -e ".[docs]"
+    pre_build:
+      # Copy notebooks (ReadTheDocs strips symlinks with rsync --safe-links)
+      - cp -r examples docs/notebooks
 
 mkdocs:
   configuration: mkdocs.yml

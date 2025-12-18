@@ -36,7 +36,7 @@ projects = HmsExamples.list_projects()
 
 ### Basic Usage
 
-#### [01 - Multi-Version Execution](01_multi_version_execution.ipynb)
+#### [01 - Multi-Version Execution](../notebooks/01_multi_version_execution.ipynb)
 Test models across different HMS versions (3.x and 4.x).
 
 **What you'll learn:**
@@ -45,16 +45,7 @@ Test models across different HMS versions (3.x and 4.x).
 - Python 2 vs. Python 3 compatibility
 - Cross-version testing
 
-#### [02 - Run All HMS 4.13 Projects](02_run_all_hms413_projects.ipynb)
-Execute all example projects from HMS 4.13 installation.
-
-**What you'll learn:**
-- Batch project execution
-- Result collection
-- Error handling
-- Automated testing workflows
-
-#### [03 - Project DataFrames](03_project_dataframes.ipynb)
+#### [03 - Project DataFrames](../notebooks/03_project_dataframes.ipynb)
 Explore project components using pandas DataFrames.
 
 **What you'll learn:**
@@ -63,7 +54,7 @@ Explore project components using pandas DataFrames.
 - Filtering and analyzing project data
 - DataFrame-based workflows
 
-#### [04 - HMS Workflow](04_hms_workflow.ipynb)
+#### [04 - HMS Workflow](../notebooks/04_hms_workflow.ipynb)
 Complete end-to-end HMS workflow.
 
 **What you'll learn:**
@@ -72,50 +63,29 @@ Complete end-to-end HMS workflow.
 - Execution
 - Results extraction
 
-### File Operations
+### Execution
 
-#### Basin File Parsing
-Working with basin model files (.basin).
+#### [02 - Run All HMS 4.13 Projects](../notebooks/02_run_all_hms413_projects.ipynb)
+Execute all example projects from HMS 4.13 installation.
 
-**Topics:**
-- Subbasin extraction
-- Loss parameters (Deficit Constant, SCS CN)
-- Transform parameters (SCS Unit Hydrograph, Clark)
-- Baseflow parameters
-- Routing parameters (Muskingum, Lag)
+**What you'll learn:**
+- Batch project execution
+- Result collection
+- Error handling
+- Automated testing workflows
 
-#### Met File Operations
-Meteorologic model operations (.met).
+#### [05 - Run Management](../notebooks/05_run_management.ipynb)
+Managing HMS simulation runs and configurations.
 
-**Topics:**
-- Precipitation methods
-- Gage assignments
-- Frequency storm parameters
-- Atlas 14 updates
-
-### Analysis & Results
-
-#### DSS Results Extraction
-Extract and analyze DSS results.
-
-**Topics:**
-- Reading time-series data
-- Peak flow extraction
-- Volume calculations
-- Hydrograph statistics
-
-#### Peak Flow Analysis
-Comprehensive peak flow analysis.
-
-**Topics:**
-- Multi-element peak flows
-- Statistical analysis
-- Exceedance probability
-- Visualization
+**What you'll learn:**
+- Run configuration management
+- Batch run execution
+- Run result organization
+- Workflow automation
 
 ### Advanced Workflows
 
-#### [Clone & Compare Workflow](clone_workflow.ipynb)
+#### [Clone & Compare Workflow](../notebooks/clone_workflow.ipynb)
 QAQC workflow with side-by-side comparison.
 
 **What you'll learn:**
@@ -131,20 +101,6 @@ QAQC workflow with side-by-side comparison.
 - Scenario analysis
 - QAQC review
 
-#### Atlas 14 Update
-Update precipitation from TP40 to NOAA Atlas 14.
-
-**What you'll learn:**
-- Project centroid calculation
-- CRS transformations
-- Precipitation depth updates
-- Frequency storm modifications
-
-**Use cases:**
-- Updating legacy models
-- Meeting current standards
-- Regional analysis
-
 ## Notebook Organization
 
 Notebooks are organized by workflow type:
@@ -155,12 +111,8 @@ examples/
 ├── 02_run_all_hms413_projects.ipynb    # Batch execution
 ├── 03_project_dataframes.ipynb         # Data exploration
 ├── 04_hms_workflow.ipynb               # Complete workflow
-├── basin_file_parsing.ipynb            # File operations
-├── met_file_operations.ipynb           # Met models
-├── dss_results.ipynb                   # Results analysis
-├── peak_flow_analysis.ipynb            # Statistical analysis
-├── clone_workflow.ipynb                # QAQC workflow
-└── atlas14_update.ipynb                # Precipitation updates
+├── 05_run_management.ipynb             # Run management
+└── clone_workflow.ipynb                # QAQC workflow
 ```
 
 ## Development Pattern

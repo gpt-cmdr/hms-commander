@@ -66,6 +66,6 @@ For detailed API documentation, see the [API Reference](../api/hms_prj.md) secti
 
 **Note:** This user guide is under active development. Detailed pages for each section are coming soon. In the meantime, refer to:
 
-- [CLAUDE.md](../../CLAUDE.md) - Complete API reference
+- [API Reference](../api/hms_prj.md) - Complete API documentation
 - [Example Notebooks](../examples/overview.md) - Working examples
-- [Quick Reference](../../QUICK_REFERENCE.md) - Quick API lookup
+- [Getting Started](../getting_started/quick_start.md) - Quick start guide

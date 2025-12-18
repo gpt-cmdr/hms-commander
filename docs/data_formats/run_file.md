@@ -496,4 +496,4 @@ for idx, row in runs_df.iterrows():
 - `HmsCmdr.compute_batch()` - Execute multiple runs sequentially
 - `HmsCmdr.compute_parallel()` - Execute multiple runs in parallel
 
-See [CLAUDE.md](../../CLAUDE.md) for complete API documentation.
+See [API Reference](../api/hms_prj.md) for complete API documentation.

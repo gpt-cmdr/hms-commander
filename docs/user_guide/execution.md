@@ -6,6 +6,32 @@ Execute HEC-HMS simulations - single runs, parallel execution, and batch process
 
 The `HmsCmdr` class provides methods for executing HEC-HMS simulations via Jython scripts. Supports single runs, parallel execution, and batch processing.
 
+```mermaid
+flowchart TD
+    A[init_hms_project] --> B{HMS Version?}
+    B -->|HMS 4.x| C[Python 3 Script]
+    B -->|HMS 3.x| D[Python 2 Script]
+
+    C --> E[HmsJython.generate_compute_script]
+    D --> E
+
+    E --> F[Write .py file to temp]
+    F --> G[Find HEC-HMS executable]
+    G --> H{Found?}
+    H -->|Yes| I[Execute: hec-hms.cmd -s script.py]
+    H -->|No| J[Error: HMS not found]
+
+    I --> K[HEC-HMS Java Engine]
+    K --> L[Read .basin, .met, .control]
+    L --> M[Compute simulation]
+    M --> N[Write results to DSS]
+    N --> O[Return success/failure]
+
+    style E fill:#e1f5ff
+    style K fill:#fff4e1
+    style N fill:#e7f5e7
+```
+
 ## Quick Examples
 
 ### Single Run

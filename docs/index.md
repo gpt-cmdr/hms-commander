@@ -71,7 +71,63 @@ HmsCmdr.compute_run("Run 1")
 
 ## Architecture
 
+```mermaid
+graph TD
+    A[HMS Project Files] --> B[HmsPrj]
+    B --> C[HmsBasin]
+    B --> D[HmsMet]
+    B --> E[HmsControl]
+    B --> F[HmsGage]
+    B --> G[HmsRun]
+    B --> H[HmsGeo]
+
+    C --> I[HmsCmdr<br/>Execution]
+    D --> I
+    E --> I
+    F --> I
+    G --> I
+
+    I --> J[HmsJython<br/>Script Generation]
+    J --> K[HEC-HMS Engine]
+    K --> L[DSS Results]
+
+    L --> M[HmsResults<br/>Analysis]
+    L --> N[HmsDss<br/>Operations]
+
+    style B fill:#e1f5ff
+    style I fill:#fff4e1
+    style M fill:#e7f5e7
+```
+
 HMS Commander follows the proven patterns established by [ras-commander](https://github.com/gpt-cmdr/ras-commander):
+
+### Static Class Pattern
+
+```mermaid
+classDiagram
+    class HmsBasin {
+        <<static>>
+        +get_subbasins(basin_file)$
+        +set_loss_parameters(basin_file, subbasin, **params)$
+        +clone_basin(template, new_name)$
+    }
+
+    class HmsMet {
+        <<static>>
+        +get_precipitation_method(met_file)$
+        +set_gage_assignment(met_file, subbasin, gage)$
+        +clone_met(template, new_name)$
+    }
+
+    class HmsCmdr {
+        <<static>>
+        +compute_run(run_name)$
+        +compute_parallel(run_names, max_workers)$
+        +compute_batch(run_names)$
+    }
+
+    note for HmsBasin "No instantiation required\nDirect method calls only"
+```
 
 - **Static Class Pattern**: Direct method calls without instantiation
 - **Flexible Imports**: Supports both installed package and local development

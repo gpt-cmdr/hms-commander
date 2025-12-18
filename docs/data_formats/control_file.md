@@ -405,4 +405,4 @@ print(f"Simulation duration: {duration_hours} hours")
 - `HmsUtils.parse_time_interval()` - Convert interval string to minutes
 - `HmsUtils.minutes_to_interval_string()` - Convert minutes to interval string
 
-See [CLAUDE.md](../../CLAUDE.md) for complete API documentation.
+See [API Reference](../api/hms_prj.md) for complete API documentation.

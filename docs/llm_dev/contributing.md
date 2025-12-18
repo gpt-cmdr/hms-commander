@@ -27,9 +27,9 @@ pip install -e ".[all]"
 
 Before contributing, familiarize yourself with:
 
-- **[CLAUDE.md](../../CLAUDE.md)** - Complete project context for LLMs
-- **[STYLE_GUIDE.md](../../STYLE_GUIDE.md)** - Coding standards and patterns
-- **[DEVELOPMENT_ROADMAP.md](../../DEVELOPMENT_ROADMAP.md)** - Future plans
+- **[CLAUDE.md](https://github.com/gpt-cmdr/hms-commander/blob/main/CLAUDE.md)** - Complete project context for LLMs
+- **[STYLE_GUIDE.md](https://github.com/gpt-cmdr/hms-commander/blob/main/STYLE_GUIDE.md)** - Coding standards and patterns
+- **[LLM Development Guide](overview.md)** - LLM Forward approach overview
 
 ## Development Workflow
 
@@ -151,12 +151,12 @@ pytest tests/
 
 ### New Features
 
-1. Check [DEVELOPMENT_ROADMAP.md](../../DEVELOPMENT_ROADMAP.md)
+1. Check [GitHub Issues](https://github.com/gpt-cmdr/hms-commander/issues) for planned features
 2. Open an issue for discussion
 3. Follow the class design patterns (see [Style Guide](style_guide.md))
 4. Add comprehensive documentation
 5. Create example notebook demonstrating usage
-6. Update CLAUDE.md with API documentation
+6. Update API documentation
 
 ### Documentation
 

@@ -554,4 +554,4 @@ for name in basin_elements.index:
 - Coordinate transformations require: `pip install pyproj`
 - GeoJSON creation may require: `pip install geopandas shapely`
 
-See [CLAUDE.md](../../CLAUDE.md) for complete API documentation.
+See [API Reference](../api/hms_prj.md) for complete API documentation.

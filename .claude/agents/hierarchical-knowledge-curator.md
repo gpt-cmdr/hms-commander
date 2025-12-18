@@ -28,7 +28,7 @@ Maintain and evolve BOTH the hierarchical knowledge architecture AND agent memor
 - **CLAUDE.md hierarchy** - Root → subpackage context inheritance
 - **.claude/rules/** - Topic-specific auto-loaded guidance (Python, HEC-HMS, testing)
 - **.claude/skills/** - Library workflow skills (how to use hms-commander)
-- **.claude/subagents/** - Specialist agent definitions
+- **.claude/agents/** - Specialist agent definitions
 - **hms_agents/** - Production domain automation
 
 ### Agent Memory System (WHAT we're doing)

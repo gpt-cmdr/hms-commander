@@ -38,10 +38,9 @@ docs/_build/
 docs/notebooks/
 /site
 
-# Agent coordination artifacts
-.agent/
-agent_tasks/
-.claude/commands/
+# Agent coordination artifacts (only certain subdirs)
+agent_tasks/runs/
+agent_tasks/artifacts/
 
 # .claude user settings (track rules/skills, ignore local config)
 .claude/settings.local.json

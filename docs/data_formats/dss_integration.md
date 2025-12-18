@@ -584,4 +584,4 @@ print("\n".join(catalog))
 - Requires: `pip install ras-commander` (includes `pyjnius` for Java/DSS access)
 - Or install all: `pip install hms-commander[dss]`
 
-See [CLAUDE.md](../../CLAUDE.md) for complete API documentation.
+See [API Reference](../api/hms_prj.md) for complete API documentation.

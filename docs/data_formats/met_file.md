@@ -491,4 +491,4 @@ if "Monthly Average" in ET_METHODS:
 - `HmsMet.update_tp40_to_atlas14()` - Update TP40 to Atlas 14
 - `HmsMet.clone_met()` - Clone meteorologic model
 
-See [CLAUDE.md](../../CLAUDE.md) for complete API documentation.
+See [API Reference](../api/hms_prj.md) for complete API documentation.

@@ -16,6 +16,31 @@ Clone operations follow these principles:
 ✅ **QAQC-able** - Separate outputs for validation
 ✅ **Professional** - Client-ready comparison reports
 
+### Non-Destructive Clone Pattern
+
+```mermaid
+graph LR
+    A[Original_Basin.basin] --> |clone_basin| B[Updated_Basin.basin]
+    C[Original_Met.met] --> |clone_met| D[Updated_Met.met]
+    E[Baseline_Run] --> |clone_run| F[Updated_Run]
+
+    A -.-> |preserved unchanged| A
+    C -.-> |preserved unchanged| C
+
+    B --> |modify parameters| G[CN=85, IA=0.3]
+    D --> |update precipitation| H[Atlas 14 depths]
+
+    F --> |references| B
+    F --> |references| D
+    F --> |separate output| I[updated_results.dss]
+
+    style A fill:#ccffcc
+    style C fill:#ccffcc
+    style B fill:#ffcccc
+    style D fill:#ffcccc
+    style I fill:#ccccff
+```
+
 ## Quick Examples
 
 ### Clone Basin for Parameter Study
@@ -113,6 +138,36 @@ comparison = HmsResults.compare_runs(
     element="Outlet"
 )
 print(comparison)
+```
+
+### Workflow Sequence
+
+```mermaid
+sequenceDiagram
+    participant Engineer
+    participant HmsCmdr
+    participant HMS_GUI
+    participant HmsResults
+
+    Engineer->>HmsCmdr: clone_basin("Original", "Updated")
+    HmsCmdr-->>Engineer: Updated_Basin created
+
+    Engineer->>HmsCmdr: modify Updated_Basin parameters
+    Engineer->>HmsCmdr: clone_run("Baseline", "Comparison")
+
+    Engineer->>HmsCmdr: compute_parallel(["Baseline", "Comparison"])
+    HmsCmdr->>HmsCmdr: Execute both runs
+    HmsCmdr-->>Engineer: Both complete
+
+    Engineer->>HMS_GUI: Open HEC-HMS
+    HMS_GUI-->>Engineer: View side-by-side models
+
+    Engineer->>HmsResults: compare_runs([baseline.dss, updated.dss])
+    HmsResults-->>Engineer: Comparison report with verdict
+
+    Engineer->>Engineer: Review and approve
+
+    Note over Engineer,HmsResults: Non-destructive: Original preserved
 ```
 
 ## GUI Verification

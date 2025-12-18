@@ -62,7 +62,11 @@ markdown_extensions:
       anchor_linenums: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.emoji:
@@ -107,20 +111,14 @@ nav:
   - Example Notebooks:
       - Overview: examples/overview.md
       - Basic Usage:
-          - Multi-Version Execution: examples/01_multi_version_execution.ipynb
-          - Project DataFrames: examples/03_project_dataframes.ipynb
-          - HMS Workflow: examples/04_hms_workflow.ipynb
+          - Multi-Version Execution: notebooks/01_multi_version_execution.ipynb
+          - Project DataFrames: notebooks/03_project_dataframes.ipynb
+          - HMS Workflow: notebooks/04_hms_workflow.ipynb
       - Execution:
-          - Run All Projects: examples/02_run_all_hms413_projects.ipynb
-      - File Operations:
-          - Basin File Parsing: examples/basin_file_parsing.ipynb
-          - Met File Operations: examples/met_file_operations.ipynb
-      - Analysis & Results:
-          - DSS Results Extraction: examples/dss_results.ipynb
-          - Peak Flow Analysis: examples/peak_flow_analysis.ipynb
+          - Run All Projects: notebooks/02_run_all_hms413_projects.ipynb
+          - Run Management: notebooks/05_run_management.ipynb
       - Advanced Workflows:
-          - Clone & Compare: examples/clone_workflow.ipynb
-          - Atlas 14 Update: examples/atlas14_update.ipynb
+          - Clone & Compare: notebooks/clone_workflow.ipynb
   - API Reference:
       - Core Classes:
           - HmsPrj: api/hms_prj.md
@@ -159,6 +157,7 @@ nav:
       - CLAUDE.md Guide: llm_dev/claude_md.md
       - Style Guide: llm_dev/style_guide.md
       - Architecture: llm_dev/architecture.md
+      - Cognitive Architecture: llm_dev/cognitive_architecture.md
       - Release Notes: llm_dev/release_notes.md
 
 extra_css:

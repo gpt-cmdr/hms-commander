@@ -239,7 +239,7 @@ lat, lon = HmsGeo.get_project_centroid_latlon("project.geo")
 
 - **Skill**: `.claude/skills/linking-hms-to-hecras/` - HMS side workflow
 - **Skill** (ras-commander): `importing-hms-boundaries/` - RAS side workflow
-- **Subagent**: `.claude/subagents/hms-ras-workflow-coordinator.md` - Coordinates both sides
+- **Subagent**: `.claude/agents/hms-ras-workflow-coordinator.md` - Coordinates both sides
 - **Rules**: `.claude/rules/integration/hms-ras-linking.md` - Integration patterns
 
 See these files for complete HMS→RAS integration workflows.

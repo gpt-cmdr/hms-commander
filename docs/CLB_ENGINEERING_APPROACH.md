@@ -94,6 +94,45 @@
 - Standard QAQC checklists apply
 - Client deliverable requirements
 
+**Diagram 9: LLM Forward QAQC Cycle**
+
+```mermaid
+flowchart TD
+    A[Original Model] --> B{Clone Operation}
+    B -->|Non-Destructive| C[Baseline Model<br/>Preserved]
+    B -->|Create| D[Updated Model<br/>Modified]
+
+    C --> E[Execute Baseline]
+    D --> F[Execute Updated]
+
+    E --> G[baseline_results.dss]
+    F --> H[updated_results.dss]
+
+    G --> I[HmsResults.compare_runs]
+    H --> I
+
+    I --> J{Acceptance<br/>Criteria?}
+    J -->|Pass| K[🟢 GREEN<br/>Approved]
+    J -->|Borderline| L[🟡 YELLOW<br/>Review Required]
+    J -->|Fail| M[🔴 RED<br/>Rejected]
+
+    K --> N[Engineer Opens HMS GUI]
+    L --> N
+    M --> N
+
+    N --> O[Visual Inspection<br/>Side-by-Side]
+    O --> P{Engineer<br/>Approves?}
+    P -->|Yes| Q[Deploy Updated Model]
+    P -->|No| R[Iterate Parameters]
+    R --> D
+
+    style C fill:#ccffcc
+    style D fill:#ffcccc
+    style K fill:#ccffcc
+    style L fill:#ffffcc
+    style M fill:#ffcccc
+```
+
 **Example Comparison Report:**
 ```markdown
 ## Results Comparison: TP-40 vs. Atlas 14

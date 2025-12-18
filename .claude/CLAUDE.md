@@ -66,7 +66,7 @@ Additional in `.claude/rules/testing/` and `.claude/rules/documentation/`:
 
 **Two-Tier Architecture**: Specialist subagents vs production agents
 
-### Specialist Subagents (`.claude/subagents/*.md`)
+### Specialist Agents (`.claude/agents/*.md`)
 **Purpose**: Domain experts that use hms-commander library APIs
 **Format**: Single `.md` file (YAML frontmatter + markdown)
 **Naming**: `kebab-case.md` (e.g., `basin-model-specialist.md`, `met-model-specialist.md`)
@@ -80,9 +80,9 @@ Additional in `.claude/rules/testing/` and `.claude/rules/documentation/`:
 
 ### Key Differences
 
-| Aspect | Specialist Subagents | Production Agents |
+| Aspect | Specialist Agents | Production Agents |
 |--------|---------------------|-------------------|
-| Location | `.claude/subagents/` | `hms_agents/` |
+| Location | `.claude/agents/` | `hms_agents/` |
 | Structure | Single `.md` file | Folder with multiple files |
 | Naming | `kebab-case.md` | `python_case/` |
 | Purpose | Domain expertise | Automation workflows |
@@ -107,9 +107,9 @@ See: `feature_dev_notes/SPECIALIST_VS_PRODUCTION_AGENTS.md` for complete archite
 - Shared RasDss infrastructure (no format conversion)
 - Spatial matching required (HMS outlets → RAS cross sections)
 
-**Skills & Subagents**:
+**Skills & Agents**:
 - `.claude/skills/linking-hms-to-hecras/` - HMS side workflow
-- `.claude/subagents/hms-ras-workflow-coordinator.md` - Coordinates both tools
+- `.claude/agents/hms-ras-workflow-coordinator.md` - Coordinates both tools
 - `ras-commander/.claude/skills/importing-hms-boundaries/` - RAS side (cross-reference)
 
 ---

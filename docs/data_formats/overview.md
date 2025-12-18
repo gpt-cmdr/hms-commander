@@ -93,6 +93,28 @@ See `HmsUtils.parse_hms_date()` and `HmsUtils.format_hms_date()` for conversions
 
 ## File Relationships
 
+```mermaid
+graph LR
+    HMS[.hms Project File] --> BASIN[.basin]
+    HMS --> MET[.met]
+    HMS --> CONTROL[.control]
+    HMS --> GAGE[.gage]
+    HMS --> RUN[.run]
+    HMS --> GEO[.geo]
+
+    RUN --> |references| BASIN
+    RUN --> |references| MET
+    RUN --> |references| CONTROL
+    RUN --> |specifies output| DSS[.dss Results]
+
+    MET --> |references| GAGE
+    BASIN --> |references| GEO
+
+    style HMS fill:#ffcccc
+    style RUN fill:#ccffcc
+    style DSS fill:#ccccff
+```
+
 HMS files are interconnected through references:
 
 ```
@@ -195,6 +217,6 @@ The hms-commander library handles version differences automatically in most case
 
 ## API Reference
 
-See the main [CLAUDE.md](../../CLAUDE.md) for complete API documentation:
+See the [API Reference](../api/hms_prj.md) for complete API documentation:
 - `HmsFileParser` - Internal parsing utilities
 - File-specific classes: `HmsBasin`, `HmsMet`, `HmsControl`, `HmsGage`, `HmsGeo`, `HmsRun`

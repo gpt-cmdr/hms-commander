@@ -2,6 +2,22 @@
 
 Get up and running with HMS Commander in minutes.
 
+## Workflow Overview
+
+```mermaid
+flowchart LR
+    A[pip install<br/>hms-commander] --> B[from hms_commander import<br/>init_hms_project, HmsBasin, HmsCmdr]
+    B --> C[init_hms_project<br/>C:/Project]
+    C --> D[HmsBasin.get_subbasins<br/>model.basin]
+    D --> E[HmsBasin.set_loss_parameters<br/>subbasin, CN=85]
+    E --> F[HmsCmdr.compute_run<br/>Run 1]
+    F --> G[Results in DSS file]
+
+    style A fill:#e1f5ff
+    style F fill:#fff4e1
+    style G fill:#e7f5e7
+```
+
 ## Your First Script
 
 ### 1. Initialize a Project

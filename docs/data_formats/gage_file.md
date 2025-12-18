@@ -451,4 +451,4 @@ for idx, row in gages.iterrows():
 - `HmsDss.create_dss_pathname()` - Build pathname from parts
 - `HmsDss.get_catalog()` - List all pathnames in DSS file
 
-See [CLAUDE.md](../../CLAUDE.md) for complete API documentation.
+See [API Reference](../api/hms_prj.md) for complete API documentation.

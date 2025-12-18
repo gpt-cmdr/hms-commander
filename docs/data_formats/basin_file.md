@@ -557,4 +557,4 @@ if "SCS Curve Number" in LOSS_METHODS:
 - `HmsBasin.get_routing_parameters()` - Get routing parameters
 - `HmsBasin.clone_basin()` - Clone basin model
 
-See [CLAUDE.md](../../CLAUDE.md) for complete API documentation.
+See [API Reference](../api/hms_prj.md) for complete API documentation.
