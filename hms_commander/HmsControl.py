@@ -16,7 +16,7 @@ import pandas as pd
 from .LoggingConfig import get_logger
 from .Decorators import log_call
 from ._parsing import HmsFileParser
-from ._constants import TIME_INTERVALS, HMS_DATE_FORMAT, HMS_TIME_FORMAT
+from ._constants import TIME_INTERVALS, HMS_DATE_FORMAT, HMS_TIME_FORMAT, MINUTES_PER_HOUR
 
 logger = get_logger(__name__)
 
@@ -96,11 +96,11 @@ class HmsControl:
         try:
             start_datetime = datetime.strptime(
                 f"{start_date_str} {start_time_str}",
-                f"{HmsControl.HMS_DATE_FORMAT} {HmsControl.HMS_TIME_FORMAT}"
+                f"{HMS_DATE_FORMAT} {HMS_TIME_FORMAT}"
             )
             end_datetime = datetime.strptime(
                 f"{end_date_str} {end_time_str}",
-                f"{HmsControl.HMS_DATE_FORMAT} {HmsControl.HMS_TIME_FORMAT}"
+                f"{HMS_DATE_FORMAT} {HMS_TIME_FORMAT}"
             )
         except ValueError as e:
             raise ValueError(f"Error parsing date/time: {e}")
@@ -146,10 +146,10 @@ class HmsControl:
         content = HmsControl._read_control_file(control_path)
 
         # Format dates for HMS
-        start_date_str = start_date.strftime(HmsControl.HMS_DATE_FORMAT)
-        start_time_str = start_date.strftime(HmsControl.HMS_TIME_FORMAT)
-        end_date_str = end_date.strftime(HmsControl.HMS_DATE_FORMAT)
-        end_time_str = end_date.strftime(HmsControl.HMS_TIME_FORMAT)
+        start_date_str = start_date.strftime(HMS_DATE_FORMAT)
+        start_time_str = start_date.strftime(HMS_TIME_FORMAT)
+        end_date_str = end_date.strftime(HMS_DATE_FORMAT)
+        end_time_str = end_date.strftime(HMS_TIME_FORMAT)
 
         # Update parameters
         content = HmsControl._update_param(content, 'Start Date', start_date_str)
@@ -342,10 +342,10 @@ class HmsControl:
             time_interval = HmsControl._minutes_to_interval(time_interval)
 
         # Format dates
-        start_date_str = start_date.strftime(HmsControl.HMS_DATE_FORMAT)
-        start_time_str = start_date.strftime(HmsControl.HMS_TIME_FORMAT)
-        end_date_str = end_date.strftime(HmsControl.HMS_DATE_FORMAT)
-        end_time_str = end_date.strftime(HmsControl.HMS_TIME_FORMAT)
+        start_date_str = start_date.strftime(HMS_DATE_FORMAT)
+        start_time_str = start_date.strftime(HMS_TIME_FORMAT)
+        end_date_str = end_date.strftime(HMS_DATE_FORMAT)
+        end_time_str = end_date.strftime(HMS_TIME_FORMAT)
 
         content = f"""Control: {control_name}
      Description: Created by hms-commander
@@ -374,13 +374,13 @@ End:
 
     @staticmethod
     def _parse_control_params(content: str) -> Dict[str, str]:
-        """Parse control file into key-value pairs."""
-        params = {}
-        for line in content.splitlines():
-            line = line.strip()
-            if ':' in line and not line.startswith('Control:') and not line.startswith('End'):
-                key, value = line.split(':', 1)
-                params[key.strip()] = value.strip()
+        """Parse control file into key-value pairs.
+
+        Uses shared HmsFileParser._parse_attribute_block() and removes
+        the 'Control' header key if present.
+        """
+        params = HmsFileParser._parse_attribute_block(content)
+        params.pop('Control', None)  # Remove header line if parsed
         return params
 
     @staticmethod
@@ -392,13 +392,13 @@ End:
     @staticmethod
     def _minutes_to_interval(minutes: int) -> str:
         """Convert minutes to HMS interval string."""
-        if minutes < 60:
+        if minutes < MINUTES_PER_HOUR:
             if minutes == 1:
                 return "1 Minute"
             return f"{minutes} Minutes"
         else:
-            hours = minutes // 60
-            if hours == 24:
+            hours = minutes // MINUTES_PER_HOUR
+            if hours == 24:  # 24 hours = 1 day
                 return "1 Day"
             elif hours == 1:
                 return "1 Hour"

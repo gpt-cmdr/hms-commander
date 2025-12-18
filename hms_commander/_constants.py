@@ -46,6 +46,9 @@ MINUTES_PER_HOUR = 60
 MINUTES_PER_DAY = 1440
 SECONDS_PER_HOUR = 3600
 
+# Execution timeout (1 hour in seconds)
+DEFAULT_EXECUTION_TIMEOUT = 3600
+
 # Time interval mapping (HMS format string → minutes)
 TIME_INTERVALS = {
     '1 Minute': 1,

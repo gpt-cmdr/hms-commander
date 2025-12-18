@@ -16,6 +16,17 @@ from datetime import datetime, timedelta
 
 from .LoggingConfig import get_logger
 from .Decorators import log_call
+from ._constants import (
+    TIME_INTERVALS,
+    INCHES_TO_MM, MM_TO_INCHES,
+    FEET_TO_METERS, METERS_TO_FEET,
+    SQMI_TO_SQKM, SQKM_TO_SQMI,
+    ACRE_TO_SQKM, SQKM_TO_ACRE,
+    CFS_TO_CMS, CMS_TO_CFS,
+    ACFT_TO_M3, M3_TO_ACFT,
+    MINUTES_PER_HOUR, MINUTES_PER_DAY,
+    IA_RATIO, CN_FORMULA_BASE, CN_FORMULA_NUMERATOR, CN_MIN, CN_MAX,
+)
 
 logger = get_logger(__name__)
 
@@ -35,51 +46,31 @@ class HmsUtils:
         >>> print(interval_min)  # 15
     """
 
-    # Unit conversion factors
+    # Unit conversion factors - reference centralized constants
     CONVERSION_FACTORS = {
         # Length
-        'in_to_mm': 25.4,
-        'mm_to_in': 1 / 25.4,
-        'ft_to_m': 0.3048,
-        'm_to_ft': 1 / 0.3048,
+        'in_to_mm': INCHES_TO_MM,
+        'mm_to_in': MM_TO_INCHES,
+        'ft_to_m': FEET_TO_METERS,
+        'm_to_ft': METERS_TO_FEET,
 
         # Area
-        'sqmi_to_sqkm': 2.58999,
-        'sqkm_to_sqmi': 1 / 2.58999,
-        'acre_to_sqkm': 0.00404686,
-        'sqkm_to_acre': 1 / 0.00404686,
+        'sqmi_to_sqkm': SQMI_TO_SQKM,
+        'sqkm_to_sqmi': SQKM_TO_SQMI,
+        'acre_to_sqkm': ACRE_TO_SQKM,
+        'sqkm_to_acre': SQKM_TO_ACRE,
 
         # Flow
-        'cfs_to_cms': 0.028316847,
-        'cms_to_cfs': 1 / 0.028316847,
+        'cfs_to_cms': CFS_TO_CMS,
+        'cms_to_cfs': CMS_TO_CFS,
 
         # Volume
-        'acft_to_m3': 1233.48,
-        'm3_to_acft': 1 / 1233.48,
+        'acft_to_m3': ACFT_TO_M3,
+        'm3_to_acft': M3_TO_ACFT,
     }
 
-    # Time interval mappings
-    TIME_INTERVALS = {
-        '1 Minute': 1,
-        '2 Minutes': 2,
-        '3 Minutes': 3,
-        '4 Minutes': 4,
-        '5 Minutes': 5,
-        '6 Minutes': 6,
-        '10 Minutes': 10,
-        '12 Minutes': 12,
-        '15 Minutes': 15,
-        '20 Minutes': 20,
-        '30 Minutes': 30,
-        '1 Hour': 60,
-        '2 Hours': 120,
-        '3 Hours': 180,
-        '4 Hours': 240,
-        '6 Hours': 360,
-        '8 Hours': 480,
-        '12 Hours': 720,
-        '1 Day': 1440,
-    }
+    # Time interval mappings - reference centralized constants
+    # Note: TIME_INTERVALS imported from _constants
 
     @staticmethod
     @log_call
@@ -99,8 +90,8 @@ class HmsUtils:
             >>> HmsUtils.parse_time_interval("1 Hour")
             60
         """
-        if interval_str in HmsUtils.TIME_INTERVALS:
-            return HmsUtils.TIME_INTERVALS[interval_str]
+        if interval_str in TIME_INTERVALS:
+            return TIME_INTERVALS[interval_str]
 
         # Try to parse custom format
         match = re.match(r'(\d+)\s*(\w+)', interval_str)
@@ -111,9 +102,9 @@ class HmsUtils:
             if 'min' in unit:
                 return value
             elif 'hour' in unit:
-                return value * 60
+                return value * MINUTES_PER_HOUR
             elif 'day' in unit:
-                return value * 1440
+                return value * MINUTES_PER_DAY
 
         raise ValueError(f"Unknown time interval: {interval_str}")
 
@@ -136,18 +127,18 @@ class HmsUtils:
             '1 Hour'
         """
         # Find exact match
-        for interval_str, mins in HmsUtils.TIME_INTERVALS.items():
+        for interval_str, mins in TIME_INTERVALS.items():
             if mins == minutes:
                 return interval_str
 
         # Generate approximate string
-        if minutes < 60:
+        if minutes < MINUTES_PER_HOUR:
             return f"{minutes} Minutes" if minutes > 1 else "1 Minute"
-        elif minutes < 1440:
-            hours = minutes // 60
+        elif minutes < MINUTES_PER_DAY:
+            hours = minutes // MINUTES_PER_HOUR
             return f"{hours} Hours" if hours > 1 else "1 Hour"
         else:
-            days = minutes // 1440
+            days = minutes // MINUTES_PER_DAY
             return f"{days} Days" if days > 1 else "1 Day"
 
     @staticmethod
@@ -465,11 +456,11 @@ class HmsUtils:
             >>> cn = HmsUtils.calculate_cn_from_ia(1.0)
             >>> print(f"CN = {cn:.1f}")
         """
-        # Standard method: Ia = 0.2 * S, where S = (1000/CN) - 10
-        # Solving for CN: CN = 1000 / (S + 10) where S = Ia / 0.2
-        s = initial_abstraction / 0.2
-        cn = 1000 / (s + 10)
-        return max(0, min(100, cn))
+        # Standard method: Ia = IA_RATIO * S, where S = (1000/CN) - 10
+        # Solving for CN: CN = 1000 / (S + 10) where S = Ia / IA_RATIO
+        s = initial_abstraction / IA_RATIO
+        cn = CN_FORMULA_NUMERATOR / (s + CN_FORMULA_BASE)
+        return max(CN_MIN, min(CN_MAX, cn))
 
     @staticmethod
     def calculate_ia_from_cn(
@@ -490,13 +481,13 @@ class HmsUtils:
             >>> ia = HmsUtils.calculate_ia_from_cn(75)
             >>> print(f"Ia = {ia:.2f} inches")
         """
-        if curve_number <= 0 or curve_number > 100:
-            raise ValueError(f"Curve Number must be between 0 and 100, got {curve_number}")
+        if curve_number <= CN_MIN or curve_number > CN_MAX:
+            raise ValueError(f"Curve Number must be between {CN_MIN} and {CN_MAX}, got {curve_number}")
 
-        # S = (1000/CN) - 10
-        s = (1000 / curve_number) - 10
-        # Ia = 0.2 * S
-        ia = 0.2 * s
+        # S = (CN_FORMULA_NUMERATOR/CN) - CN_FORMULA_BASE
+        s = (CN_FORMULA_NUMERATOR / curve_number) - CN_FORMULA_BASE
+        # Ia = IA_RATIO * S
+        ia = IA_RATIO * s
         return ia
 
     @staticmethod

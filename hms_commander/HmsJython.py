@@ -44,6 +44,7 @@ from datetime import datetime
 
 from .LoggingConfig import get_logger
 from .Decorators import log_call
+from ._constants import DEFAULT_EXECUTION_TIMEOUT
 
 logger = get_logger(__name__)
 
@@ -230,7 +231,7 @@ JythonHms.Exit(0)
     def _execute_via_java_3x(
         script_path: Path,
         hms_install_path: Path,
-        timeout: int = 3600,
+        timeout: int = DEFAULT_EXECUTION_TIMEOUT,
         max_memory: str = "512M",
         initial_memory: str = "32M",
     ) -> Tuple[bool, str, str]:
@@ -338,7 +339,7 @@ JythonHms.Exit(0)
     def _execute_via_java(
         script_path: Path,
         hms_install_path: Path,
-        timeout: int = 3600,
+        timeout: int = DEFAULT_EXECUTION_TIMEOUT,
         max_memory: str = "4G",
         initial_memory: str = "128M",
         additional_java_opts: Optional[List[str]] = None
@@ -495,7 +496,7 @@ JythonHms.Exit(0)
         script_content: str,
         hms_exe_path: Union[str, Path],
         working_dir: Optional[Union[str, Path]] = None,
-        timeout: int = 3600,
+        timeout: int = DEFAULT_EXECUTION_TIMEOUT,
         capture_output: bool = True,
         max_memory: str = None,
         initial_memory: str = None,

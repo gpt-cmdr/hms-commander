@@ -20,6 +20,7 @@ from datetime import datetime
 from .LoggingConfig import get_logger
 from .Decorators import log_call
 from .HmsJython import HmsJython
+from ._constants import DEFAULT_EXECUTION_TIMEOUT
 
 logger = get_logger(__name__)
 
@@ -44,7 +45,7 @@ class HmsCmdr:
         hms_object=None,
         dest_folder: Optional[Union[str, Path]] = None,
         overwrite_dest: bool = False,
-        timeout: int = 3600,
+        timeout: int = DEFAULT_EXECUTION_TIMEOUT,
         save_project: bool = True,
         max_memory: str = None,
         initial_memory: str = None,
@@ -140,7 +141,7 @@ class HmsCmdr:
         max_workers: int = 2,
         hms_object=None,
         dest_folder: Optional[Union[str, Path]] = None,
-        timeout_per_run: int = 3600,
+        timeout_per_run: int = DEFAULT_EXECUTION_TIMEOUT,
         max_memory: str = None,
         initial_memory: str = None,
         additional_java_opts: Optional[List[str]] = None
@@ -345,7 +346,7 @@ class HmsCmdr:
         parameter_modifications: Dict[str, Dict[str, Any]],
         hms_object=None,
         dest_folder: Optional[Union[str, Path]] = None,
-        timeout: int = 3600,
+        timeout: int = DEFAULT_EXECUTION_TIMEOUT,
         max_memory: str = None,
         initial_memory: str = None,
         additional_java_opts: Optional[List[str]] = None
