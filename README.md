@@ -4,6 +4,14 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+> **Beta Software - Engineering Oversight Required**
+>
+> This library is in active development and should be used with caution. Many workflows have only been tested with HEC-HMS example projects, not production watersheds.
+>
+> **Real-world hydrologic modeling requires professional engineering judgment.** Every watershed has unique characteristics and nuances that automated workflows cannot fully capture. AI agent workflows are tools to assist engineers, not replace them.
+>
+> **Human-in-the-Loop is essential.** Licensed Professional Engineers must pilot these systems, guide their application, and verify all outputs before use in engineering decisions. Always validate results against established engineering practices and local knowledge.
+
 **LLM Forward Hydrologic Modeling Automation**
 
 A Python library for automating HEC-HMS (Hydrologic Engineering Center's Hydrologic Modeling System) operations, built using [CLB Engineering's LLM Forward Approach](https://clbengineering.com/). Follows the architectural patterns established by [ras-commander](https://github.com/billk-FM/ras-commander).
