@@ -116,14 +116,14 @@ print(peaks)
 
 Comprehensive Jupyter notebooks demonstrating workflows:
 
-| Notebook | Description | New in Phase 1 |
-|----------|-------------|----------------|
-| [03_project_dataframes.ipynb](examples/03_project_dataframes.ipynb) | Explore project DataFrames and component structure | ✅ Accessor methods (`list_met_names()`, `list_control_names()`) |
-| [04_hms_workflow.ipynb](examples/04_hms_workflow.ipynb) | Complete HMS workflow from init to results | ✅ Run configuration management with validation |
-| [05_run_management.ipynb](examples/05_run_management.ipynb) | **NEW!** Comprehensive run configuration guide | ✅ Complete guide to set_* functions and validation |
-| [clone_workflow.ipynb](examples/clone_workflow.ipynb) | Non-destructive QAQC with model cloning | ✅ Post-clone configuration examples |
-| [01_multi_version_execution.ipynb](examples/01_multi_version_execution.ipynb) | Execute across multiple HMS versions | - |
-| [02_run_all_hms413_projects.ipynb](examples/02_run_all_hms413_projects.ipynb) | Batch processing of example projects | - |
+| Notebook | Description |
+|----------|-------------|
+| [01_multi_version_execution.ipynb](examples/01_multi_version_execution.ipynb) | Execute across multiple HMS versions |
+| [02_run_all_hms413_projects.ipynb](examples/02_run_all_hms413_projects.ipynb) | Batch processing of example projects |
+| [03_project_dataframes.ipynb](examples/03_project_dataframes.ipynb) | Explore project DataFrames and component structure |
+| [04_hms_workflow.ipynb](examples/04_hms_workflow.ipynb) | Complete HMS workflow from init to results |
+| [05_run_management.ipynb](examples/05_run_management.ipynb) | Comprehensive run configuration guide |
+| [clone_workflow.ipynb](examples/clone_workflow.ipynb) | Non-destructive QAQC with model cloning |
 
 **Run Configuration Management (Phase 1)**:
 ```python
