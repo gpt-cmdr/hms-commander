@@ -217,6 +217,10 @@ HmsDss.extract_hms_results("results.dss", result_type="flow")
 - [ras-commander](https://github.com/billk-FM/ras-commander) - HEC-RAS automation
 - [HEC-HMS](https://www.hec.usace.army.mil/software/hec-hms/) - USACE software
 
+## Author
+
+**William Katzenmeyer, PE, CFM** - [CLB Engineering](https://clbengineering.com/)
+
 ## License
 
 MIT License
