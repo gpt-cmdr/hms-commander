@@ -19,9 +19,21 @@
 >
 > **Human-in-the-Loop is essential.** Licensed Professional Engineers must pilot these systems, guide their application, and verify all outputs before use in engineering decisions. Always validate results against established engineering practices and local knowledge.
 
+## Why HMS Commander?
+
+**HMS→RAS linked models are an industry standard** for watershed-to-river hydraulic analysis, yet there is no straightforward way to automate the linkage between HEC-HMS (hydrology) and HEC-RAS (hydraulics).
+
+This library exists to **bridge that gap**—extending the [ras-commander](https://github.com/gpt-cmdr/ras-commander) effort for HEC-RAS automation to include HEC-HMS workflows. While HEC-HMS provides robust internal functionality for standalone hydrologic models, the real power emerges when HMS hydrographs flow into RAS hydraulic models for flood inundation mapping, bridge analysis, and infrastructure design.
+
+**HMS Commander enables:**
+- Automated HMS simulation execution and results extraction
+- DSS file operations for seamless HMS→RAS boundary condition transfer
+- Consistent API patterns across both HMS and RAS automation
+- LLM-assisted workflows for complex multi-model scenarios
+
 **LLM Forward Hydrologic Modeling Automation**
 
-A Python library for automating HEC-HMS (Hydrologic Engineering Center's Hydrologic Modeling System) operations, built using [CLB Engineering's LLM Forward Approach](https://clbengineering.com/). Follows the architectural patterns established by [ras-commander](https://github.com/billk-FM/ras-commander).
+A Python library for automating HEC-HMS operations, built using [CLB Engineering's LLM Forward Approach](https://clbengineering.com/). Follows the architectural patterns established by [ras-commander](https://github.com/gpt-cmdr/ras-commander).
 
 ## LLM Forward Approach
 
