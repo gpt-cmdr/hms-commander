@@ -50,7 +50,8 @@ This file provides guidance to Claude Code when working with hms-commander.
 **File Operations**: HmsBasin, HmsMet, HmsControl, HmsGage, HmsRun, HmsGeo
 **Execution**: HmsCmdr, HmsJython
 **Data**: HmsDss, HmsResults
-**Utilities**: HmsUtils, HmsExamples
+**Utilities**: HmsUtils, HmsExamples, HmsM3Model
+**AORC/HUC**: HmsHuc, HmsAorc, HmsGrid, HmsDssGrid
 **Project**: HmsPrj (initialization and multi-project support)
 
 ### Key Architectural Patterns
@@ -96,6 +97,29 @@ from hms_commander import HmsBasin, HmsMet
 subbasins = HmsBasin.get_subbasins("project.basin")
 HmsMet.set_gage_assignment("project.met", "Sub1", "Gage1")
 ```
+
+### HCFCD M3 Models (FEMA Effective H&H Models)
+
+```python
+from hms_commander import HmsM3Model
+
+# List available HMS projects in M3 models
+projects = HmsM3Model.list_projects()
+
+# Extract Brays Bayou HMS model
+path = HmsM3Model.extract_project('D', 'D100-00-00')
+
+# Find by channel name
+model_id, unit_id = HmsM3Model.get_project_by_channel('BRAYS BAYOU')
+```
+
+**Note**: M3 HMS projects use HMS 3.x format. Use `python2_compatible=True` for Jython execution.
+
+**M3 Model Testing & Upgrades**:
+- **Testing Workflow**: `feature_dev_notes/HCFCD_M3_HMS411_UPGRADE_WORKFLOW.md` - Step-by-step guide
+- **Helper Scripts**: `examples/m3_upgrade_helpers/` - Validation and comparison tools
+- **Clear Creek Pilot**: `feature_dev_notes/HCFCD_M3_Clear_Creek_*` - Reference implementation
+- **Integration**: `.claude/rules/integration/m3-model-integration.md` - HMS↔RAS workflows
 
 ---
 

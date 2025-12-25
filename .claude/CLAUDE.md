@@ -30,6 +30,7 @@ Additional HMS knowledge in `.claude/rules/hec-hms/`:
 - dss-operations.md - DSS file operations
 - version-support.md - HMS 3.x vs 4.x differences
 - file-formats.md - .hms, .basin, .met, .control structures
+- aorc-integration.md - AORC precipitation and HUC watersheds
 
 ---
 
@@ -100,12 +101,18 @@ See: `feature_dev_notes/SPECIALIST_VS_PRODUCTION_AGENTS.md` for complete archite
 ## Cross-Repository Integration
 
 @.claude/rules/integration/hms-ras-linking.md
+@.claude/rules/integration/m3-model-integration.md
 
 **HMS→RAS Workflows** (watershed to river modeling):
 - HMS generates runoff hydrographs in DSS format
 - RAS imports as upstream boundary conditions
 - Shared RasDss infrastructure (no format conversion)
 - Spatial matching required (HMS outlets → RAS cross sections)
+
+**HCFCD M3 Model Workflows** (testing and upgrades):
+- `feature_dev_notes/HCFCD_M3_HMS411_UPGRADE_WORKFLOW.md` - Manual upgrade guide
+- `examples/m3_upgrade_helpers/` - Validation helper scripts
+- `feature_dev_notes/HCFCD_M3_Clear_Creek_*` - Clear Creek pilot (reference)
 
 **Skills & Agents**:
 - `.claude/skills/linking-hms-to-hecras/` - HMS side workflow
