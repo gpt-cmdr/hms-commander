@@ -18,6 +18,7 @@ Dependencies:
 All methods are static and designed to be used without instantiation.
 """
 
+import gc
 import re
 from pathlib import Path
 from typing import Dict, List, Optional, Union, Any
@@ -447,7 +448,14 @@ class HmsDss:
             return DssCore.parse_pathname(pathname)
 
         # Fallback implementation if DSS core not available
-        parts = pathname.strip('/').split('/')
+        # Don't strip - empty parts are significant (e.g., //B/C/D/E/F/ has empty A-part)
+        parts = pathname.split('/')
+
+        # Remove only the first and last empty strings (from leading/trailing slashes)
+        if parts and parts[0] == '':
+            parts = parts[1:]
+        if parts and parts[-1] == '':
+            parts = parts[:-1]
 
         result = {
             'A': parts[0] if len(parts) > 0 else '',
@@ -565,6 +573,11 @@ class HmsDss:
         """
         Extract peak flow values for all elements.
 
+        Note:
+            For large DSS files with many elements (100+), consider using
+            get_peak_flows_batched() instead to avoid memory issues. That method
+            processes elements in batches with garbage collection between batches.
+
         Args:
             dss_file: Path to the DSS file
             element_names: Optional list of element names to filter
@@ -575,6 +588,9 @@ class HmsDss:
         Example:
             >>> peaks = HmsDss.get_peak_flows("results.dss")
             >>> print(peaks.sort_values('peak_flow', ascending=False))
+
+        See Also:
+            get_peak_flows_batched: Memory-efficient version for large files
         """
         results = HmsDss.extract_hms_results(dss_file, element_names, result_type="flow")
 
@@ -590,6 +606,131 @@ class HmsDss:
                 })
 
         return pd.DataFrame(records)
+
+    @staticmethod
+    @log_call
+    def get_peak_flows_batched(
+        dss_file: Union[str, Path],
+        element_names: Optional[List[str]] = None,
+        run_name: Optional[str] = None,
+        batch_size: int = 50,
+        progress: bool = True
+    ) -> pd.DataFrame:
+        """
+        Extract peak flows in batches to avoid memory issues.
+
+        Processes N elements at a time, garbage collects between batches,
+        preventing memory exhaustion for large DSS files.
+
+        Args:
+            dss_file: Path to DSS file
+            element_names: Optional filter for specific elements
+            run_name: Optional filter for specific run (e.g., "1%(100YR)RUN")
+            batch_size: Elements to process per batch (default: 50)
+            progress: Show progress logging (default: True)
+
+        Returns:
+            DataFrame with columns:
+                - element: Element name
+                - peak_flow: Peak flow value (cfs)
+                - peak_time: Time of peak (datetime)
+                - units: Engineering units
+                - dss_path: Full DSS pathname
+
+        Memory: O(batch_size) instead of O(total_elements)
+
+        Example:
+            >>> # Safe for 1000+ elements
+            >>> peaks = HmsDss.get_peak_flows_batched(
+            ...     "results.dss",
+            ...     run_name="1%(100YR)RUN",
+            ...     batch_size=100  # Adjust for available memory
+            ... )
+        """
+        dss_file = Path(dss_file)
+
+        if not dss_file.exists():
+            raise FileNotFoundError(f"DSS file not found: {dss_file}")
+
+        if not DSS_AVAILABLE:
+            raise ImportError(
+                "DSS functionality requires pyjnius.\n"
+                "Install with: pip install pyjnius\n"
+                "Also requires Java 8+ (JRE or JDK)"
+            )
+
+        # Get all flow paths - use 'flow-total' pattern for /FLOW/ only (not FLOW-DIRECT, etc.)
+        catalog = HmsDss.get_catalog(dss_file)
+        flow_total_pattern = HmsDss.HMS_RESULT_PATTERNS['flow-total']
+        flow_paths = [p for p in catalog if re.search(flow_total_pattern, p, re.IGNORECASE)]
+
+        # Exclude TABLE data (paired data, not time series)
+        flow_paths = [p for p in flow_paths if '/TABLE/' not in p.upper()]
+
+        # Filter by run_name if provided (F-part)
+        if run_name:
+            flow_paths = [p for p in flow_paths if run_name.upper() in p.upper()]
+
+        # Filter by element_names if provided
+        if element_names:
+            filtered_paths = []
+            for path in flow_paths:
+                parts = HmsDss.parse_dss_pathname(path)
+                if parts['element_name'] in element_names:
+                    filtered_paths.append(path)
+            flow_paths = filtered_paths
+
+        total_paths = len(flow_paths)
+        if total_paths == 0:
+            logger.info("No flow paths found in DSS file")
+            return pd.DataFrame(columns=['element', 'peak_flow', 'peak_time', 'units', 'dss_path'])
+
+        if progress:
+            logger.info(f"Extracting peaks from {total_paths} paths...")
+
+        records = []
+        total_batches = (total_paths + batch_size - 1) // batch_size  # Ceiling division
+
+        for i in range(0, total_paths, batch_size):
+            batch_num = i // batch_size + 1
+            batch_paths = flow_paths[i:i + batch_size]
+
+            if progress:
+                logger.info(f"Batch {batch_num}/{total_batches}: processing {len(batch_paths)} paths...")
+
+            # Process each path in the batch
+            for path in batch_paths:
+                try:
+                    parts = HmsDss.parse_dss_pathname(path)
+
+                    # Use peak-only extraction (350x more memory efficient)
+                    peak_info = DssCore.get_peak_value(dss_file, path)
+
+                    if peak_info is not None:
+                        records.append({
+                            'element': parts['element_name'],
+                            'peak_flow': peak_info['peak_flow'],
+                            'peak_time': peak_info['peak_time'],
+                            'units': peak_info['units'],
+                            'dss_path': path
+                        })
+
+                except Exception as e:
+                    logger.warning(f"Could not read {path}: {e}")
+
+            # Garbage collect after each batch to free memory
+            gc.collect()
+
+        # Create DataFrame from records
+        result_df = pd.DataFrame(records)
+
+        # Sort by peak_flow descending
+        if not result_df.empty:
+            result_df = result_df.sort_values('peak_flow', ascending=False).reset_index(drop=True)
+
+        if progress:
+            logger.info(f"Extracted peak flows for {len(result_df)} elements")
+        return result_df
 
     @staticmethod
     @log_call
