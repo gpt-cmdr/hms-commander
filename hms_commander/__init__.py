@@ -90,6 +90,15 @@ from .HmsUtils import HmsUtils
 # Example Projects (Phase 5)
 from .HmsExamples import HmsExamples
 
+# M3 Model HMS Projects
+from .HmsM3Model import HmsM3Model
+
+# HUC Watersheds and AORC Precipitation (Phase 6)
+from .HmsHuc import HmsHuc
+from .HmsAorc import HmsAorc
+from .HmsGrid import HmsGrid
+from .HmsDssGrid import HmsDssGrid
+
 # Public API exports
 __all__ = [
     # Version
@@ -123,6 +132,15 @@ __all__ = [
 
     # Example Projects
     "HmsExamples",
+
+    # M3 Model HMS Projects
+    "HmsM3Model",
+
+    # HUC Watersheds and AORC
+    "HmsHuc",
+    "HmsAorc",
+    "HmsGrid",
+    "HmsDssGrid",
 
     # Logging
     "setup_logging",

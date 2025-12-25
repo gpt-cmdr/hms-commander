@@ -124,59 +124,69 @@ class HmsResults:
     @log_call
     def get_peak_flows(
         dss_file: Union[str, Path],
-        run_name: Optional[str] = None
+        element_names: Optional[List[str]] = None,
+        run_name: Optional[str] = None,
+        batch_size: int = 50
     ) -> pd.DataFrame:
         """
         Get peak flow summary for all elements in a DSS file.
 
+        Uses batched extraction for memory efficiency with large DSS files.
+        Processing is done in batches to prevent memory exhaustion when
+        extracting peaks from files with hundreds of elements.
+
         Args:
             dss_file: Path to the DSS file
+            element_names: Optional list of element names to include
             run_name: Optional run name filter
+            batch_size: Elements per batch (default: 50, increase for more RAM)
 
         Returns:
-            DataFrame with element names, peak flows, and peak times
+            DataFrame with columns:
+                - element: Element name
+                - peak_flow: Peak flow value (cfs)
+                - peak_time: Time of peak (datetime)
+                - units: Engineering units
+                - dss_path: Full DSS pathname
 
         Example:
+            >>> from hms_commander import HmsResults
             >>> peaks = HmsResults.get_peak_flows("results.dss")
-            >>> print(peaks.sort_values('peak_flow', ascending=False))
+            >>> print(peaks.nlargest(10, 'peak_flow'))
+
+        Note:
+            For very large DSS files (1000+ elements), you can adjust
+            batch_size based on available memory. Lower values use less
+            memory but take longer to process.
         """
         dss_file = Path(dss_file)
-        flow_paths = HmsDss.list_flow_results(dss_file)
 
-        # Filter by run name if specified
+        # If run_name filter specified, get paths and filter element names
         if run_name:
-            flow_paths = [
-                p for p in flow_paths
-                if HmsDss.parse_dss_pathname(p)['run_name'].upper() == run_name.upper()
-            ]
-
-        records = []
-        for path in flow_paths:
-            try:
+            flow_paths = HmsDss.list_flow_results(dss_file)
+            matching_elements = set()
+            for path in flow_paths:
                 parts = HmsDss.parse_dss_pathname(path)
-                df = HmsDss.read_timeseries(dss_file, path)
+                if parts['run_name'].upper() == run_name.upper():
+                    matching_elements.add(parts['element_name'])
 
-                if not df.empty:
-                    peak_idx = df.iloc[:, 0].idxmax()
-                    peak_value = df.iloc[:, 0].max()
+            # Combine with any user-specified element_names filter
+            if element_names:
+                element_names = [e for e in element_names if e in matching_elements]
+            else:
+                element_names = list(matching_elements)
 
-                    records.append({
-                        'element': parts['element_name'],
-                        'peak_flow': peak_value,
-                        'peak_time': peak_idx,
-                        'run_name': parts['run_name'],
-                        'dss_path': path
-                    })
+            if not element_names:
+                logger.info(f"No elements found for run_name '{run_name}'")
+                return pd.DataFrame(columns=['element', 'peak_flow', 'peak_time', 'units', 'dss_path'])
 
-            except Exception as e:
-                logger.warning(f"Could not process {path}: {e}")
-
-        df = pd.DataFrame(records)
-        if not df.empty:
-            df = df.sort_values('peak_flow', ascending=False)
-
-        logger.info(f"Extracted peak flows for {len(df)} elements")
-        return df
+        # Delegate to batched implementation
+        return HmsDss.get_peak_flows_batched(
+            dss_file,
+            element_names=element_names,
+            batch_size=batch_size,
+            progress=True
+        )
 
     @staticmethod
     @log_call
@@ -497,7 +507,7 @@ class HmsResults:
 
         # Export peak summary
         try:
-            peaks = HmsResults.get_peak_flows(dss_file, run_name)
+            peaks = HmsResults.get_peak_flows(dss_file, run_name=run_name)
             if not peaks.empty:
                 filepath = output_folder / "peak_flows_summary.csv"
                 peaks.to_csv(filepath, index=False)
