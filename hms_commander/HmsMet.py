@@ -135,10 +135,11 @@ class HmsMet:
 
         records = []
         for subbasin_name, attrs in subbasin_blocks.items():
+            weight_value = attrs.get('Weight', '1.0')
             record = {
                 'subbasin': subbasin_name,
                 'precip_gage': attrs.get('Precip Gage'),
-                'weight': attrs.get('Weight', 1.0),
+                'weight': HmsFileParser.to_numeric(weight_value) if weight_value is not None else 1.0,
             }
             records.append(record)
 

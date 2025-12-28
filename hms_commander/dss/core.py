@@ -703,6 +703,302 @@ class DssCore:
         return filtered
 
     @staticmethod
+    def write_paired_data(
+        dss_file: Union[str, Path],
+        pathname: str,
+        x_values: np.ndarray,
+        y_values: np.ndarray,
+        x_units: str = "HOURS",
+        y_units: str = "FRACTION",
+        x_label: str = "TIME",
+        y_label: str = "CUMULATIVE"
+    ) -> bool:
+        """
+        Write paired data (X-Y curve) to DSS file.
+
+        This is used for Atlas 14 temporal distributions, rating curves,
+        and other X-Y relationships.
+
+        Args:
+            dss_file: Path to DSS file (created if doesn't exist)
+            pathname: DSS pathname (e.g., "//TX_R3/FIRST-QUARTILE/24HR///50%/")
+            x_values: X coordinates (e.g., time in hours)
+            y_values: Y coordinates (e.g., cumulative fraction 0-1)
+            x_units: Units for X values (default: "HOURS")
+            y_units: Units for Y values (default: "FRACTION")
+            x_label: Label for X axis (default: "TIME")
+            y_label: Label for Y axis (default: "CUMULATIVE")
+
+        Returns:
+            True if write succeeded, False otherwise
+
+        Example:
+            >>> x = np.linspace(0, 24, 49)  # 0 to 24 hours
+            >>> y = np.linspace(0, 1, 49)   # 0 to 100% cumulative
+            >>> DssCore.write_paired_data(
+            ...     "temporal.dss",
+            ...     "//TX_R3/ALL-CASES/24HR///50%/",
+            ...     x, y
+            ... )
+        """
+        # Configure JVM (must be before first jnius import)
+        DssCore._configure_jvm()
+
+        # Import Java classes via pyjnius (lazy)
+        from jnius import autoclass
+
+        HecDss = autoclass('hec.heclib.dss.HecDss')
+        PairedDataContainer = autoclass('hec.io.PairedDataContainer')
+
+        dss_file = str(Path(dss_file).resolve())
+
+        # Open DSS file (creates if doesn't exist)
+        dss = HecDss.open(dss_file)
+
+        # Suppress DSS library verbose output
+        try:
+            dss.setMessageLevel(0)
+        except Exception:
+            pass
+
+        try:
+            # Create PairedDataContainer
+            container = PairedDataContainer()
+
+            # Use setter methods (pyjnius requires explicit setters, not property assignment)
+            container.setFullName(pathname)
+            container.setXUnits(x_units)
+            container.setYUnits(y_units)
+            container.setXType(x_label)
+            container.setYType(y_label)
+
+            # Convert numpy arrays to Java arrays
+            # X ordinates: 1D array (double[])
+            x_list = x_values.astype(np.float64).tolist()
+
+            # Y ordinates: 2D array (double[numberCurves][numberOrdinates])
+            # For single curve, wrap in outer list: [[y1, y2, ...]]
+            # See: https://www.hec.usace.army.mil/confluence/dssdocs/dssjavaprogrammer/paired-data
+            y_list = y_values.astype(np.float64).tolist()
+            y_2d = [y_list]  # Single curve: yOrdinates[1][n]
+
+            container.setXOrdinates(x_list)
+            container.setYOrdinates(y_2d)
+            container.setNumberOrdinates(len(x_values))
+            container.setNumberCurves(1)
+
+            # Write to DSS file
+            dss.put(container)
+
+            logger.info(f"Wrote paired data to {pathname}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error writing paired data to {pathname}: {e}")
+            return False
+
+        finally:
+            dss.done()
+
+    @staticmethod
+    def write_multiple_paired_data(
+        dss_file: Union[str, Path],
+        paired_data_records: List[Dict[str, Any]]
+    ) -> Dict[str, bool]:
+        """
+        Write multiple paired data records to DSS file.
+
+        More efficient than calling write_paired_data repeatedly as it
+        keeps the DSS file open for all writes.
+
+        Args:
+            dss_file: Path to DSS file
+            paired_data_records: List of dicts with keys:
+                - pathname: DSS pathname
+                - x_values: numpy array of X values
+                - y_values: numpy array of Y values
+                - x_units: (optional) X units
+                - y_units: (optional) Y units
+                - x_label: (optional) X label
+                - y_label: (optional) Y label
+
+        Returns:
+            Dict mapping pathname to success status (True/False)
+
+        Example:
+            >>> records = [
+            ...     {"pathname": "//A/B/C///D/", "x_values": x1, "y_values": y1},
+            ...     {"pathname": "//A/E/C///D/", "x_values": x2, "y_values": y2},
+            ... ]
+            >>> results = DssCore.write_multiple_paired_data("file.dss", records)
+        """
+        # Configure JVM (must be before first jnius import)
+        DssCore._configure_jvm()
+
+        # Import Java classes via pyjnius (lazy)
+        from jnius import autoclass
+
+        HecDss = autoclass('hec.heclib.dss.HecDss')
+        PairedDataContainer = autoclass('hec.io.PairedDataContainer')
+
+        dss_file = str(Path(dss_file).resolve())
+        results = {}
+
+        # Open DSS file once for all writes
+        dss = HecDss.open(dss_file)
+
+        try:
+            dss.setMessageLevel(0)
+        except Exception:
+            pass
+
+        try:
+            for record in paired_data_records:
+                pathname = record['pathname']
+                try:
+                    # Create container with setter methods
+                    container = PairedDataContainer()
+                    container.setFullName(pathname)
+                    container.setXUnits(record.get('x_units', 'HOURS'))
+                    container.setYUnits(record.get('y_units', 'FRACTION'))
+                    container.setXType(record.get('x_label', 'TIME'))
+                    container.setYType(record.get('y_label', 'CUMULATIVE'))
+
+                    x_values = record['x_values']
+                    y_values = record['y_values']
+
+                    # X ordinates: 1D array (double[])
+                    x_list = x_values.astype(np.float64).tolist()
+
+                    # Y ordinates: 2D array (double[numberCurves][numberOrdinates])
+                    y_list = y_values.astype(np.float64).tolist()
+                    y_2d = [y_list]  # Single curve: yOrdinates[1][n]
+
+                    container.setXOrdinates(x_list)
+                    container.setYOrdinates(y_2d)
+                    container.setNumberOrdinates(len(x_values))
+                    container.setNumberCurves(1)
+
+                    # Write to DSS
+                    dss.put(container)
+                    results[pathname] = True
+
+                except Exception as e:
+                    logger.error(f"Error writing {pathname}: {e}")
+                    results[pathname] = False
+
+            logger.info(f"Wrote {sum(results.values())}/{len(results)} paired data records")
+
+        finally:
+            dss.done()
+
+        return results
+
+    @staticmethod
+    def read_paired_data(
+        dss_file: Union[str, Path],
+        pathname: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Read paired data (X-Y curve) from DSS file.
+
+        Args:
+            dss_file: Path to DSS file
+            pathname: DSS pathname for paired data
+
+        Returns:
+            Dictionary with:
+                - x_values: numpy array of X values
+                - y_values: numpy array of Y values
+                - x_units: X axis units
+                - y_units: Y axis units
+                - x_label: X axis label
+                - y_label: Y axis label
+                - pathname: Original pathname
+            Returns None if read fails
+
+        Example:
+            >>> data = DssCore.read_paired_data(
+            ...     "file.dss",
+            ...     "//ELEMENT/FLOW-DIVERSION///TABLE/"
+            ... )
+            >>> print(f"X: {data['x_values']}")
+            >>> print(f"Y: {data['y_values']}")
+        """
+        # Configure JVM (must be before first jnius import)
+        DssCore._configure_jvm()
+
+        # Import Java classes via pyjnius (lazy)
+        from jnius import autoclass, cast
+
+        HecDss = autoclass('hec.heclib.dss.HecDss')
+        PairedDataContainer = autoclass('hec.io.PairedDataContainer')
+
+        dss_file = Path(dss_file)
+
+        if not dss_file.exists():
+            logger.warning(f"DSS file not found: {dss_file}")
+            return None
+
+        # Open DSS file
+        dss = HecDss.open(str(dss_file.resolve()))
+
+        # Suppress DSS library verbose output
+        try:
+            dss.setMessageLevel(0)
+        except Exception:
+            pass
+
+        try:
+            # Read paired data
+            # True = ignore D-part for wildcard matching
+            container = dss.get(pathname, True)
+
+            if container is None:
+                logger.warning(f"No data found for pathname: {pathname}")
+                return None
+
+            # Cast to PairedDataContainer to access fields
+            pdc = cast('hec.io.PairedDataContainer', container)
+
+            # Extract X ordinates (1D array)
+            x_values = np.array(pdc.xOrdinates)
+
+            # Extract Y ordinates (2D array - [curves][ordinates])
+            # Most paired data has single curve, so take first curve
+            y_ordinates = pdc.yOrdinates
+            if y_ordinates is not None:
+                # Convert Java 2D array to numpy
+                # y_ordinates[0] is the first (usually only) curve
+                y_values = np.array(y_ordinates[0])
+            else:
+                logger.warning(f"No Y ordinates found for pathname: {pathname}")
+                return None
+
+            # Extract metadata
+            x_units = str(pdc.xUnits) if pdc.xUnits else ""
+            y_units = str(pdc.yUnits) if pdc.yUnits else ""
+            x_label = str(pdc.xType) if pdc.xType else ""
+            y_label = str(pdc.yType) if pdc.yType else ""
+
+            return {
+                'x_values': x_values,
+                'y_values': y_values,
+                'x_units': x_units,
+                'y_units': y_units,
+                'x_label': x_label,
+                'y_label': y_label,
+                'pathname': pathname
+            }
+
+        except Exception as e:
+            logger.error(f"Error reading paired data from {pathname}: {e}")
+            return None
+
+        finally:
+            dss.done()
+
+    @staticmethod
     def shutdown_jvm():
         """
         Shutdown Java Virtual Machine.

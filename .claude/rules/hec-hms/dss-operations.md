@@ -101,7 +101,88 @@ Filters DSS catalog for HMS-specific pathnames.
 
 **See**: `hms_commander/HmsResults.py` for complete API
 
+## Paired Data (X-Y Curves)
+
+**New in recent updates**: Write Atlas 14 temporal distributions and rating curves to DSS
+
+### Pattern 4: Write Paired Data
+
+```python
+import numpy as np
+from hms_commander import HmsDss
+
+# Write temporal distribution curve
+x_hours = np.linspace(0, 24, 49)  # Time (hours)
+y_cumulative = np.linspace(0, 1, 49)  # Cumulative fraction (0-1)
+
+HmsDss.write_paired_data(
+    dss_file="temporal.dss",
+    pathname="//TX_R3/ALL-CASES/24HR///50%/",
+    x_values=x_hours,
+    y_values=y_cumulative,
+    x_units="HOURS",
+    y_units="FRACTION"
+)
+```
+
+**Use cases**:
+- Atlas 14 temporal distributions
+- Rating curves
+- Stage-discharge relationships
+- Stage-area curves
+- Any X-Y relationship
+
+### Pattern 5: Write Multiple Paired Data
+
+**More efficient** for batch writes:
+
+```python
+records = [
+    {
+        "pathname": "//TX_R3/FIRST-QUARTILE/24HR///50%/",
+        "x_values": hours,
+        "y_values": first_quartile_50,
+    },
+    {
+        "pathname": "//TX_R3/FIRST-QUARTILE/24HR///90%/",
+        "x_values": hours,
+        "y_values": first_quartile_90,
+    },
+    # ... more records
+]
+
+results = HmsDss.write_multiple_paired_data("temporal.dss", records)
+# Returns: {"//TX_R3/...": True, ...}
+```
+
+**See docstrings**: `HmsDss.write_paired_data()` and `HmsDss.write_multiple_paired_data()` for complete API
+
+## Low-Level DSS Core
+
+**Direct access to DSS Java bridge**: `hms_commander.dss.core.DssCore`
+
+**When to use**:
+- Custom DSS operations not in HmsDss
+- Performance-critical operations
+- Advanced DSS features
+
+**Example**:
+```python
+from hms_commander.dss import DssCore
+
+# Write paired data (low-level)
+DssCore.write_paired_data(
+    dss_file="file.dss",
+    pathname="//A/B/C///D/",
+    x_values=x_array,
+    y_values=y_array
+)
+```
+
+**Note**: Most users should use `HmsDss` wrapper instead
+
 ## Related
 
 - **RasDss**: ras-commander package (authoritative DSS implementation)
 - **Execution**: .claude/rules/hec-hms/execution.md (generates DSS output)
+- **Atlas14Storm**: .claude/rules/hec-hms/atlas14-storms.md (uses DSS for temporal distributions)

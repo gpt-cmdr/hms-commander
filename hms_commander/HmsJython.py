@@ -698,11 +698,18 @@ import sys
 
         # Find the actual project name from the .hms file
         # The project name must match the .hms filename (without extension)
-        hms_files = list(project_path.glob("*.hms"))
-        if hms_files:
-            project_name = hms_files[0].stem  # Use actual HMS project name
+        # Handle both file and directory paths
+        if project_path.is_file() and project_path.suffix.lower() == '.hms':
+            # Path is the .hms file itself
+            project_name = project_path.stem
+            project_path = project_path.parent
         else:
-            project_name = project_path.name  # Fallback to folder name
+            # Path is a directory, find .hms file within
+            hms_files = list(project_path.glob("*.hms"))
+            if hms_files:
+                project_name = hms_files[0].stem  # Use actual HMS project name
+            else:
+                project_name = project_path.name  # Fallback to folder name
 
         if python2_compatible:
             return HmsJython._generate_compute_script_py2(

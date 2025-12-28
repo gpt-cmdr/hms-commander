@@ -285,3 +285,33 @@ class HmsFileParser:
         footer = match.group(3)
         new_block = header + new_block_content + footer
         return content[:match.start()] + new_block + content[match.end():]
+
+    @staticmethod
+    def to_numeric(value: str) -> Union[float, str]:
+        """
+        Convert string value to float if possible, otherwise return original string.
+
+        Handles scientific notation (e.g., '1.3824636581E7') and regular decimals.
+        Returns original string if conversion fails.
+
+        Args:
+            value: String value to convert
+
+        Returns:
+            Float if conversion succeeds, original string otherwise
+
+        Example:
+            >>> HmsFileParser.to_numeric("123.45")
+            123.45
+            >>> HmsFileParser.to_numeric("1.5E6")
+            1500000.0
+            >>> HmsFileParser.to_numeric("Junction-1")
+            'Junction-1'
+        """
+        if value is None:
+            return None
+
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return value

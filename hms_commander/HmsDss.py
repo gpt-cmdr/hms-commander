@@ -767,3 +767,251 @@ class HmsDss:
                 })
 
         return pd.DataFrame(records)
+
+    @staticmethod
+    @log_call
+    def write_paired_data(
+        dss_file: Union[str, Path],
+        pathname: str,
+        x_values,
+        y_values,
+        x_units: str = "HOURS",
+        y_units: str = "FRACTION",
+        x_label: str = "TIME",
+        y_label: str = "CUMULATIVE"
+    ) -> bool:
+        """
+        Write paired data (X-Y curve) to DSS file.
+
+        This is used for Atlas 14 temporal distributions, rating curves,
+        and other X-Y relationships.
+
+        Args:
+            dss_file: Path to DSS file (created if doesn't exist)
+            pathname: DSS pathname (e.g., "//TX_R3/FIRST-QUARTILE/24HR///50%/")
+            x_values: X coordinates (e.g., time in hours) - numpy array or list
+            y_values: Y coordinates (e.g., cumulative fraction 0-1) - numpy array or list
+            x_units: Units for X values (default: "HOURS")
+            y_units: Units for Y values (default: "FRACTION")
+            x_label: Label for X axis (default: "TIME")
+            y_label: Label for Y axis (default: "CUMULATIVE")
+
+        Returns:
+            True if write succeeded, False otherwise
+
+        Example:
+            >>> import numpy as np
+            >>> x = np.linspace(0, 24, 49)  # 0 to 24 hours
+            >>> y = np.linspace(0, 1, 49)   # 0 to 100% cumulative
+            >>> HmsDss.write_paired_data(
+            ...     "temporal.dss",
+            ...     "//TX_R3/ALL-CASES/24HR///50%/",
+            ...     x, y
+            ... )
+        """
+        import numpy as np
+        dss_file = Path(dss_file)
+
+        if not DSS_AVAILABLE:
+            raise ImportError(
+                "DSS functionality requires pyjnius.\n"
+                "Install with: pip install pyjnius\n"
+                "Also requires Java 8+ (JRE or JDK)"
+            )
+
+        # Convert to numpy arrays if needed
+        x_values = np.asarray(x_values)
+        y_values = np.asarray(y_values)
+
+        return DssCore.write_paired_data(
+            dss_file, pathname, x_values, y_values,
+            x_units, y_units, x_label, y_label
+        )
+
+    @staticmethod
+    @log_call
+    def write_multiple_paired_data(
+        dss_file: Union[str, Path],
+        paired_data_records: List[Dict]
+    ) -> Dict[str, bool]:
+        """
+        Write multiple paired data records to DSS file.
+
+        More efficient than calling write_paired_data repeatedly as it
+        keeps the DSS file open for all writes.
+
+        Args:
+            dss_file: Path to DSS file
+            paired_data_records: List of dicts with keys:
+                - pathname: DSS pathname
+                - x_values: numpy array of X values
+                - y_values: numpy array of Y values
+                - x_units: (optional) X units
+                - y_units: (optional) Y units
+                - x_label: (optional) X label
+                - y_label: (optional) Y label
+
+        Returns:
+            Dict mapping pathname to success status (True/False)
+
+        Example:
+            >>> records = [
+            ...     {"pathname": "//TX_R3/FIRST-QUARTILE/24HR///50%/",
+            ...      "x_values": hours, "y_values": fractions_50},
+            ...     {"pathname": "//TX_R3/FIRST-QUARTILE/24HR///90%/",
+            ...      "x_values": hours, "y_values": fractions_90},
+            ... ]
+            >>> results = HmsDss.write_multiple_paired_data("temporal.dss", records)
+            >>> print(f"Wrote {sum(results.values())} records")
+        """
+        import numpy as np
+        dss_file = Path(dss_file)
+
+        if not DSS_AVAILABLE:
+            raise ImportError(
+                "DSS functionality requires pyjnius.\n"
+                "Install with: pip install pyjnius"
+            )
+
+        # Convert values to numpy arrays if needed
+        for record in paired_data_records:
+            record['x_values'] = np.asarray(record['x_values'])
+            record['y_values'] = np.asarray(record['y_values'])
+
+        return DssCore.write_multiple_paired_data(dss_file, paired_data_records)
+
+    @staticmethod
+    @log_call
+    def import_atlas14_temporal(
+        dss_file: Union[str, Path],
+        temporal_distributions: Dict[str, 'pd.DataFrame'],
+        region_code: str,
+        duration_hours: int = 24
+    ) -> Dict[str, bool]:
+        """
+        Import Atlas 14 temporal distributions to DSS file.
+
+        Convenience method specifically for Atlas 14 temporal data.
+        Creates proper DSS pathnames and writes all quartiles and probabilities.
+
+        Args:
+            dss_file: Output DSS file path
+            temporal_distributions: Dict mapping quartile names to DataFrames
+                Each DataFrame should have:
+                - Index: hours (0, 0.5, 1.0, ... 24.0)
+                - Columns: probability strings ("90%", "80%", ..., "10%")
+                - Values: cumulative percentages (0-100)
+            region_code: Atlas 14 region code (e.g., "TX_R3")
+            duration_hours: Storm duration in hours (default: 24)
+
+        Returns:
+            Dict mapping pathname to success status
+
+        Example:
+            >>> # Parse temporal CSV
+            >>> temporal = parse_temporal_csv(csv_content)
+            >>>
+            >>> # Import to DSS
+            >>> results = HmsDss.import_atlas14_temporal(
+            ...     "TX_R3_24H.dss",
+            ...     temporal,
+            ...     region_code="TX_R3",
+            ...     duration_hours=24
+            ... )
+            >>> print(f"Imported {sum(results.values())}/45 distributions")
+        """
+        import numpy as np
+
+        dss_file = Path(dss_file)
+
+        if not DSS_AVAILABLE:
+            raise ImportError("DSS functionality requires pyjnius.")
+
+        # Map quartile names to DSS-compatible names
+        quartile_dss_names = {
+            "First Quartile": "FIRST-QUARTILE",
+            "Second Quartile": "SECOND-QUARTILE",
+            "Third Quartile": "THIRD-QUARTILE",
+            "Fourth Quartile": "FOURTH-QUARTILE",
+            "All Cases": "ALL-CASES"
+        }
+
+        duration_str = f"{duration_hours}HR"
+        records = []
+
+        for quartile_name, df in temporal_distributions.items():
+            dss_quartile = quartile_dss_names.get(quartile_name)
+            if dss_quartile is None:
+                logger.warning(f"Unknown quartile: {quartile_name}, skipping")
+                continue
+
+            x_values = np.array(df.index)  # Hours
+
+            for prob_col in df.columns:
+                # Generate pathname
+                pathname = f"//{region_code}/{dss_quartile}/{duration_str}///{prob_col}/"
+
+                # Convert percentage to fraction
+                y_values = df[prob_col].values / 100.0
+
+                records.append({
+                    'pathname': pathname,
+                    'x_values': x_values,
+                    'y_values': y_values,
+                    'x_units': 'HOURS',
+                    'y_units': 'FRACTION',
+                    'x_label': 'TIME',
+                    'y_label': 'CUMULATIVE'
+                })
+
+        logger.info(f"Importing {len(records)} temporal distributions to {dss_file}")
+        return DssCore.write_multiple_paired_data(dss_file, records)
+
+    @staticmethod
+    @log_call
+    def read_paired_data(
+        dss_file: Union[str, Path],
+        pathname: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Read paired data (X-Y curve) from DSS file.
+
+        This is used for reading rating curves, diversion tables,
+        storage-flow relationships, and other X-Y paired data.
+
+        Args:
+            dss_file: Path to DSS file
+            pathname: DSS pathname for paired data (e.g., "//ELEMENT/FLOW-DIVERSION///TABLE/")
+
+        Returns:
+            Dictionary with:
+                - x_values: numpy array of X values
+                - y_values: numpy array of Y values
+                - x_units: X axis units
+                - y_units: Y axis units
+                - x_label: X axis label
+                - y_label: Y axis label
+                - pathname: Original pathname
+            Returns None if read fails
+
+        Example:
+            >>> data = HmsDss.read_paired_data(
+            ...     "paired_data.dss",
+            ...     "//T1011300_0000_D/FLOW-DIVERSION///TABLE/"
+            ... )
+            >>> print(f"Inflow values: {data['x_values']}")
+            >>> print(f"Diversion values: {data['y_values']}")
+        """
+        dss_file = Path(dss_file)
+
+        if not dss_file.exists():
+            raise FileNotFoundError(f"DSS file not found: {dss_file}")
+
+        if not DSS_AVAILABLE:
+            raise ImportError(
+                "DSS functionality requires pyjnius.\n"
+                "Install with: pip install pyjnius\n"
+                "Also requires Java 8+ (JRE or JDK)"
+            )
+
+        return DssCore.read_paired_data(dss_file, pathname)

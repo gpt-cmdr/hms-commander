@@ -99,6 +99,12 @@ from .HmsAorc import HmsAorc
 from .HmsGrid import HmsGrid
 from .HmsDssGrid import HmsDssGrid
 
+# Atlas 14 Hyetograph Generation
+from .Atlas14Storm import Atlas14Storm, Atlas14Config
+
+# TP-40 Frequency Storm Hyetograph Generation
+from .FrequencyStorm import FrequencyStorm
+
 # Public API exports
 __all__ = [
     # Version
@@ -141,6 +147,14 @@ __all__ = [
     "HmsAorc",
     "HmsGrid",
     "HmsDssGrid",
+
+
+    # Atlas 14
+    "Atlas14Storm",
+    "Atlas14Config",
+
+    # TP-40 Frequency Storm
+    "FrequencyStorm",
 
     # Logging
     "setup_logging",

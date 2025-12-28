@@ -27,10 +27,12 @@ Additional patterns in `.claude/rules/python/`:
 Additional HMS knowledge in `.claude/rules/hec-hms/`:
 - met-files.md - Meteorologic models
 - control-files.md - Control specifications
-- dss-operations.md - DSS file operations
+- dss-operations.md - DSS file operations (including paired data)
 - version-support.md - HMS 3.x vs 4.x differences
 - file-formats.md - .hms, .basin, .met, .control structures
 - aorc-integration.md - AORC precipitation and HUC watersheds
+- atlas14-storms.md - Atlas 14 hyetograph generation (✓ PRODUCTION-READY)
+- frequency-storms.md - TP-40/Hydro-35 HCFCD M3 compatibility (in validation)
 
 ---
 

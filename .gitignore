@@ -114,3 +114,19 @@ HMS_LOG_FILE_ANALYSIS_SUMMARY.txt
 .tmp_*
 nul
 lfs/
+
+# Cache directories (regenerable)
+cache/
+examples/cache/
+examples/output/
+examples/atlas14_validation/
+examples/frequency_storm_validation/
+examples/aorc_workflow_output/
+
+# M3 model test artifacts
+m3_version_test/
+m3_version_testJ/
+C:GHhms-commanderm3_version_testW/
+
+# HUC watershed downloads (large, regenerable)
+huc_watersheds/

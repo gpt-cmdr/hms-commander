@@ -52,6 +52,7 @@ This file provides guidance to Claude Code when working with hms-commander.
 **Data**: HmsDss, HmsResults
 **Utilities**: HmsUtils, HmsExamples, HmsM3Model
 **AORC/HUC**: HmsHuc, HmsAorc, HmsGrid, HmsDssGrid
+**Storm Generation**: Atlas14Storm (production-ready), FrequencyStorm (in validation)
 **Project**: HmsPrj (initialization and multi-project support)
 
 ### Key Architectural Patterns
@@ -147,9 +148,11 @@ model_id, unit_id = HmsM3Model.get_project_by_channel('BRAYS BAYOU')
 - basin-files.md - HmsBasin operations
 - met-files.md - HmsMet operations
 - control-files.md - HmsControl operations
-- dss-operations.md - HmsDss, HmsResults
+- dss-operations.md - HmsDss, HmsResults (including paired data)
 - clone-workflows.md - CLB Engineering LLM Forward approach
 - version-support.md - HMS 3.x vs 4.x differences
+- atlas14-storms.md - Atlas 14 hyetograph generation (production-ready)
+- frequency-storms.md - TP-40/Hydro-35 for HCFCD M3 models
 
 **Testing** (`.claude/rules/testing/`):
 - example-projects.md - HmsExamples usage

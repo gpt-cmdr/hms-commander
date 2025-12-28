@@ -69,14 +69,14 @@ class HmsBasin:
         for name, attrs in subbasins.items():
             record = {
                 'name': name,
-                'area': attrs.get('Area'),
+                'area': HmsFileParser.to_numeric(attrs.get('Area')),
                 'downstream': attrs.get('Downstream'),
                 'loss_method': attrs.get('Loss'),
                 'transform_method': attrs.get('Transform'),
                 'baseflow_method': attrs.get('Baseflow'),
-                'percent_impervious': attrs.get('Percent Impervious Area'),
-                'canvas_x': attrs.get('Canvas X'),
-                'canvas_y': attrs.get('Canvas Y'),
+                'percent_impervious': HmsFileParser.to_numeric(attrs.get('Percent Impervious Area')),
+                'canvas_x': HmsFileParser.to_numeric(attrs.get('Canvas X')),
+                'canvas_y': HmsFileParser.to_numeric(attrs.get('Canvas Y')),
             }
             records.append(record)
 
@@ -112,8 +112,8 @@ class HmsBasin:
             record = {
                 'name': name,
                 'downstream': attrs.get('Downstream'),
-                'canvas_x': attrs.get('Canvas X'),
-                'canvas_y': attrs.get('Canvas Y'),
+                'canvas_x': HmsFileParser.to_numeric(attrs.get('Canvas X')),
+                'canvas_y': HmsFileParser.to_numeric(attrs.get('Canvas Y')),
             }
             records.append(record)
 
@@ -148,10 +148,10 @@ class HmsBasin:
                 'name': name,
                 'downstream': attrs.get('Downstream'),
                 'route_method': attrs.get('Route'),
-                'canvas_x': attrs.get('Canvas X'),
-                'canvas_y': attrs.get('Canvas Y'),
-                'from_canvas_x': attrs.get('From Canvas X'),
-                'from_canvas_y': attrs.get('From Canvas Y'),
+                'canvas_x': HmsFileParser.to_numeric(attrs.get('Canvas X')),
+                'canvas_y': HmsFileParser.to_numeric(attrs.get('Canvas Y')),
+                'from_canvas_x': HmsFileParser.to_numeric(attrs.get('From Canvas X')),
+                'from_canvas_y': HmsFileParser.to_numeric(attrs.get('From Canvas Y')),
             }
             records.append(record)
 
