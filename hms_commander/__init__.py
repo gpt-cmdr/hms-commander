@@ -81,7 +81,7 @@ from .HmsJython import HmsJython
 from .HmsCmdr import HmsCmdr
 
 # DSS and Results (Phase 4)
-from .HmsDss import HmsDss
+from .dss import HmsDss, HmsDssGrid, DssCore
 from .HmsResults import HmsResults
 
 # Utilities
@@ -97,7 +97,7 @@ from .HmsM3Model import HmsM3Model
 from .HmsHuc import HmsHuc
 from .HmsAorc import HmsAorc
 from .HmsGrid import HmsGrid
-from .HmsDssGrid import HmsDssGrid
+# Note: HmsDssGrid is imported from .dss above
 
 # Atlas 14 Hyetograph Generation
 from .Atlas14Storm import Atlas14Storm, Atlas14Config
@@ -127,7 +127,9 @@ __all__ = [
     "HmsJython",
 
     # DSS and Results
+    "DssCore",
     "HmsDss",
+    "HmsDssGrid",
     "HmsResults",
 
     # GIS Operations
@@ -146,7 +148,6 @@ __all__ = [
     "HmsHuc",
     "HmsAorc",
     "HmsGrid",
-    "HmsDssGrid",
 
 
     # Atlas 14
