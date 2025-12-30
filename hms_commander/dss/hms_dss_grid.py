@@ -15,14 +15,15 @@ Key Functions:
 
 Dependencies:
     Required:
-        - ras-commander: For HEC Monolith and pyjnius infrastructure
+        - pyjnius: pip install pyjnius
+        - Java 8+ JRE/JDK
         - numpy: Numerical array operations
         - pandas: Time series handling
 
     Install with:
         pip install hms-commander[dss]
         # OR
-        pip install ras-commander numpy pandas
+        pip install pyjnius numpy pandas
 
 Technical Notes:
     The implementation mirrors HEC-Vortex's DssDataWriter.java (lines 276-317)
@@ -65,8 +66,8 @@ from typing import Union, List, Optional
 from datetime import datetime
 import logging
 
-from .LoggingConfig import get_logger
-from .Decorators import log_call
+from ..LoggingConfig import get_logger
+from ..Decorators import log_call
 
 logger = get_logger(__name__)
 
@@ -81,15 +82,15 @@ def _check_dss_dependencies():
         missing.append("numpy")
 
     try:
-        from ras_commander.dss import RasDss
+        import jnius_config
     except ImportError:
-        missing.append("ras-commander")
+        missing.append("pyjnius")
 
     if missing:
         raise ImportError(
             f"Missing DSS dependencies: {', '.join(missing)}. "
             "Install with: pip install hms-commander[dss] "
-            "or: pip install ras-commander numpy"
+            "or: pip install pyjnius numpy"
         )
 
 
@@ -138,14 +139,14 @@ class HmsDssGrid:
         """
         Ensure HEC Monolith libraries are loaded.
 
-        Reuses ras-commander's RasDss infrastructure for HEC Monolith
+        Uses hms-commander's local DssCore infrastructure for HEC Monolith
         download and JVM configuration.
         """
-        from ras_commander.dss import RasDss
-        RasDss._ensure_monolith()
+        from .core import DssCore
+        DssCore._ensure_monolith()
 
         if not HmsDssGrid._jvm_configured:
-            RasDss._configure_jvm()
+            DssCore._configure_jvm()
             HmsDssGrid._jvm_configured = True
 
     @staticmethod
@@ -207,7 +208,7 @@ class HmsDssGrid:
         Raises
         ------
         ImportError
-            If ras-commander or pyjnius not installed.
+            If pyjnius not installed.
         ValueError
             If array dimensions don't match.
         RuntimeError
@@ -297,7 +298,7 @@ class HmsDssGrid:
         except Exception as e:
             raise RuntimeError(
                 f"Failed to load HEC Monolith grid classes: {e}\n"
-                "Ensure ras-commander is properly installed with HEC Monolith."
+                "Ensure pyjnius is properly installed with Java 8+."
             )
 
         # Calculate grid parameters

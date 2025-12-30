@@ -24,14 +24,14 @@ from pathlib import Path
 from typing import Dict, List, Optional, Union, Any
 import pandas as pd
 
-from .LoggingConfig import get_logger
-from .Decorators import log_call
+from ..LoggingConfig import get_logger
+from ..Decorators import log_call
 
 logger = get_logger(__name__)
 
-# Import standalone DSS core - this is now the primary implementation
+# Import standalone DSS core from same subpackage
 try:
-    from .dss import DssCore
+    from .core import DssCore
     DSS_AVAILABLE = True
     logger.debug("Standalone DssCore available")
 except ImportError as e:

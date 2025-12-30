@@ -6,36 +6,39 @@ paths: hms_commander/**/*.py
 
 ## Primary Sources
 
-**Code**:
-- `hms_commander/HmsDss.py` - DSS operations (wraps RasDss)
+**Code** (consolidated under `hms_commander/dss/`):
+- `hms_commander/dss/core.py` - DssCore: Low-level DSS operations via HEC Monolith
+- `hms_commander/dss/hms_dss.py` - HmsDss: HMS-specific DSS convenience methods
+- `hms_commander/dss/hms_dss_grid.py` - HmsDssGrid: DSS grid operations for gridded precipitation
+- `hms_commander/dss/_hec_monolith.py` - HEC Monolith library downloader
 - `hms_commander/HmsResults.py` - Results extraction and analysis
 
-**Integration**: `ras-commander` package
-- HmsDss wraps RasDss from ras-commander
-- Provides DSS V6/V7 support via shared infrastructure
+**Dependencies**:
+- pyjnius: Python-Java bridge (pip install pyjnius)
+- Java 8+ JRE/JDK
+- HEC Monolith libraries: Auto-downloaded on first use (~20 MB)
 
-## Why HmsDss Wraps RasDss
+## Architecture (Standalone DSS Implementation)
 
-**Decision**: Don't duplicate DSS code. Leverage ras-commander's mature DSS infrastructure.
+**Decision**: hms-commander has its own standalone DSS implementation using HEC Monolith libraries.
 
 **Benefits**:
-- No code duplication
-- Consistent DSS operations across HMS and RAS
-- Automatic V6/V7 support
-- Shared Java bridge maintenance
+- No external dependency on ras-commander for DSS operations
+- Full control over DSS functionality
+- DSS V6/V7 support via HEC Monolith
+- Auto-download of HEC libraries
 
 **Implementation**:
-```python
-# In hms_commander/HmsDss.py
-from ras_commander import RasDss
-
-class HmsDss:
-    @staticmethod
-    def read_timeseries(dss_file, pathname):
-        return RasDss.read_timeseries(dss_file, pathname)
+```
+hms_commander/dss/
+├── __init__.py         # Exports DssCore, HmsDss, HmsDssGrid
+├── core.py             # DssCore - Low-level DSS operations
+├── hms_dss.py          # HmsDss - HMS-specific wrapper
+├── hms_dss_grid.py     # HmsDssGrid - Grid operations
+└── _hec_monolith.py    # Library downloader
 ```
 
-**Installation**: `pip install hms-commander` auto-installs ras-commander
+**Lazy loading**: DSS dependencies (pyjnius, Java) are only loaded when actually needed.
 
 ## Common Patterns
 
@@ -48,7 +51,7 @@ if HmsDss.is_available():
     catalog = HmsDss.get_catalog("results.dss")
 ```
 
-**Note**: Requires Java and ras-commander installation
+**Note**: Requires pyjnius and Java 8+ installation
 
 ### Pattern 2: Extract HMS Results
 
@@ -74,11 +77,23 @@ HMS uses standard DSS pathname: `/A/B/C/D/E/F/`
 - **A**: Basin name
 - **B**: Element name (subbasin/junction/reach)
 - **C**: Parameter type (FLOW, PRECIP, etc.)
-- **D**: Time interval (15MIN, 1HOUR, etc.)
-- **E**: Run name
-- **F**: Version (usually blank)
+- **D**: Date/Time block (usually empty)
+- **E**: Time interval (15MIN, 1HOUR, etc.)
+- **F**: Run name/Version
 
-**Example**: `/BASIN/OUTLET/FLOW/15MIN/RUN1/`
+**Example**: `/BASIN/OUTLET/FLOW//15MIN/RUN:RUN1/`
+
+## Import Patterns
+
+**All of these import patterns work:**
+
+```python
+# Top-level imports (recommended for most users)
+from hms_commander import HmsDss, HmsDssGrid, DssCore
+
+# Subpackage imports (also valid)
+from hms_commander.dss import HmsDss, HmsDssGrid, DssCore
+```
 
 ## HMS-Specific Methods
 
@@ -103,7 +118,7 @@ Filters DSS catalog for HMS-specific pathnames.
 
 ## Paired Data (X-Y Curves)
 
-**New in recent updates**: Write Atlas 14 temporal distributions and rating curves to DSS
+**Write Atlas 14 temporal distributions and rating curves to DSS**
 
 ### Pattern 4: Write Paired Data
 
@@ -159,16 +174,23 @@ results = HmsDss.write_multiple_paired_data("temporal.dss", records)
 
 ## Low-Level DSS Core
 
-**Direct access to DSS Java bridge**: `hms_commander.dss.core.DssCore`
+**Direct access to DSS Java bridge**: `hms_commander.dss.DssCore`
 
 **When to use**:
 - Custom DSS operations not in HmsDss
-- Performance-critical operations
+- Performance-critical operations (e.g., `get_peak_value()` for 350x memory efficiency)
 - Advanced DSS features
 
 **Example**:
 ```python
 from hms_commander.dss import DssCore
+
+# Low-level time series read
+df = DssCore.read_timeseries("file.dss", pathname)
+
+# Memory-efficient peak extraction
+peak_info = DssCore.get_peak_value("file.dss", pathname)
+# Returns: {'peak_flow': value, 'peak_time': datetime, 'units': str}
 
 # Write paired data (low-level)
 DssCore.write_paired_data(
@@ -181,8 +203,48 @@ DssCore.write_paired_data(
 
 **Note**: Most users should use `HmsDss` wrapper instead
 
+## DSS Grid Operations
+
+**For gridded precipitation (AORC, HRAP, etc.)**:
+
+```python
+from hms_commander import HmsDssGrid
+import numpy as np
+
+# Write gridded precipitation to DSS
+HmsDssGrid.write_grid_timeseries(
+    dss_file="precip.dss",
+    pathname="/AORC/WATERSHED/PRECIP////",
+    grid_data=precip_array,  # shape: (time, lat, lon)
+    lat_coords=lat_array,
+    lon_coords=lon_array,
+    timestamps=time_list,
+    units="MM"
+)
+```
+
+**See**: `hms_commander/dss/hms_dss_grid.py` for complete API
+
+## File Structure
+
+**After consolidation:**
+```
+hms_commander/
+├── dss/                    # DSS subpackage
+│   ├── __init__.py         # Exports: DssCore, HmsDss, HmsDssGrid
+│   ├── core.py             # DssCore class
+│   ├── hms_dss.py          # HmsDss class
+│   ├── hms_dss_grid.py     # HmsDssGrid class
+│   └── _hec_monolith.py    # Library downloader
+├── HmsResults.py           # Results extraction (uses HmsDss)
+├── HmsGrid.py              # HMS .grid files (NOT DSS, text files)
+└── __init__.py             # Re-exports for backward compatibility
+```
+
+**Note**: `HmsGrid` is for HMS `.grid` text files, not DSS operations.
+
 ## Related
 
-- **RasDss**: ras-commander package (authoritative DSS implementation)
 - **Execution**: .claude/rules/hec-hms/execution.md (generates DSS output)
 - **Atlas14Storm**: .claude/rules/hec-hms/atlas14-storms.md (uses DSS for temporal distributions)
+- **AORC Integration**: .claude/rules/hec-hms/aorc-integration.md (uses HmsDssGrid)
