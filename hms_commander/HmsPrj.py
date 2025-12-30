@@ -873,7 +873,7 @@ class HmsPrj:
         Only called if load_dss_metadata=True during initialization.
         """
         try:
-            from .HmsDss import HmsDss
+            from .dss import HmsDss
             if not HmsDss.is_available():
                 logger.warning("DSS functionality not available - skipping metadata")
                 return

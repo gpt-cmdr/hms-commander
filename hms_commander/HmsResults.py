@@ -16,7 +16,7 @@ import numpy as np
 
 from .LoggingConfig import get_logger
 from .Decorators import log_call
-from .HmsDss import HmsDss
+from .dss import HmsDss
 
 logger = get_logger(__name__)
 

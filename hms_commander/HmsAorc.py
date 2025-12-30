@@ -647,7 +647,7 @@ class HmsAorc:
         import pandas as pd
         import numpy as np
 
-        from .HmsDssGrid import HmsDssGrid
+        from .dss import HmsDssGrid
 
         netcdf_file = Path(netcdf_file)
         output_dss_file = Path(output_dss_file)

@@ -7,7 +7,6 @@
 examples/example_projects/
 examples/example_projects_*/
 examples/hms413_all_projects/
-hms_example_projects/
 
 # Local workspaces / scratch project folders (user-specific)
 workspace/
@@ -28,7 +27,6 @@ tests/test_output.txt
 
 # Development notes / decompilation artifacts (too large/noisy for git right now)
 feature_dev_notes/
-hms_agents/hms_decompiler/
 decompile_temp/
 decompile_work/
 migration_baseline/
@@ -123,10 +121,16 @@ examples/atlas14_validation/
 examples/frequency_storm_validation/
 examples/aorc_workflow_output/
 
+# Temporary development scripts (not part of official examples)
+
 # M3 model test artifacts
 m3_version_test/
 m3_version_testJ/
 C:GHhms-commanderm3_version_testW/
 
 # HUC watershed downloads (large, regenerable)
-huc_watersheds/
+m3_hms_projects/
+
+# Runtime/build artifacts
+cache/
+dist/
