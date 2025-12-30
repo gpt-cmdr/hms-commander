@@ -1,234 +1,214 @@
-# HMS-Commander Agents
+# HMS Agents
 
-This directory contains specialist agents for hms-commander development and testing.
+Task-specific agents for automating HEC-HMS workflows. Each agent is a specialized workflow that performs a specific modeling operation with quality validation.
 
-## Agent Architecture
+**For non-Claude agents**: See `../AGENTS.md` or root `AGENTS.md` for import instructions.
 
-### Notebook Testing Workflow
+---
 
-**notebook-runner** (Sonnet)
-- Executes notebooks with pytest/nbmake or nbconvert
-- Captures stdout, stderr, execution logs
-- Generates output digests for review
-- Delegates to Haiku agents for analysis
+## Available Agents
 
-**notebook-output-auditor** (Haiku)
-- Reviews audit.md/audit.json for exceptions
-- Identifies tracebacks, errors, failures
-- Categorizes error types and suggests fixes
-- Fast, focused on explicit failures
+### update_3_to_4 - HMS Version Upgrade Agent
 
-**notebook-anomaly-spotter** (Haiku)
-- Reviews audit.md/audit.json for unexpected behavior
-- Identifies empty results, missing artifacts
-- Flags suspicious patterns (all zeros, NaNs)
-- Catches issues that don't raise exceptions
+Upgrades HEC-HMS projects from version 3.x to 4.x with comprehensive validation.
 
-### Conversation Intelligence Workflow
+**Features:**
+- Automatic parameter conversion (Muskingum Cunge 8-point → standard)
+- DSS file comparison (peak flow, volume, timing)
+- Quality verdict system (GREEN/YELLOW/RED)
+- Comprehensive change logging
+- Session persistence (save/resume)
 
-**conversation-insights-orchestrator** (Sonnet)
-- Orchestrates multi-phase conversation analysis
-- Coordinates sub-agents (Haiku scanner, Sonnet analyzers, Opus researcher)
-- Extracts patterns, best practices, strategic insights
-- Generates comprehensive insight reports
+**Location:** `.claude/agents/update_3_to_4/`
 
-**best-practice-extractor** (Sonnet)
-- Identifies explicit and implicit best practices
-- Categorizes by domain (code, testing, workflows, docs)
-- Scores actionability
-- Phase 2 analyzer for orchestrator
+**Documentation:** See `update_3_to_4/AGENT.md`
 
-**conversation-deep-researcher** (Opus)
-- Multi-pass strategic analysis
-- Cross-conversation linking
-- Architectural pattern recognition
-- Phase 4 deep analysis for orchestrator
+**Example Results:** `update_3_to_4/example_results_tifton.md`
 
-### HMS Domain Specialists
+### hms_doc_query - Documentation Query Agent
 
-**hms-orchestrator** (Sonnet)
-- Traffic controller and task classifier for HMS operations
-- Routes tasks to appropriate specialist agents
-- Handles simple queries directly
-- Coordinates multi-domain workflows
+Query official HEC-HMS documentation to answer technical questions.
 
-**basin-model-specialist** (Sonnet)
-- Expert in HEC-HMS basin files (.basin)
-- Handles subbasins, junctions, reaches, loss/transform methods
-- Curve number and lag time updates
-- Clone workflows for QAQC comparison
+**Features:**
+- Web-based documentation retrieval (User's Manual, Technical Reference)
+- **Image and screenshot processing** - Can view UI diagrams and parameter screenshots
+- Method validation and parameter lookup
+- Release note searching
+- Version-specific information
+- Known HMS method enumeration
 
-**met-model-specialist** (Sonnet)
-- Expert in meteorologic models (.met)
-- Precipitation methods, gage assignments
-- Atlas 14 updates, TP40 to Atlas 14 conversion
-- Evapotranspiration and snowmelt configuration
+**Location:** `.claude/agents/hms_doc_query/`
 
-**run-manager-specialist** (Sonnet)
-- Expert in run file operations (.run)
-- Run configuration and validation
-- Component linking (basin + met + control)
-- Critical consistency validation (prevents HMS auto-deletion)
+**Documentation:** See `hms_doc_query/AGENT.md`
 
-**dss-integration-specialist** (Sonnet)
-- Expert in HEC-DSS file operations
-- Peak flow extraction, hydrograph analysis
-- Volume summaries, time series export
-- Leverages RasDss from ras-commander
+**Use Cases:**
+- "What parameters does SCS Curve Number require?"
+- "How are subbasins defined in .basin files?"
+- "What new features were added in HMS 4.11?"
+- "How do I configure gridded precipitation?"
 
-**hms-ras-workflow-coordinator** (Sonnet)
-- Coordinates HMS-to-RAS integrated workflows
-- HMS hydrograph extraction for RAS boundary conditions
-- Spatial matching (HMS outlets to RAS cross sections)
-- Cross-tool quality validation
+**Note:** This agent can process screenshots and images from HMS documentation, which is critical since many HMS docs use UI screenshots to explain parameter configurations.
 
-**hierarchical-knowledge-curator** (Sonnet)
-- Expert in Claude's hierarchical memory framework
-- Manages CLAUDE.md hierarchy, .agent/ memory system
-- Creates skills, defines agents
-- Maintains documentation structure
+### hms_decompiler - HMS Internals Investigation Agent
 
-### Other Agents
+Investigates HEC-HMS internals through decompiled Java classes to support development and debugging.
 
-**example-notebook-librarian** (Sonnet)
-- Maintains notebook quality standards
-- Updates notebooks to follow conventions
-- Adds new example notebooks
-- Ensures MkDocs integration
+**Features:**
+- Complete JythonHms API reference (HMS 3.x and 4.x)
+- Version-specific differences (Python 2 vs 3, API changes)
+- CLI options and command-line arguments discovery
+- On-demand class decompilation tooling
+- Undocumented feature discovery via source analysis
+- Reference to complete decompilation library (4,686 class files)
 
-**python-environment-manager** (Sonnet)
-- Manages conda environments (hmscmdr_local, hmscmdr_pip)
-- Troubleshoots dependency issues
-- Handles uv and pip workflows
+**Location:** `.claude/agents/hms_decompiler/`
 
-**claude-code-guide** (Sonnet)
-- Navigation and framework assistance
-- Project orientation
-- Documentation queries
+**Documentation:** See `hms_decompiler/AGENT.md`
 
-## Typical Workflow
+**Quick Start:** `hms_decompiler/QUICK_START.md`
 
-### 1. Run Notebooks as Tests
+**Use Cases:**
+- "What parameters does JythonHms.SetLossRateValue accept?"
+- "Does HMS 3.3 support Jython scripting?" (✅ YES - discovered via decompilation!)
+- "How do I run HMS in headless mode?" (Use `-lite` flag)
+- "What's different between HMS 3.x and 4.x APIs?"
+- "How can I decompile hms.model.OptimizationManager?"
 
-```bash
-# Use notebook-runner agent
-# Executes: pytest --nbmake examples/*.ipynb
-# Captures: stdout.txt, stderr.txt in working/notebook_runs/{timestamp}/
-# Generates: audit.md, audit.json
-```
+**Note:** This agent provides HMS internal knowledge from decompiled source. Use hms_doc_query for official documentation queries.
 
-### 2. Review for Exceptions
+---
 
-```bash
-# Use notebook-output-auditor agent
-# Input: working/notebook_runs/{timestamp}/audit.md
-# Output: Failure report with cell indices, error types, suggested fixes
-```
+## Future Agents (Planned)
 
-### 3. Review for Anomalies
+### Atlas14 - Precipitation Update Agent
+Convert Region 3 precipitation to NOAA Atlas 14 frequency-based estimates.
 
-```bash
-# Use notebook-anomaly-spotter agent
-# Input: working/notebook_runs/{timestamp}/audit.md
-# Output: Anomaly report with suspicious patterns, missing artifacts
-```
+**Status:** Phase 2 (REORGANIZATION_PLAN.md)
 
-### 4. Fix Issues
+### AORC - Gridded Precipitation Agent
+Configure AORC (Analysis of Record for Calibration) gridded precipitation data.
 
-```bash
-# Use example-notebook-librarian agent (if conventions violated)
-# Or domain specialist agents (if HMS-specific failures)
-# Or python-environment-manager (if dependency issues)
-```
+**Status:** Phase 3 (REORGANIZATION_PLAN.md)
 
-## Supporting Scripts
+---
 
-**scripts/notebooks/audit_ipynb.py**
-- Generates condensed output digests from executed notebooks
-- Creates audit.md (human-readable) and audit.json (machine-readable)
-- Avoids sending full notebook JSON to Haiku agents
+## Agent Framework
 
-**Usage**:
-```bash
-python scripts/notebooks/audit_ipynb.py notebook.ipynb --out-dir working/notebook_runs/latest
-```
+### Two Agent Types
 
-## Agent Invocation
+**Production Agents** (folders):
+- Full-featured workflows with tools, knowledge, examples
+- Located in `.claude/agents/{agent_name}/`
+- Each has `AGENT.md` defining capabilities
+- Naming: `python_case/` (e.g., `hms_atlas14/`)
 
-These agents are designed to be invoked by other agents or CI/CD pipelines:
+**Specialist Agents** (single files):
+- Domain experts that use hms-commander APIs
+- Located in `.claude/agents/{name}.md`
+- Naming: `kebab-case.md` (e.g., `basin-model-specialist.md`)
 
-**From notebook-runner**:
-```
-After execution:
-  1. Generate digest: python scripts/notebooks/audit_ipynb.py ...
-  2. Invoke notebook-output-auditor with digest path
-  3. Invoke notebook-anomaly-spotter with digest path
-```
+### Creating a New Agent
 
-**Standalone**:
-```
-# Run audit script manually
-python scripts/notebooks/audit_ipynb.py examples/notebook.ipynb --out-dir working/notebook_runs/debug
+**Production Agent**:
+1. Create directory: `.claude/agents/your_agent/`
+2. Create `AGENT.md` with capabilities and instructions
+3. Add knowledge files, tools, examples as needed
+4. Update this README
 
-# Then manually invoke auditors with audit.md path
-```
+**Specialist Agent**:
+1. Create file: `.claude/agents/your-specialist.md`
+2. Define domain expertise and hms-commander API usage
+3. Update this README
+
+---
 
 ## Directory Structure
 
 ```
 .claude/agents/
-  # HMS Domain Specialists
-  hms-orchestrator.md                     # Traffic controller (Sonnet)
-  basin-model-specialist.md               # Basin file expert (Sonnet)
-  met-model-specialist.md                 # Met model expert (Sonnet)
-  run-manager-specialist.md               # Run config expert (Sonnet)
-  dss-integration-specialist.md           # DSS results expert (Sonnet)
-  hms-ras-workflow-coordinator.md         # HMS-RAS integration (Sonnet)
-  hierarchical-knowledge-curator.md       # Knowledge architecture (Sonnet)
-
-  # Conversation Intelligence
-  conversation-insights-orchestrator.md   # Phase 1-4 orchestrator (Sonnet)
-  best-practice-extractor.md              # Phase 2 analyzer (Sonnet)
-  conversation-deep-researcher.md         # Phase 4 deep analysis (Opus)
-
-  # Notebook Testing
-  notebook-runner.md                      # Execution agent (Sonnet)
-  notebook-output-auditor.md              # Exception detector (Haiku)
-  notebook-anomaly-spotter.md             # Behavioral reviewer (Haiku)
-  example-notebook-librarian.md           # Notebook standards (Sonnet)
-
-  # Development Support
-  python-environment-manager.md           # Env management (Sonnet)
-  claude-code-guide.md                    # Navigation (Sonnet)
-
-scripts/
-  conversation_insights/
-    conversation_parser.py       # Conversation data parsing utilities
-    __init__.py                  # Public API
-  notebooks/
-    audit_ipynb.py              # Digest generator
-
-agent_tasks/
-  conversation_insights/
-    {timestamp}/
-      phase1_filtered_conversations.json
-      phase2_patterns.json
-      phase3_preliminary_insights.md
-      phase4_strategic_analysis.md
-      conversation_insights_report.md
-
-working/notebook_runs/
-  {timestamp}/                   # Run artifacts
-    run_command.txt              # Command executed
-    stdout.txt                   # Standard output
-    stderr.txt                   # Error output
-    audit.md                     # Human-readable digest
-    audit.json                   # Machine-readable digest
-    *.nbconvert.ipynb            # Executed notebook (if nbconvert used)
+├── README.md (this file)
+├── AGENTS.md (import instructions for non-Claude agents)
+│
+├── # Production Agents (folders with tools/knowledge)
+├── update_3_to_4/
+│   ├── AGENT.md
+│   ├── upgrade_workflow.py
+│   ├── compare_dss_outputs.py
+│   ├── RESULTS_TEMPLATE.md
+│   └── example_results_tifton.md
+├── hms_doc_query/
+│   ├── AGENT.md
+│   ├── QUICK_START.md
+│   └── doc_query.py
+├── hms_atlas14/
+│   ├── AGENT.md
+│   ├── atlas14_converter.py
+│   └── atlas14_downloader.py
+├── hms_decompiler/
+│   ├── AGENT.md
+│   ├── QUICK_START.md
+│   ├── knowledge/
+│   │   ├── JYTHON_HMS_API.md
+│   │   ├── HMS_3x_SUPPORT.md
+│   │   └── HMS_CLI_OPTIONS.md
+│   ├── reference/
+│   │   ├── HMS_3.3/ (decompiled sources)
+│   │   └── HMS_4.13/ (decompiled sources)
+│   ├── tools/
+│   │   └── cfr.jar
+│   └── examples/
+│       ├── query_jython_api.md
+│       ├── version_compatibility.md
+│       └── decompile_new_class.md
+│
+├── # Specialist Agents (single .md files)
+├── basin-model-specialist.md
+├── met-model-specialist.md
+├── run-manager-specialist.md
+├── dss-integration-specialist.md
+├── hms-orchestrator.md
+└── (additional specialists)
 ```
 
-## Related Documentation
+---
 
-- `.claude/rules/documentation/notebook-standards.md` - Quality requirements
-- `.claude/rules/testing/tdd-approach.md` - Testing philosophy
-- `examples/` - Notebook collection
+## Usage Pattern
+
+Production agents follow a consistent pattern. For Claude Code, invoke via skills or direct reference:
+
+```python
+# Example: Using update_3_to_4 agent
+# See update_3_to_4/AGENT.md for complete instructions
+
+# Initialize workflow
+from pathlib import Path
+project_path = Path("path/to/hms/project")
+
+# Execute upgrade workflow (via agent or skill)
+# Results exported to MODELING_LOG.md
+```
+
+**Claude Code invocation**: Use the corresponding skill in `.claude/skills/` or reference the agent's `AGENT.md` directly.
+
+---
+
+## Quality Verdicts
+
+All agents use the same verdict system:
+
+- **🟢 GREEN** - All acceptance criteria passed, safe to proceed
+- **🟡 YELLOW** - Minor issues detected, manual review recommended
+- **🔴 RED** - Critical failures, do not proceed
+
+---
+
+## Contributing
+
+When adding a new agent:
+
+1. Follow the existing structure (AGENT.md, workflow script, examples)
+2. Use `AgentWorkflow` base class
+3. Include comprehensive acceptance criteria
+4. Add unit tests
+5. Document example results
+6. Update this README
