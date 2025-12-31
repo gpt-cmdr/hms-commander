@@ -36,7 +36,8 @@ docs/_build/
 docs/notebooks/
 /site
 
-# Agent coordination artifacts (only certain subdirs)
+# Agent coordination artifacts (session-specific, gitignored)
+agent_tasks/.agent/
 agent_tasks/runs/
 agent_tasks/artifacts/
 

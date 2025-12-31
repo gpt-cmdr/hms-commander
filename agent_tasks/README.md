@@ -25,12 +25,11 @@ agent_tasks/
     ...
   runs/                # Execution logs (gitignored)
   artifacts/           # Generated outputs (gitignored)
-  .agent/              # Memory system (committed)
+  .agent/              # Personal session state (gitignored - create locally)
     STATE.md           # Current session state
     BACKLOG.md         # Task queue
     PROGRESS.md        # Chronological log
     LEARNINGS.md       # What works / doesn't work
-    COGNITIVE_INFRASTRUCTURE_INSIGHTS.md  # Pattern documentation
 ```
 
 ---
@@ -42,6 +41,55 @@ Complex tasks span multiple sessions. This system enables:
 - **Session continuity** - Memory system tracks state across conversations
 - **Progress tracking** - Know what's done, what remains
 - **Human oversight** - Clear audit trail of work
+
+## Getting Started
+
+### Initialize .agent/ Directory
+
+The `.agent/` directory is gitignored (personal session state). Create it locally:
+
+```bash
+mkdir -p agent_tasks/.agent
+```
+
+Then create these files:
+
+**STATE.md** - Current session state
+```markdown
+# Session State
+
+**Current Focus**: [Your current task]
+**Active Tasks**: [List of in-progress tasks]
+**Blockers**: [Any blockers]
+```
+
+**BACKLOG.md** - Task queue
+```markdown
+# Task Backlog
+
+## Priority
+- [ ] Task 1
+- [ ] Task 2
+
+## Recently Completed
+- [x] Task 0
+```
+
+**PROGRESS.md** - Chronological log
+```markdown
+# Progress Log
+
+## 2025-MM-DD
+- Started working on X
+- Completed Y
+```
+
+### Task Numbering
+
+- **000-050**: Generic templates and examples (committed to repo)
+- **051+**: Personal tasks (create locally, not committed by default)
+
+---
 
 ## Memory Files
 
