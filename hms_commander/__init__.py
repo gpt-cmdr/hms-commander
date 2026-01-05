@@ -105,6 +105,9 @@ from .Atlas14Storm import Atlas14Storm, Atlas14Config
 # TP-40 Frequency Storm Hyetograph Generation
 from .FrequencyStorm import FrequencyStorm
 
+# SCS Type I, IA, II, III Hyetograph Generation
+from .ScsTypeStorm import ScsTypeStorm
+
 # Public API exports
 __all__ = [
     # Version
@@ -156,6 +159,9 @@ __all__ = [
 
     # TP-40 Frequency Storm
     "FrequencyStorm",
+
+    # SCS Type Storms
+    "ScsTypeStorm",
 
     # Logging
     "setup_logging",

@@ -53,6 +53,20 @@ class Atlas14Storm:
 
     All methods are static - no instantiation required.
 
+    Supported Durations:
+        - 6 hours
+        - 12 hours
+        - 24 hours (most common, default)
+        - 96 hours (4 days)
+
+        Note: 48-hour duration is NOT supported (NOAA does not publish 48h
+        temporal distributions). Use FrequencyStorm for 48-hour storms.
+
+    Regional Availability:
+        Multi-duration support (6h, 12h, 96h) is available for newer Atlas 14
+        volumes (Texas, Midwest, Southeast). Older volumes (California, Ohio,
+        Southwest) may only have 24-hour data.
+
     Example:
         >>> from hms_commander import Atlas14Storm
         >>>
@@ -67,7 +81,19 @@ class Atlas14Storm:
         ... )
         >>> print(f"Generated {len(hyetograph)} time steps")
         >>> print(f"Total depth: {hyetograph.sum():.3f} inches")
+        >>>
+        >>> # Generate 6-hour storm
+        >>> hyeto_6h = Atlas14Storm.generate_hyetograph(
+        ...     total_depth_inches=10.0,
+        ...     state="tx",
+        ...     region=3,
+        ...     duration_hours=6,
+        ...     aep_percent=1.0
+        ... )
     """
+
+    # Supported durations (hours) - NOAA publishes temporal CSVs for these
+    SUPPORTED_DURATIONS = [6, 12, 24, 96]
 
     # Standard quartile names
     QUARTILE_NAMES = [
@@ -83,6 +109,36 @@ class Atlas14Storm:
 
     # Cache for temporal distributions (avoid re-downloading)
     _temporal_cache: Dict[str, Dict[str, pd.DataFrame]] = {}
+
+    @staticmethod
+    def _validate_duration(duration_hours: int) -> None:
+        """
+        Validate that duration is supported.
+
+        Args:
+            duration_hours: Storm duration in hours
+
+        Raises:
+            ValueError: If duration is not supported, with helpful message
+        """
+        if duration_hours == 48:
+            raise ValueError(
+                "48-hour duration is not available in NOAA Atlas 14 temporal distributions.\n"
+                "NOAA publishes temporal data for: 6h, 12h, 24h, 96h only.\n\n"
+                "For 48-hour storms, use FrequencyStorm instead:\n"
+                "  from hms_commander import FrequencyStorm\n"
+                "  hyeto = FrequencyStorm.generate_hyetograph(\n"
+                "      total_depth_inches=your_depth,\n"
+                "      total_duration_min=2880  # 48 hours\n"
+                "  )"
+            )
+
+        if duration_hours not in Atlas14Storm.SUPPORTED_DURATIONS:
+            raise ValueError(
+                f"Duration {duration_hours}h is not supported.\n"
+                f"Supported durations: {Atlas14Storm.SUPPORTED_DURATIONS}\n"
+                f"For other durations, consider FrequencyStorm or StormGenerator."
+            )
 
     @staticmethod
     @log_call
@@ -219,11 +275,20 @@ class Atlas14Storm:
             state: Two-letter state code (lowercase, e.g., "tx")
             region: Atlas 14 region number
             duration_hours: Storm duration in hours (default: 24)
+                Supported: 6, 12, 24, 96 (NOAA published)
+                Note: 48h is NOT available - use FrequencyStorm instead
             cache_dir: Optional cache directory (default: ~/.hms-commander/atlas14/)
 
         Returns:
             Dictionary mapping quartile names to temporal distribution DataFrames
+
+        Raises:
+            ValueError: If duration is not supported (48h) or not available for region
+            requests.HTTPError: If NOAA server returns error
         """
+        # Validate duration first
+        Atlas14Storm._validate_duration(duration_hours)
+
         # Check memory cache
         cache_key = f"{state}_{region}_{duration_hours}h"
         if cache_key in Atlas14Storm._temporal_cache:
@@ -234,9 +299,19 @@ class Atlas14Storm:
         if cache_dir is None:
             cache_dir = Path.home() / ".hms-commander" / "atlas14"
 
-        # Download and parse
+        # Download and parse with 404 handling
         config = Atlas14Config(state=state, region=region, duration=duration_hours)
-        csv_content = Atlas14Storm.download_temporal_csv(config, cache_dir)
+        try:
+            csv_content = Atlas14Storm.download_temporal_csv(config, cache_dir)
+        except requests.HTTPError as e:
+            if e.response is not None and e.response.status_code == 404:
+                raise ValueError(
+                    f"Duration {duration_hours}h is not available for {state.upper()} region {region}.\n"
+                    f"This region may only have 24-hour temporal distributions.\n"
+                    f"Try duration_hours=24 or use StormGenerator for other durations."
+                ) from e
+            raise
+
         temporal_distributions = Atlas14Storm.parse_temporal_csv(csv_content)
 
         # Cache in memory
@@ -296,6 +371,8 @@ class Atlas14Storm:
             state: Two-letter state code (e.g., "tx")
             region: Atlas 14 region number (e.g., 3 for Houston area)
             duration_hours: Storm duration in hours (default: 24)
+                Supported: 6, 12, 24, 96 hours
+                Note: 48h NOT available - use FrequencyStorm instead
             aep_percent: Annual Exceedance Probability percentage (default: 1.0 for 100-yr)
             quartile: Quartile to use (default: "All Cases")
             interval_minutes: Output interval in minutes (default: 30)
@@ -304,6 +381,9 @@ class Atlas14Storm:
         Returns:
             numpy array of incremental precipitation depths (inches)
             Length = duration_hours * 60 / interval_minutes
+
+        Raises:
+            ValueError: If duration_hours is 48 or not supported
 
         Example:
             >>> # 100-year, 24-hour storm for Houston, TX (17.9 inches total)
@@ -314,7 +394,16 @@ class Atlas14Storm:
             ...     aep_percent=1.0
             ... )
             >>> print(f"Total depth: {hyeto.sum():.3f} inches")
+            >>>
+            >>> # 6-hour storm
+            >>> hyeto_6h = Atlas14Storm.generate_hyetograph(
+            ...     total_depth_inches=8.0,
+            ...     state="tx",
+            ...     region=3,
+            ...     duration_hours=6
+            ... )
         """
+        # Validation is done in load_temporal_distribution()
         # Load temporal distribution
         temporal_distributions = Atlas14Storm.load_temporal_distribution(
             state, region, duration_hours, cache_dir
