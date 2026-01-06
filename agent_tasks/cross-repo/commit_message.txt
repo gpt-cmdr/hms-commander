@@ -1,0 +1,41 @@
+BREAKING: Return DataFrame from precipitation hyetograph methods
+
+Changes:
+- Atlas14Storm.generate_hyetograph() returns pd.DataFrame
+- FrequencyStorm.generate_hyetograph() returns pd.DataFrame
+- ScsTypeStorm.generate_hyetograph() returns pd.DataFrame
+- FrequencyStorm parameter renamed: total_depth → total_depth_inches
+
+DataFrame columns: ['hour', 'incremental_depth', 'cumulative_depth']
+
+Enables seamless HMS→RAS integration without manual conversion.
+
+Test Results: 77/77 passing
+Notebooks: 4/4 validated
+HMS Equivalence: Verified at 10^-6 precision
+
+See CHANGELOG.md for complete migration guide.
+
+Files modified:
+- hms_commander/Atlas14Storm.py
+- hms_commander/FrequencyStorm.py
+- hms_commander/ScsTypeStorm.py
+- tests/test_atlas14_multiduration.py
+- tests/test_scs_type.py
+- examples/08_atlas14_hyetograph_generation.ipynb
+- examples/09_frequency_storm_variable_durations.ipynb
+- examples/10_scs_type_validation.ipynb
+- examples/11_atlas14_multiduration_validation.ipynb
+- README.md
+- CHANGELOG.md (new)
+
+Bonus fixes:
+- Fixed FrequencyStorm.generate_from_ddf() parameter bug
+- Enhanced ScsTypeStorm.validate_against_reference() for DataFrames
+
+Cross-repo request: agent_tasks/cross-repo/2026-01-05_ras_to_hms_precipitation-dataframe-api.md
+
+Co-Authored-By: 4 Opus Subagents (notebook specialists)
+
+🤖 Generated with Claude Code (https://claude.com/claude-code)
+Co-Authored-By: Claude Sonnet 4.5 (1M context) <noreply@anthropic.com>

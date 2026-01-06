@@ -360,7 +360,7 @@ class Atlas14Storm:
         quartile: str = "All Cases",
         interval_minutes: int = 30,
         cache_dir: Optional[Path] = None
-    ) -> np.ndarray:
+    ) -> pd.DataFrame:
         """
         Generate incremental precipitation hyetograph using Atlas 14 temporal distribution.
 
@@ -379,7 +379,13 @@ class Atlas14Storm:
             cache_dir: Optional cache directory
 
         Returns:
-            numpy array of incremental precipitation depths (inches)
+            pd.DataFrame with columns:
+                - 'hour': Time in hours from storm start (float)
+                    Values: [0.5, 1.0, 1.5, ...] for 30-min intervals
+                - 'incremental_depth': Precipitation depth for this interval (inches, float)
+                    Description: Rainfall that occurred during this time step
+                - 'cumulative_depth': Cumulative precipitation depth (inches, float)
+                    Description: Total rainfall from storm start to end of this interval
             Length = duration_hours * 60 / interval_minutes
 
         Raises:
@@ -393,7 +399,10 @@ class Atlas14Storm:
             ...     region=3,
             ...     aep_percent=1.0
             ... )
-            >>> print(f"Total depth: {hyeto.sum():.3f} inches")
+            >>> print(hyeto.columns.tolist())
+            ['hour', 'incremental_depth', 'cumulative_depth']
+            >>> print(f"Total depth: {hyeto['cumulative_depth'].iloc[-1]:.3f} inches")
+            Total depth: 17.900 inches
             >>>
             >>> # 6-hour storm
             >>> hyeto_6h = Atlas14Storm.generate_hyetograph(
@@ -448,7 +457,17 @@ class Atlas14Storm:
             f"{total_check:.3f} inches total"
         )
 
-        return incremental
+        # Calculate time axis
+        num_intervals = len(incremental)
+        interval_hours = interval_minutes / 60.0
+        hours = np.arange(1, num_intervals + 1) * interval_hours
+
+        # Return DataFrame with standard columns
+        return pd.DataFrame({
+            'hour': hours,
+            'incremental_depth': incremental,
+            'cumulative_depth': np.cumsum(incremental)
+        })
 
     @staticmethod
     @log_call

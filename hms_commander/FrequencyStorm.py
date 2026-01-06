@@ -40,6 +40,7 @@ Example:
 """
 
 import numpy as np
+import pandas as pd
 from pathlib import Path
 from typing import Optional, Union, List, Tuple
 import logging
@@ -102,11 +103,11 @@ class FrequencyStorm:
 
     @staticmethod
     def generate_hyetograph(
-        total_depth: float,
+        total_depth_inches: float,
         total_duration_min: int = 1440,
         time_interval_min: int = 5,
         peak_position_pct: float = 67.0
-    ) -> np.ndarray:
+    ) -> pd.DataFrame:
         """
         Generate a TP-40/Hydro-35 hyetograph using HCFCD M3 model pattern.
 
@@ -119,7 +120,8 @@ class FrequencyStorm:
             - Peak position: 67% of duration
 
         Args:
-            total_depth: Total precipitation depth (inches)
+            total_depth_inches: Total precipitation depth (inches)
+                RENAMED from 'total_depth' for API consistency across methods
             total_duration_min: Storm duration in minutes (default: 1440 = 24hr)
                 - Default: 1440 min (HCFCD M3 standard)
                 - Validated: 24-hour storms to 10^-6 precision
@@ -132,17 +134,24 @@ class FrequencyStorm:
                 - HMS options: 25%, 33%, 50%, 67%, 75%
 
         Returns:
-            numpy array of incremental precipitation depths (inches)
+            pd.DataFrame with columns:
+                - 'hour': Time in hours from storm start (float)
+                - 'incremental_depth': Precipitation depth for this interval (inches)
+                - 'cumulative_depth': Cumulative precipitation depth (inches)
 
         Example:
             >>> # HCFCD M3 compatible (all defaults)
-            >>> hyeto = FrequencyStorm.generate_hyetograph(13.20)
-            >>> print(f"{len(hyeto)} intervals, total={hyeto.sum():.2f} inches")
+            >>> hyeto = FrequencyStorm.generate_hyetograph(total_depth_inches=13.20)
+            >>> print(hyeto.columns.tolist())
+            ['hour', 'incremental_depth', 'cumulative_depth']
+            >>> print(f"{len(hyeto)} intervals, total={hyeto['cumulative_depth'].iloc[-1]:.2f} inches")
             288 intervals, total=13.20 inches
 
             >>> # Variable duration (6-hour storm)
-            >>> hyeto_6hr = FrequencyStorm.generate_hyetograph(9.10, total_duration_min=360)
-            >>> print(f"{len(hyeto_6hr)} intervals, total={hyeto_6hr.sum():.2f} inches")
+            >>> hyeto_6hr = FrequencyStorm.generate_hyetograph(
+            ...     total_depth_inches=9.10, total_duration_min=360
+            ... )
+            >>> print(f"{len(hyeto_6hr)} intervals, total={hyeto_6hr['cumulative_depth'].iloc[-1]:.2f} inches")
             72 intervals, total=9.10 inches
 
         Notes:
@@ -173,13 +182,23 @@ class FrequencyStorm:
             )
 
         # Scale to total depth
-        incremental = pattern * total_depth
+        incremental = pattern * total_depth_inches
 
         # Prepend 0.0 at t=0 to match HMS output format
         # HMS: dArray[0] = 0.0 (aY.java:143)
         hyetograph = np.insert(incremental, 0, 0.0)
 
-        return hyetograph
+        # Calculate time axis
+        num_intervals = len(hyetograph)
+        interval_hours = time_interval_min / 60.0
+        hours = np.arange(1, num_intervals + 1) * interval_hours
+
+        # Return DataFrame with standard columns
+        return pd.DataFrame({
+            'hour': hours,
+            'incremental_depth': hyetograph,
+            'cumulative_depth': np.cumsum(hyetograph)
+        })
 
     @staticmethod
     def _resample_pattern(
@@ -276,12 +295,12 @@ class FrequencyStorm:
                 f"number of durations ({len(durations)})"
             )
 
-        # Get 24-hour total depth (last value)
-        total_depth = depths[-1]
+        # Get total depth (last value - corresponds to longest duration)
+        total_depth_inches = depths[-1]
 
         # Generate using the standard pattern
         return FrequencyStorm.generate_hyetograph(
-            total_depth=total_depth,
+            total_depth_inches=total_depth_inches,
             total_duration_min=durations[-1],
             time_interval_min=time_interval_min,
             peak_position_pct=peak_position_pct

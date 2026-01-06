@@ -37,13 +37,16 @@ Example:
     ...     total_depth_inches=10.0,
     ...     scs_type='II'
     ... )
+    >>> print(hyeto.columns.tolist())
+    ['hour', 'incremental_depth', 'cumulative_depth']
     >>> print(f"Generated {len(hyeto)} time steps")
-    >>> print(f"Total depth: {hyeto.sum():.6f} inches")
+    >>> print(f"Total depth: {hyeto['cumulative_depth'].iloc[-1]:.6f} inches")
 """
 
 from pathlib import Path
 from typing import Dict, Optional, Union, List
 import numpy as np
+import pandas as pd
 
 from .LoggingConfig import get_logger
 from .Decorators import log_call
@@ -154,7 +157,7 @@ class ScsTypeStorm:
         total_depth_inches: float,
         scs_type: str = 'II',
         time_interval_min: int = 60
-    ) -> np.ndarray:
+    ) -> pd.DataFrame:
         """
         Generate SCS Type hyetograph (incremental precipitation depths).
 
@@ -173,7 +176,10 @@ class ScsTypeStorm:
                 Note: Storm is ALWAYS 24 hours (1440 min) regardless of interval
 
         Returns:
-            numpy array of incremental precipitation depths (inches)
+            pd.DataFrame with columns:
+                - 'hour': Time in hours from storm start (float)
+                - 'incremental_depth': Precipitation depth for this interval (inches)
+                - 'cumulative_depth': Cumulative precipitation depth (inches)
             Length = 1440 / time_interval_min + 1 (includes t=0)
 
         Raises:
@@ -246,14 +252,24 @@ class ScsTypeStorm:
             f"peak {incremental.max():.3f} inches"
         )
 
-        return incremental
+        # Calculate time axis
+        num_intervals = len(incremental)
+        interval_hours = time_interval_min / 60.0
+        hours = np.arange(1, num_intervals + 1) * interval_hours
+
+        # Return DataFrame with standard columns
+        return pd.DataFrame({
+            'hour': hours,
+            'incremental_depth': incremental,
+            'cumulative_depth': np.cumsum(incremental)
+        })
 
     @staticmethod
     @log_call
     def generate_all_types(
         total_depth_inches: float,
         time_interval_min: int = 60
-    ) -> Dict[str, np.ndarray]:
+    ) -> Dict[str, pd.DataFrame]:
         """
         Generate hyetographs for all 4 SCS types.
 
@@ -264,12 +280,14 @@ class ScsTypeStorm:
             time_interval_min: Output time step in minutes (default: 60)
 
         Returns:
-            Dictionary mapping SCS type to numpy array of incremental depths
+            Dictionary mapping SCS type to DataFrame
+            Each DataFrame has columns: ['hour', 'incremental_depth', 'cumulative_depth']
 
         Example:
             >>> storms = ScsTypeStorm.generate_all_types(10.0)
             >>> for scs_type, hyeto in storms.items():
-            ...     print(f"Type {scs_type}: peak={hyeto.max():.2f} inches")
+            ...     peak = hyeto['incremental_depth'].max()
+            ...     print(f"Type {scs_type}: peak={peak:.2f} inches")
         """
         results = {}
         for scs_type in ScsTypeStorm.SCS_TYPES:
@@ -343,15 +361,17 @@ class ScsTypeStorm:
 
     @staticmethod
     def validate_against_reference(
-        hyetograph: np.ndarray,
-        reference: np.ndarray
+        hyetograph: Union[pd.DataFrame, np.ndarray],
+        reference: Union[pd.DataFrame, np.ndarray]
     ) -> dict:
         """
         Compare generated hyetograph against reference (e.g., HMS output).
 
         Args:
-            hyetograph: Generated hyetograph array
-            reference: Reference array (e.g., from HMS DSS output)
+            hyetograph: Generated hyetograph (DataFrame or ndarray)
+                If DataFrame, uses 'incremental_depth' column
+            reference: Reference hyetograph (DataFrame or ndarray)
+                If DataFrame, uses 'incremental_depth' column
 
         Returns:
             Dictionary with comparison metrics
@@ -362,21 +382,32 @@ class ScsTypeStorm:
             >>> metrics = ScsTypeStorm.validate_against_reference(hyeto, hms_ref)
             >>> print(f"RMSE: {metrics['rmse']:.6f} inches")
         """
-        if len(hyetograph) != len(reference):
+        # Extract incremental values if DataFrame
+        if isinstance(hyetograph, pd.DataFrame):
+            hyeto_vals = hyetograph['incremental_depth'].values
+        else:
+            hyeto_vals = hyetograph
+
+        if isinstance(reference, pd.DataFrame):
+            ref_vals = reference['incremental_depth'].values
+        else:
+            ref_vals = reference
+
+        if len(hyeto_vals) != len(ref_vals):
             raise ValueError(
-                f"Length mismatch: hyetograph={len(hyetograph)}, "
-                f"reference={len(reference)}"
+                f"Length mismatch: hyetograph={len(hyeto_vals)}, "
+                f"reference={len(ref_vals)}"
             )
 
-        diff = hyetograph - reference
+        diff = hyeto_vals - ref_vals
 
         return {
             'rmse': np.sqrt(np.mean(diff ** 2)),
             'max_abs_diff': np.max(np.abs(diff)),
             'mean_diff': np.mean(diff),
-            'correlation': np.corrcoef(hyetograph, reference)[0, 1],
-            'total_depth_diff': hyetograph.sum() - reference.sum(),
-            'peak_diff': hyetograph.max() - reference.max(),
+            'correlation': np.corrcoef(hyeto_vals, ref_vals)[0, 1],
+            'total_depth_diff': hyeto_vals.sum() - ref_vals.sum(),
+            'peak_diff': hyeto_vals.max() - ref_vals.max(),
             'pass_threshold_001': np.sqrt(np.mean(diff ** 2)) < 0.001
         }
 

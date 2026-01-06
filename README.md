@@ -47,6 +47,29 @@ HMS Commander implements [CLB Engineering's five core principles](docs/CLB_ENGIN
 
 **Result:** Automate tedious tasks while maintaining professional engineering standards.
 
+## ⚠️ Breaking Changes in v0.2.0
+
+**Precipitation hyetograph methods now return DataFrame instead of ndarray**
+
+If upgrading from v0.1.x, note that `Atlas14Storm`, `FrequencyStorm`, and `ScsTypeStorm` now return `pd.DataFrame` with columns `['hour', 'incremental_depth', 'cumulative_depth']` instead of `np.ndarray`.
+
+**Quick Migration:**
+```python
+# OLD (v0.1.x)
+hyeto = Atlas14Storm.generate_hyetograph(total_depth_inches=17.0, ...)
+total = hyeto.sum()
+peak = hyeto.max()
+
+# NEW (v0.2.0+)
+hyeto = Atlas14Storm.generate_hyetograph(total_depth_inches=17.0, ...)
+total = hyeto['cumulative_depth'].iloc[-1]
+peak = hyeto['incremental_depth'].max()
+```
+
+**Why this change?** Standardizes API for HMS→RAS integration and includes time axis.
+
+See [CHANGELOG.md](CHANGELOG.md) for complete migration guide.
+
 ## Features
 
 - **Project Management**: Initialize and manage HEC-HMS projects with DataFrames
