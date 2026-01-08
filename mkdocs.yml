@@ -109,16 +109,29 @@ nav:
       - Clone Workflows: user_guide/clone_workflows.md
       - Atlas 14 Updates: user_guide/atlas14_updates.md
   - Example Notebooks:
-      - Overview: examples/overview.md
-      - Basic Usage:
-          - Multi-Version Execution: notebooks/01_multi_version_execution.ipynb
-          - Project DataFrames: notebooks/03_project_dataframes.ipynb
-          - HMS Workflow: notebooks/04_hms_workflow.ipynb
-      - Execution:
-          - Run All Projects: notebooks/02_run_all_hms413_projects.ipynb
-          - Run Management: notebooks/05_run_management.ipynb
-      - Advanced Workflows:
-          - Clone & Compare: notebooks/clone_workflow.ipynb
+      - Overview: examples/00_overview.ipynb
+      - Beginner Track:
+          - 01 - Basic Workflow: examples/01_basic_workflow.ipynb
+          - 02 - Project DataFrames: examples/02_project_dataframes.ipynb
+      - Intermediate Track:
+          - 03 - File Operations: examples/03_file_ops_basin_met_control_gage.ipynb
+          - 04 - Run Management: examples/04_run_management.ipynb
+          - 05 - Clone Workflow: examples/05_clone_workflow.ipynb
+          - 06 - Results and DSS: examples/06_results_dss.ipynb
+      - Advanced Track:
+          - 07 - Jython Execution: examples/07_execution_jython.ipynb
+          - 08 - M3 Models: examples/08_m3_models.ipynb
+          - 09 - M3 Conversion: examples/09_m3_conversion.ipynb
+      - Storm Generation:
+          - 10 - Atlas 14 Hyetograph: examples/10_atlas14_hyetograph.ipynb
+          - 11 - Frequency Storm: examples/11_frequency_storm.ipynb
+      - Validation & Equivalence Proofs:
+          - 12 - SCS Type Validation: examples/12_scs_type_validation.ipynb
+          - 13 - Atlas 14 Multi-Duration: examples/13_atlas14_multiduration_validation.ipynb
+      - AORC Integration:
+          - 14a - AORC Download: examples/14a_aorc_download.ipynb
+          - 14b - AORC Grid Setup: examples/14b_aorc_grid_setup.ipynb
+          - 14c - AORC HMS Execution: examples/14c_aorc_hms_execution.ipynb
   - API Reference:
       - Core Classes:
           - HmsPrj: api/hms_prj.md
