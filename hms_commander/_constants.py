@@ -406,8 +406,8 @@ DSS_EXTENSION: Final[str] = ".dss"
 # =========================================================================
 # HMS date and time string formats for control file parsing.
 
-HMS_DATE_FORMAT: Final[str] = "%d%b%Y"
-"""HMS date format string, e.g., '01Jan2020'"""
+HMS_DATE_FORMAT: Final[str] = "%d %B %Y"
+"""HMS date format string, e.g., '1 January 2020' (full month name with spaces)"""
 
 HMS_TIME_FORMAT: Final[str] = "%H:%M"
 """HMS time format string, e.g., '00:00' or '14:30'"""
