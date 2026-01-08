@@ -138,7 +138,8 @@ class HmsFileParser:
         attrs = {}
         for line in block.splitlines():
             line = line.strip()
-            if ':' in line and not line.startswith('End'):
+            # Parse key:value pairs, but skip "End:" block terminator
+            if ':' in line and line != 'End:':
                 key, value = line.split(':', 1)
                 attrs[key.strip()] = value.strip()
         return attrs
