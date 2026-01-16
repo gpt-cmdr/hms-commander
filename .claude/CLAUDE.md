@@ -125,11 +125,11 @@ See: `feature_dev_notes/SPECIALIST_VS_PRODUCTION_AGENTS.md` for complete archite
 
 ## Quick Links
 
-### Memory System
-@.agent/README.md - Multi-session task coordination
+### Task Coordination
+@agent_tasks/README.md - Task templates, session state, cross-repo coordination
 
-### Task Agents
-@hms_agents/README.md - Production workflows (update_3_to_4, hms_doc_query, hms_atlas14, hms_decompiler)
+### Agents
+@.claude/agents/README.md - All agents (specialists and production workflows)
 
 ### Development Roadmap
 @feature_dev_notes/DEVELOPMENT_ROADMAP.md - Strategic planning

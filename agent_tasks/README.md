@@ -25,10 +25,12 @@ agent_tasks/
     ...
   runs/                # Execution logs (gitignored)
   artifacts/           # Generated outputs (gitignored)
-  .agent/              # Personal session state (gitignored - create locally)
+  .agent/              # Session state (gitignored - ephemeral)
     STATE.md           # Current session state
     BACKLOG.md         # Task queue
     PROGRESS.md        # Chronological log
+    CURRENT_STATUS.md  # Project status snapshot
+    TASK_*.md          # Task-specific documentation
     LEARNINGS.md       # What works / doesn't work
 ```
 
@@ -121,6 +123,31 @@ Contains:
 - Prioritized task list
 - Cross-repo coordination items
 - Recently completed items
+
+### CURRENT_STATUS.md - Project Status Snapshot
+
+**Update after major task completion.**
+
+Contains:
+- What was just completed
+- Current state of codebase
+- Immediate next steps
+- Test results and validation status
+
+Use for quick orientation at session start.
+
+### TASK_*.md - Task-Specific Records
+
+**Create for significant implementations.**
+
+Contains:
+- Task description and requirements
+- Implementation approach
+- Technical details and decisions
+- Validation results
+- Lessons learned
+
+Use for detailed reference on specific implementations.
 
 ## Session Protocol
 

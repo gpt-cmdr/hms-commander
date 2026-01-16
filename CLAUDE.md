@@ -299,8 +299,8 @@ See these files for complete HMS→RAS integration workflows.
 - **Documentation**: `.claude/rules/documentation/`
 
 ### Task Coordination
-- **Memory**: `.agent/` (multi-session state)
-- **Agents**: `hms_agents/` (production workflows)
+- **Session State**: `agent_tasks/.agent/` (ephemeral, gitignored)
+- **Agents**: `.claude/agents/` (all agents - specialists and production)
 - **Research**: `feature_dev_notes/` (feature development)
 
 ### Complete Framework
