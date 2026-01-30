@@ -121,48 +121,36 @@ class HmsGrid:
         Creates a .grid file that references DSS grid data for HMS gridded
         precipitation workflows.
 
-        Parameters
-        ----------
-        grid_name : str
-            Name of the grid (e.g., "AORC_Grid_1", "Grid 1")
-        dss_file : str or Path
-            Path to DSS file (relative to HMS project folder)
-        pathname : str
-            DSS pathname for grid data (e.g., "/AORC/GRID/PRECIP////")
-        output_file : str or Path
-            Output .grid file path
-        project_name : str, optional
-            Project name for Grid Manager section. If None, uses grid_name.
-        description : str, default "AORC Gridded Precipitation"
-            Description for the grid
-        version : str, default "4.13"
-            HMS version for format compatibility
+        Args:
+            grid_name: Name of the grid (e.g., "AORC_Grid_1", "Grid 1")
+            dss_file: Path to DSS file (relative to HMS project folder)
+            pathname: DSS pathname for grid data (e.g., "/AORC/GRID/PRECIP////")
+            output_file: Output .grid file path
+            project_name: Project name for Grid Manager section. If None, uses grid_name.
+            description: Description for the grid (default: "AORC Gridded Precipitation")
+            version: HMS version for format compatibility (default: "4.13")
 
-        Returns
-        -------
-        Path
+        Returns:
             Path to created .grid file
 
-        Examples
-        --------
-        >>> from hms_commander import HmsGrid
-        >>>
-        >>> # Create grid definition
-        >>> HmsGrid.create_grid_definition(
-        ...     grid_name="AORC_May2020",
-        ...     dss_file="precip/aorc_may2020.dss",
-        ...     pathname="/AORC/MAY2020/PRECIP////",
-        ...     output_file="grids/aorc_may2020.grid",
-        ...     description="AORC May 2020 Storm"
-        ... )
+        Example:
+            >>> from hms_commander import HmsGrid
+            >>>
+            >>> # Create grid definition
+            >>> HmsGrid.create_grid_definition(
+            ...     grid_name="AORC_May2020",
+            ...     dss_file="precip/aorc_may2020.dss",
+            ...     pathname="/AORC/MAY2020/PRECIP////",
+            ...     output_file="grids/aorc_may2020.grid",
+            ...     description="AORC May 2020 Storm"
+            ... )
 
-        Notes
-        -----
-        - Output format follows HMS .grid file specification
-        - References external DSS grid data
-        - Grid Type: Precipitation
-        - Data Source Type: External DSS
-        - See tenk example project for reference format
+        Notes:
+            - Output format follows HMS .grid file specification
+            - References external DSS grid data
+            - Grid Type: Precipitation
+            - Data Source Type: External DSS
+            - See tenk example project for reference format
         """
         output_path = Path(output_file)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -219,58 +207,47 @@ End:
         Creates a file that maps grid cells to HMS subbasins with area
         weights and travel lengths for ModClark routing.
 
-        Parameters
-        ----------
-        subbasin_geometries : Dict[str, Polygon]
-            Dictionary mapping subbasin names to Shapely Polygon geometries
-        grid_coords : Tuple[np.ndarray, np.ndarray]
-            Tuple of (longitude_array, latitude_array) defining grid cell centers
-        output_hrapcells : str or Path
-            Output hrapcells file path
-        outlet_points : Dict[str, Tuple[float, float]], optional
-            Dictionary mapping subbasin names to outlet coordinates (lon, lat).
-            If None, uses centroid of lowest-elevation grid cells.
-        cell_size_km : float, optional
-            Grid cell size in km. If None, calculated from coordinates.
-        grid_origin : Tuple[int, int], optional
-            Grid index origin (x_min, y_min). If None, calculated from coordinates.
+        Args:
+            subbasin_geometries: Dictionary mapping subbasin names to Shapely Polygon geometries
+            grid_coords: Tuple of (longitude_array, latitude_array) defining grid cell centers
+            output_hrapcells: Output hrapcells file path
+            outlet_points: Dictionary mapping subbasin names to outlet coordinates (lon, lat).
+                If None, uses centroid of lowest-elevation grid cells.
+            cell_size_km: Grid cell size in km. If None, calculated from coordinates.
+            grid_origin: Grid index origin (x_min, y_min). If None, calculated from coordinates.
 
-        Returns
-        -------
-        Path
+        Returns:
             Path to created hrapcells file
 
-        Examples
-        --------
-        >>> from hms_commander import HmsGrid, HmsHuc
-        >>> import numpy as np
-        >>>
-        >>> # Get HUC12 watershed
-        >>> bounds = (-77.71, 41.01, -77.25, 41.22)
-        >>> watersheds = HmsHuc.get_huc12_for_bounds(bounds)
-        >>>
-        >>> # Create geometry dict
-        >>> geoms = {row['name']: row['geometry'] for _, row in watersheds.iterrows()}
-        >>>
-        >>> # Grid coordinates from AORC
-        >>> lon = np.linspace(-77.71, -77.25, 50)
-        >>> lat = np.linspace(41.01, 41.22, 25)
-        >>>
-        >>> # Map AORC grid to subbasins
-        >>> HmsGrid.map_grid_to_subbasins(
-        ...     subbasin_geometries=geoms,
-        ...     grid_coords=(lon, lat),
-        ...     output_hrapcells="regions/hrapcells"
-        ... )
+        Example:
+            >>> from hms_commander import HmsGrid, HmsHuc
+            >>> import numpy as np
+            >>>
+            >>> # Get HUC12 watershed
+            >>> bounds = (-77.71, 41.01, -77.25, 41.22)
+            >>> watersheds = HmsHuc.get_huc12_for_bounds(bounds)
+            >>>
+            >>> # Create geometry dict
+            >>> geoms = {row['name']: row['geometry'] for _, row in watersheds.iterrows()}
+            >>>
+            >>> # Grid coordinates from AORC
+            >>> lon = np.linspace(-77.71, -77.25, 50)
+            >>> lat = np.linspace(41.01, 41.22, 25)
+            >>>
+            >>> # Map AORC grid to subbasins
+            >>> HmsGrid.map_grid_to_subbasins(
+            ...     subbasin_geometries=geoms,
+            ...     grid_coords=(lon, lat),
+            ...     output_hrapcells="regions/hrapcells"
+            ... )
 
-        Notes
-        -----
-        - Output format: HMS hrapcells file
-        - Header: "Parameter Order: xCoord yCoord TravelLength Area"
-        - Grid cells: "GRIDCELL: x y travel_length area"
-        - Travel length: Distance from grid cell centroid to subbasin outlet (km)
-        - Area: Grid cell area within subbasin (km²)
-        - See tenk/hrapcells for reference format
+        Notes:
+            - Output format: HMS hrapcells file
+            - Header: "Parameter Order: xCoord yCoord TravelLength Area"
+            - Grid cells: "GRIDCELL: x y travel_length area"
+            - Travel length: Distance from grid cell centroid to subbasin outlet (km)
+            - Area: Grid cell area within subbasin (km²)
+            - See tenk/hrapcells for reference format
         """
         try:
             import numpy as np
@@ -394,52 +371,42 @@ End:
         Convenience method that extracts grid coordinates from an AORC NetCDF file
         and maps them to subbasin boundaries.
 
-        Parameters
-        ----------
-        basin_geometry : str, Path, GeoDataFrame, or Polygon
-            Subbasin geometry, one of:
+        Args:
+            basin_geometry: Subbasin geometry, one of:
                 - Path to shapefile
                 - GeoDataFrame with geometry
                 - Shapely Polygon (single subbasin)
-        aorc_grid : str or Path
-            Path to AORC NetCDF file
-        output_hrapcells : str or Path
-            Output hrapcells file path
-        subbasin_name : str, optional
-            Name of subbasin (for multi-subbasin files)
-        method : str, default "intersection"
-            Mapping method:
+            aorc_grid: Path to AORC NetCDF file
+            output_hrapcells: Output hrapcells file path
+            subbasin_name: Name of subbasin (for multi-subbasin files)
+            method: Mapping method (default: "intersection"):
                 - "intersection": Spatial intersection (exact, slow)
                 - "centroid": Grid cell centroid within subbasin (fast)
                 - "nearest": Nearest grid cell (approximate)
 
-        Returns
-        -------
-        Path
+        Returns:
             Path to created hrapcells file
 
-        Examples
-        --------
-        >>> from hms_commander import HmsGrid, HmsHuc
-        >>>
-        >>> # Get HUC12 watershed
-        >>> bounds = (-77.71, 41.01, -77.25, 41.22)
-        >>> watersheds = HmsHuc.get_huc12_for_bounds(bounds)
-        >>> huc12 = watersheds.iloc[0]
-        >>>
-        >>> # Map AORC grid to HUC12
-        >>> HmsGrid.map_aorc_to_subbasins(
-        ...     basin_geometry=huc12['geometry'],
-        ...     aorc_grid="precip/aorc_may2020.nc",
-        ...     output_hrapcells=f"regions/huc12_{huc12['huc12']}",
-        ...     subbasin_name=huc12['name']
-        ... )
+        Example:
+            >>> from hms_commander import HmsGrid, HmsHuc
+            >>>
+            >>> # Get HUC12 watershed
+            >>> bounds = (-77.71, 41.01, -77.25, 41.22)
+            >>> watersheds = HmsHuc.get_huc12_for_bounds(bounds)
+            >>> huc12 = watersheds.iloc[0]
+            >>>
+            >>> # Map AORC grid to HUC12
+            >>> HmsGrid.map_aorc_to_subbasins(
+            ...     basin_geometry=huc12['geometry'],
+            ...     aorc_grid="precip/aorc_may2020.nc",
+            ...     output_hrapcells=f"regions/huc12_{huc12['huc12']}",
+            ...     subbasin_name=huc12['name']
+            ... )
 
-        Notes
-        -----
-        - Reads grid coordinates from AORC NetCDF file
-        - Uses map_grid_to_subbasins() internally
-        - See tenk/regions/hrapcells for reference format
+        Notes:
+            - Reads grid coordinates from AORC NetCDF file
+            - Uses map_grid_to_subbasins() internally
+            - See tenk/regions/hrapcells for reference format
         """
         try:
             import xarray as xr
@@ -507,38 +474,30 @@ End:
 
         Computes travel lengths for ModClark time-area calculations.
 
-        Parameters
-        ----------
-        grid_cells : GeoDataFrame
-            Grid cell geometries (polygons or points)
-        outlet_point : Tuple[float, float]
-            Subbasin outlet coordinates (lon, lat) or (x, y)
-        method : str, default "euclidean"
-            Distance calculation method:
+        Args:
+            grid_cells: Grid cell geometries (polygons or points) as GeoDataFrame
+            outlet_point: Subbasin outlet coordinates (lon, lat) or (x, y)
+            method: Distance calculation method (default: "euclidean"):
                 - "euclidean": Straight-line distance (fast)
                 - "flow_path": Along DEM flow paths (requires DEM, accurate)
 
-        Returns
-        -------
-        pd.Series
-            Travel lengths in kilometers
+        Returns:
+            Travel lengths in kilometers as pd.Series
 
-        Examples
-        --------
-        >>> from hms_commander import HmsGrid
-        >>>
-        >>> # Calculate travel lengths
-        >>> travel_lengths = HmsGrid.calculate_travel_lengths(
-        ...     grid_cells=grid_cells_gdf,
-        ...     outlet_point=(-77.5, 41.1),
-        ...     method="euclidean"
-        ... )
+        Example:
+            >>> from hms_commander import HmsGrid
+            >>>
+            >>> # Calculate travel lengths
+            >>> travel_lengths = HmsGrid.calculate_travel_lengths(
+            ...     grid_cells=grid_cells_gdf,
+            ...     outlet_point=(-77.5, 41.1),
+            ...     method="euclidean"
+            ... )
 
-        Notes
-        -----
-        - Euclidean: Simple, fast, approximate
-        - Flow path: Accurate, requires DEM (future implementation)
-        - Units: Always kilometers (HMS standard)
+        Notes:
+            - Euclidean: Simple, fast, approximate
+            - Flow path: Accurate, requires DEM (future implementation)
+            - Units: Always kilometers (HMS standard)
         """
         try:
             import numpy as np
@@ -581,15 +540,11 @@ End:
         """
         Read metadata from HMS .grid file.
 
-        Parameters
-        ----------
-        grid_file : str or Path
-            Path to .grid file
+        Args:
+            grid_file: Path to .grid file
 
-        Returns
-        -------
-        dict
-            Grid metadata including:
+        Returns:
+            Grid metadata dictionary including:
                 - grid_manager: Grid manager name
                 - version: HMS version
                 - grids: List of grid definitions, each containing:
@@ -600,16 +555,15 @@ End:
                     - pathname: DSS pathname
                     - last_modified: Last modification datetime
 
-        Examples
-        --------
-        >>> from hms_commander import HmsGrid
-        >>>
-        >>> # Read grid metadata
-        >>> info = HmsGrid.get_grid_info("grids/aorc.grid")
-        >>> print(info['grids'][0]['grid_name'])
-        'AORC_Grid_1'
-        >>> print(info['grids'][0]['pathname'])
-        '/AORC/GRID/PRECIP////'
+        Example:
+            >>> from hms_commander import HmsGrid
+            >>>
+            >>> # Read grid metadata
+            >>> info = HmsGrid.get_grid_info("grids/aorc.grid")
+            >>> print(info['grids'][0]['grid_name'])
+            'AORC_Grid_1'
+            >>> print(info['grids'][0]['pathname'])
+            '/AORC/GRID/PRECIP////'
         """
         grid_path = Path(grid_file)
         if not grid_path.exists():
@@ -674,14 +628,10 @@ End:
         """
         Read grid cell mapping from hrapcells file.
 
-        Parameters
-        ----------
-        hrapcells_file : str or Path
-            Path to hrapcells file
+        Args:
+            hrapcells_file: Path to hrapcells file
 
-        Returns
-        -------
-        Dict[str, List[dict]]
+        Returns:
             Dictionary mapping subbasin names to list of grid cells.
             Each grid cell is a dict with:
                 - x: X coordinate index
@@ -689,14 +639,13 @@ End:
                 - travel_length: Travel length in km
                 - area: Area in km²
 
-        Examples
-        --------
-        >>> from hms_commander import HmsGrid
-        >>>
-        >>> # Read hrapcells
-        >>> cells = HmsGrid.read_hrapcells("regions/hrapcells")
-        >>> print(f"Subbasins: {list(cells.keys())}")
-        >>> print(f"Cells in first subbasin: {len(cells['85'])}")
+        Example:
+            >>> from hms_commander import HmsGrid
+            >>>
+            >>> # Read hrapcells
+            >>> cells = HmsGrid.read_hrapcells("regions/hrapcells")
+            >>> print(f"Subbasins: {list(cells.keys())}")
+            >>> print(f"Cells in first subbasin: {len(cells['85'])}")
         """
         hrapcells_path = Path(hrapcells_file)
         if not hrapcells_path.exists():
@@ -737,21 +686,18 @@ End:
         """
         Get information about HMS grid operations.
 
-        Returns
-        -------
-        dict
+        Returns:
             Information about grid operations:
                 - format: File format descriptions
                 - supported_grids: Supported grid types
                 - hrapcells_format: hrapcells file format description
                 - references: Reference documentation
 
-        Examples
-        --------
-        >>> from hms_commander import HmsGrid
-        >>>
-        >>> info = HmsGrid.get_info()
-        >>> print(info['format'])
+        Example:
+            >>> from hms_commander import HmsGrid
+            >>>
+            >>> info = HmsGrid.get_info()
+            >>> print(info['format'])
         """
         return {
             'format': {

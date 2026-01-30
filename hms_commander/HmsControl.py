@@ -258,7 +258,7 @@ class HmsControl:
         template_control: str,
         new_name: str,
         hms_object=None
-    ) -> str:
+    ) -> Path:
         """
         Clone a control specification file with a new name.
 
@@ -303,7 +303,7 @@ class HmsControl:
             f.write(content)
 
         logger.info(f"Cloned control to: {new_path}")
-        return str(new_path)
+        return new_path
 
     @staticmethod
     @log_call

@@ -43,9 +43,11 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from typing import Optional, Union, List, Tuple
-import logging
 
-logger = logging.getLogger(__name__)
+from .LoggingConfig import get_logger
+from .Decorators import log_call
+
+logger = get_logger(__name__)
 
 
 class FrequencyStorm:
@@ -102,6 +104,7 @@ class FrequencyStorm:
         return FrequencyStorm._dimensionless_pattern
 
     @staticmethod
+    @log_call
     def generate_hyetograph(
         total_depth_inches: float,
         total_duration_min: int = 1440,
@@ -257,6 +260,7 @@ class FrequencyStorm:
         return shifted
 
     @staticmethod
+    @log_call
     def generate_from_ddf(
         depths: List[float],
         durations: Optional[List[int]] = None,
@@ -307,6 +311,7 @@ class FrequencyStorm:
         )
 
     @staticmethod
+    @log_call
     def get_pattern_info() -> dict:
         """
         Get information about the bundled temporal pattern.
