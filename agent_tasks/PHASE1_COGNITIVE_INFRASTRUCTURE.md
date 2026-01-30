@@ -45,8 +45,8 @@ HMS-specific domain work (calibration, Jython, etc.) deferred to Phase 2.
 
 | Item | Purpose | Status |
 |------|---------|--------|
-| Feature dev notes reorganization | Clean structure | **TODO** |
-| Skills/Subagents INDEX.md | Navigation | **TODO** |
+| Feature dev notes reorganization | Clean structure | In Progress |
+| Skills/Subagents INDEX.md | Navigation | Done |
 | Development roadmap update | Unified plan | **TODO** |
 
 ---
