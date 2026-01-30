@@ -93,7 +93,7 @@ files_to_create:
   - .claude/commands/hms-docs.md
 reference:
   - .claude/commands/hms-orient.md (format example)
-  - .claude/skills/executing-hms-runs/SKILL.md (skill template)
+  - .claude/skills/hms_execute_runs/SKILL.md (skill template)
   - .claude/subagents/basin-model-specialist.md (agent template)
 ```
 

@@ -117,7 +117,7 @@ See: `feature_dev_notes/SPECIALIST_VS_PRODUCTION_AGENTS.md` for complete archite
 - `feature_dev_notes/HCFCD_M3_Clear_Creek_*` - Clear Creek pilot (reference)
 
 **Skills & Agents**:
-- `.claude/skills/linking-hms-to-hecras/` - HMS side workflow
+- `.claude/skills/hms_link_to-ras/` - HMS side workflow
 - `.claude/agents/hms-ras-workflow-coordinator.md` - Coordinates both tools
 - `ras-commander/.claude/skills/importing-hms-boundaries/` - RAS side (cross-reference)
 

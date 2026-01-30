@@ -1,5 +1,5 @@
 ---
-name: updating-met-models
+name: hms_update_met-models
 description: |
   Updates HEC-HMS meteorologic model files (.met) including precipitation methods,
   gage assignments, evapotranspiration, and Atlas 14 frequency storms. Use when
@@ -131,5 +131,5 @@ for sub, gage in zip(subbasins, gages):
 
 ## Related Skills
 
-- **executing-hms-runs** - Run after updating precipitation
-- **cloning-hms-components** - Clone met for scenario comparison
+- **hms_execute_runs** - Run after updating precipitation
+- **hms_clone_components** - Clone met for scenario comparison

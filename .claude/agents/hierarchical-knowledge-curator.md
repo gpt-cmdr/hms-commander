@@ -93,9 +93,9 @@ Task Subagents (Haiku)
 ### 4. Skills Framework Best Practices
 
 **Naming Convention**: Gerund form (verb + -ing)
-- ✅ `executing-hms-runs`
-- ✅ `parsing-basin-models`
-- ✅ `updating-met-models`
+- ✅ `hms_execute_runs`
+- ✅ `hms_parse_basin-models`
+- ✅ `hms_update_met-models`
 - ❌ `run-executor`
 - ❌ `execute-runs`
 - ❌ `HMS-helper`
@@ -138,7 +138,7 @@ description: |
   junction, reach, loss, transform, curve number, lag time.
 model: sonnet
 tools: Read, Grep, Glob, Edit
-skills: parsing-basin-models, cloning-hms-components
+skills: hms_parse_basin-models, hms_clone_components
 working_directory: hms_commander/
 ---
 
@@ -380,7 +380,7 @@ mkdir -p .claude/rules/category
 - How to use hms-commander APIs
 - Part of hms-commander repository
 - Teaches library usage
-- Example: executing-hms-runs, parsing-basin-models
+- Example: hms_execute_runs, hms_parse_basin-models
 
 **hms_agents/** (Domain automation):
 - Production-ready capabilities

@@ -1,5 +1,5 @@
 ---
-name: parsing-basin-models
+name: hms_parse_basin-models
 description: |
   Parses HEC-HMS basin model files (.basin) to extract and modify subbasins, junctions,
   reaches, loss parameters, transform parameters, baseflow, and routing. Use when reading
@@ -111,5 +111,5 @@ HmsBasin.clone_basin("Baseline", "Updated_Basin", hms_object=hms)
 
 ## Related Skills
 
-- **cloning-hms-components** - Complete clone workflow
-- **executing-hms-runs** - Run after modifying parameters
+- **hms_clone_components** - Complete clone workflow
+- **hms_execute_runs** - Run after modifying parameters

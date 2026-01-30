@@ -127,7 +127,7 @@ sequenceDiagram
     Claude->>Task: Read agent_tasks/tasks/<br/>020-run-simulation.md
     Note over Task: Task template provides structure
 
-    Task->>Skill: Activate skill:<br/>executing-hms-runs
+    Task->>Skill: Activate skill:<br/>hms_execute_runs
     Note over Skill: Skill knows HMS execution patterns
 
     Skill->>Subagent: Delegate to:<br/>run-manager-specialist
@@ -173,11 +173,11 @@ graph TB
     end
 
     subgraph "Skills Layer"
-        E1[executing-hms-runs]
-        E2[parsing-basin-models]
-        E3[updating-met-models]
-        E4[investigating-hms-internals]
-        E5[querying-hms-documentation]
+        E1[hms_execute_runs]
+        E2[hms_parse_basin-models]
+        E3[hms_update_met-models]
+        E4[hms_investigate_internals]
+        E5[hms_query_docs]
     end
 
     subgraph "API Layer"

@@ -1,5 +1,5 @@
 ---
-name: extracting-dss-results
+name: hms_extract_dss-results
 description: |
   Extracts and analyzes HEC-HMS simulation results from DSS files using HmsDss and
   HmsResults classes. Handles peak flows, hydrographs, volume summaries, and time series
@@ -158,7 +158,7 @@ lat, lon = HmsGeo.get_project_centroid_latlon("project.geo")
 # - Outlet location: (lat, lon)
 # - Peak: hms_peak cfs
 
-# See: linking-hms-to-hecras skill for complete workflow
+# See: hms_link_to-ras skill for complete workflow
 ```
 
 ## Reference Files
@@ -171,5 +171,5 @@ lat, lon = HmsGeo.get_project_centroid_latlon("project.geo")
 
 ## Related Skills
 
-- **executing-hms-runs** - Generate results to extract
-- **linking-hms-to-hecras** - Use HMS results in RAS (complete workflow)
+- **hms_execute_runs** - Generate results to extract
+- **hms_link_to-ras** - Use HMS results in RAS (complete workflow)

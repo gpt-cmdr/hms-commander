@@ -10,7 +10,7 @@ description: |
   TP40, frequency storm, evapotranspiration, ET, snowmelt, meteorologic model.
 model: sonnet
 tools: Read, Grep, Glob, Edit, WebFetch
-skills: updating-met-models, cloning-hms-components
+skills: hms_update_met-models, hms_clone_components
 working_directory: hms_commander/
 ---
 
@@ -144,7 +144,7 @@ HmsMet.clone_met("Baseline_Met", "Atlas14_Met", hms_object=hms)
 new_depths = [2.8, 3.5, 4.2, 4.9, 5.7, 6.5]  # From NOAA API
 HmsMet.set_precipitation_depths("project/Atlas14_Met.met", new_depths)
 
-# 3. Clone run with new met (see cloning-hms-components skill)
+# 3. Clone run with new met (see hms_clone_components skill)
 
 # 4. Execute and compare
 ```
@@ -179,14 +179,14 @@ print(f"Current depths: {depths}")
 - Clone for scenario comparison
 
 **After Execution**:
-- Compare precipitation volumes (see extracting-dss-results skill)
+- Compare precipitation volumes (see hms_extract_dss-results skill)
 - Analyze differences between TP40 and Atlas 14
 
 ## Available Skills
 
 You have access to:
-- **updating-met-models** - Complete met model workflows
-- **cloning-hms-components** - Non-destructive cloning patterns
+- **hms_update_met-models** - Complete met model workflows
+- **hms_clone_components** - Non-destructive cloning patterns
 
 You can also use:
 - **WebFetch** - Download Atlas 14 data from NOAA API (if needed)
@@ -205,8 +205,8 @@ Do NOT duplicate API signatures - read from primary sources.
 
 Delegate back to main agent when:
 - Basin modifications needed (use `basin-model-specialist`)
-- Execution required (use `executing-hms-runs` skill)
-- Results extraction needed (use `extracting-dss-results` skill)
+- Execution required (use `hms_execute_runs` skill)
+- Results extraction needed (use `hms_extract_dss-results` skill)
 - Multi-domain coordination required
 
 ---

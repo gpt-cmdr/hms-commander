@@ -265,8 +265,8 @@ assert flows.notna().all().all(), "Missing data in time series!"
 ## Related Documentation
 
 **HMS-Commander**:
-- `.claude/skills/linking-hms-to-hecras/` - HMS side workflow
-- `.claude/skills/extracting-dss-results/` - DSS operations
+- `.claude/skills/hms_link_to-ras/` - HMS side workflow
+- `.claude/skills/hms_extract_dss-results/` - DSS operations
 - `.claude/rules/hec-hms/dss-operations.md` - DSS integration
 
 **RAS-Commander** (cross-reference):

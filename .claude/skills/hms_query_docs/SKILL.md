@@ -1,10 +1,10 @@
 ---
-name: querying-hms-documentation
+name: hms_query_docs
 description: |
   Queries official HEC-HMS documentation to answer technical questions. Provides access to
   User's Manual, Technical Reference Manual, Release Notes, and community resources.
   Use when seeking official documentation on HMS methods, parameters, file formats,
-  version features, or workflow guidance. Complements investigating-hms-internals (decompiled
+  version features, or workflow guidance. Complements hms_investigate_internals (decompiled
   source code) with authoritative documentation.
 
   Trigger keywords: HMS documentation, User's Manual, Technical Reference, loss methods,
@@ -107,16 +107,16 @@ A: See hms_agents/hms_doc_query/AGENT.md → search_release_notes("4.11")
 ### Don't Use When
 
 1. **Internal Implementation Details**
-   - Use **investigating-hms-internals** skill instead
-   - investigating-hms-internals has decompiled source code
+   - Use **hms_investigate_internals** skill instead
+   - hms_investigate_internals has decompiled source code
 
 2. **JythonHms API Reference**
-   - Use **investigating-hms-internals** skill
+   - Use **hms_investigate_internals** skill
    - Decompiled JythonHms.java has complete method signatures
 
 3. **Undocumented Features**
    - Official docs won't cover undocumented behavior
-   - Use investigating-hms-internals for source code analysis
+   - Use hms_investigate_internals for source code analysis
 
 4. **hms-commander API Questions**
    - Read hms-commander docstrings directly
@@ -214,21 +214,21 @@ Check if method name is valid in HMS.
 
 ## Complementary Skills
 
-### investigating-hms-internals
+### hms_investigate_internals
 **Purpose**: Decompiled source code analysis
 
 **Complementary use**:
 | Question Type | Use This Skill |
 |---------------|----------------|
-| "What does the documentation say about X?" | querying-hms-documentation |
-| "How does HMS actually implement X?" | investigating-hms-internals |
-| "What parameters are documented for X?" | querying-hms-documentation |
-| "What is the JythonHms method signature for X?" | investigating-hms-internals |
+| "What does the documentation say about X?" | hms_query_docs |
+| "How does HMS actually implement X?" | hms_investigate_internals |
+| "What parameters are documented for X?" | hms_query_docs |
+| "What is the JythonHms method signature for X?" | hms_investigate_internals |
 
 ### Related Skills
-- **parsing-basin-models** - Working with basin files
-- **executing-hms-runs** - Running simulations
-- **managing-hms-versions** - Version detection and handling
+- **hms_parse_basin-models** - Working with basin files
+- **hms_execute_runs** - Running simulations
+- **hms_manage_versions** - Version detection and handling
 
 ---
 
@@ -297,7 +297,7 @@ Answer Found? --> YES --> Return Answer
 Undocumented Feature?
     |
     v
-Use investigating-hms-internals
+Use hms_investigate_internals
     |
     v
 Decompile and Analyze Source
@@ -313,7 +313,7 @@ Before answering user questions:
 - [ ] Queried correct documentation source
 - [ ] Provided source URLs for verification
 - [ ] Noted when visual content exists but cannot be shown
-- [ ] Suggested investigating-hms-internals for undocumented features
+- [ ] Suggested hms_investigate_internals for undocumented features
 - [ ] Pointed to primary sources (not duplicated content)
 
 ---

@@ -181,7 +181,7 @@ What type of knowledge is this?
 3. Deep Technical Detail
    → Add to existing skill reference/
    → Example: "Edge cases in DSS pathname parsing"
-   → File: .claude/skills/extracting-dss-results/reference/pathname-edge-cases.md
+   → File: .claude/skills/hms_extract_dss-results/reference/pathname-edge-cases.md
 
 4. Architectural Decision
    → Add to .agent/LEARNINGS.md
@@ -274,7 +274,7 @@ description: |
   Use when validating met models, checking gage assignments, or troubleshooting
   missing precipitation data. Keywords: gage assignment, met model validation,
   precipitation audit, gage check, subbasin gage.
-skills: [parsing-basin-models, updating-met-models]
+skills: [hms_parse_basin-models, hms_update_met-models]
 ---
 
 # Auditing Gage Assignments Skill
@@ -328,7 +328,7 @@ cat .claude/outputs/dss-integration-specialist/pathname_parsing_2025-12-*.md
 
 # Finding: Edge cases in DSS pathname parsing (E-part variations)
 # Add to existing skill reference
-cat >> .claude/skills/extracting-dss-results/reference/pathname-edge-cases.md << 'EOF'
+cat >> .claude/skills/hms_extract_dss-results/reference/pathname-edge-cases.md << 'EOF'
 
 ## E-Part Variations (Added 2025-12-17)
 
@@ -377,7 +377,7 @@ Analysis of 150+ DSS files showed 5 different E-part patterns.
 
 **Impact**: Parsing must be tolerant of variations to support all HMS versions.
 
-**Implementation**: See `.claude/skills/extracting-dss-results/reference/pathname-edge-cases.md`
+**Implementation**: See `.claude/skills/hms_extract_dss-results/reference/pathname-edge-cases.md`
 
 **Source**: .claude/outputs/dss-integration-specialist/pathname_parsing_2025-12-17.md
 EOF
@@ -422,7 +422,7 @@ ls -la .old/outputs-2025-12-17/basin-model-specialist/
 **Patterns Extracted**:
 1. Basin validation patterns → `.claude/rules/hec-hms/basin-validation-patterns.md`
 2. Gage assignment audit workflow → `.claude/skills/auditing-gage-assignments/`
-3. DSS pathname edge cases → `.claude/skills/extracting-dss-results/reference/pathname-edge-cases.md`
+3. DSS pathname edge cases → `.claude/skills/hms_extract_dss-results/reference/pathname-edge-cases.md`
 
 **Outputs Ready for Archival** (patterns already extracted):
 - `.claude/outputs/basin-model-specialist/` (5 files, 2025-12-13 to 2025-12-17)
@@ -465,7 +465,7 @@ cat > .old/outputs-2025-12-17/INDEX.md << 'EOF'
 - Routing validation criteria standardized
 
 ## DSS Integration Specialist (3 files)
-- pathname_parsing_2025-12-15.md → `.claude/skills/extracting-dss-results/reference/pathname-edge-cases.md`
+- pathname_parsing_2025-12-15.md → `.claude/skills/hms_extract_dss-results/reference/pathname-edge-cases.md`
 - pathname_parsing_2025-12-16.md → Same as above
 - pathname_parsing_2025-12-17.md → Same as above
 
@@ -565,7 +565,7 @@ before saving basin file.
     → Finding: HMS 3.x uses mixed case RUN:
 ```
 
-**Action**: Add to `.claude/skills/extracting-dss-results/reference/pathname-edge-cases.md`
+**Action**: Add to `.claude/skills/hms_extract_dss-results/reference/pathname-edge-cases.md`
 
 **Result**: Reference file updated with E-part variations, flexible parsing strategy documented.
 

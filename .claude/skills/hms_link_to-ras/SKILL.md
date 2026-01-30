@@ -1,5 +1,5 @@
 ---
-name: linking-hms-to-hecras
+name: hms_link_to-ras
 description: |
   Links HEC-HMS watershed models to HEC-RAS river models by extracting HMS DSS results
   and preparing them for RAS boundary condition import. Handles flow hydrograph export,
@@ -105,7 +105,7 @@ for trib in tributaries:
     print(f"{trib}: Peak = {flows['Flow'].max()} cfs")
 ```
 
-**See**: `extracting-dss-results` skill for complete extraction capabilities
+**See**: `hms_extract_dss-results` skill for complete extraction capabilities
 
 ### 2. Spatial Reference Documentation
 
@@ -400,9 +400,9 @@ print(log_file.read_text())
 ## Integration Points
 
 **Before This Skill**:
-- Execute HMS simulation (see `executing-hms-runs` skill)
-- Validate basin model (see `parsing-basin-models` skill)
-- Update precipitation if needed (see `updating-met-models` skill)
+- Execute HMS simulation (see `hms_execute_runs` skill)
+- Validate basin model (see `hms_parse_basin-models` skill)
+- Update precipitation if needed (see `hms_update_met-models` skill)
 
 **After This Skill**:
 - RAS imports boundary conditions (see `ras-commander/.claude/skills/importing-hms-boundaries/`)
@@ -411,9 +411,9 @@ print(log_file.read_text())
 
 ## Related Skills
 
-- **executing-hms-runs** - Generate HMS results
-- **extracting-dss-results** - Extract and validate flows
-- **parsing-basin-models** - Understand watershed structure
+- **hms_execute_runs** - Generate HMS results
+- **hms_extract_dss-results** - Extract and validate flows
+- **hms_parse_basin-models** - Understand watershed structure
 
 **Cross-Repository**:
 - **ras-commander/importing-hms-boundaries** - RAS side of workflow

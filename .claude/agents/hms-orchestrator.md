@@ -11,7 +11,7 @@ description: |
   specialist, multi-domain, task classification, workflow coordination, HMS operations.
 model: sonnet
 tools: Read, Grep, Glob
-skills: executing-hms-runs, parsing-basin-models, updating-met-models, extracting-dss-results, cloning-hms-components, linking-hms-to-hecras, investigating-hms-internals, managing-hms-versions, querying-hms-documentation
+skills: hms_execute_runs, hms_parse_basin-models, hms_update_met-models, hms_extract_dss-results, hms_clone_components, hms_link_to-ras, hms_investigate_internals, hms_manage_versions, hms_query_docs
 working_directory: .
 ---
 
@@ -98,16 +98,16 @@ Analyze incoming requests and categorize by domain:
 
 | Task Keywords | Route To | Activate Skill |
 |---------------|----------|----------------|
-| basin, subbasin, junction, reach, curve number, CN, loss method, transform, lag time, baseflow, routing, Muskingum | basin-model-specialist | parsing-basin-models |
-| met, meteorologic, precipitation, gage, Atlas 14, TP40, frequency storm, evapotranspiration, ET, snowmelt | met-model-specialist | updating-met-models |
-| run, execute, compute, simulation, parallel, batch, Jython, HMS 3.x, HMS 4.x | run-manager-specialist | executing-hms-runs |
-| DSS, results, peak flow, hydrograph, time series, volume, extract results, RasDss | dss-integration-specialist | extracting-dss-results |
-| HMS to RAS, link models, boundary condition, watershed to river, integrated model, spatial matching | hms-ras-workflow-coordinator | linking-hms-to-hecras |
+| basin, subbasin, junction, reach, curve number, CN, loss method, transform, lag time, baseflow, routing, Muskingum | basin-model-specialist | hms_parse_basin-models |
+| met, meteorologic, precipitation, gage, Atlas 14, TP40, frequency storm, evapotranspiration, ET, snowmelt | met-model-specialist | hms_update_met-models |
+| run, execute, compute, simulation, parallel, batch, Jython, HMS 3.x, HMS 4.x | run-manager-specialist | hms_execute_runs |
+| DSS, results, peak flow, hydrograph, time series, volume, extract results, RasDss | dss-integration-specialist | hms_extract_dss-results |
+| HMS to RAS, link models, boundary condition, watershed to river, integrated model, spatial matching | hms-ras-workflow-coordinator | hms_link_to-ras |
 | CLAUDE.md, skills, subagents, .agent, memory, documentation, knowledge architecture | hierarchical-knowledge-curator | (no skill activation) |
-| clone basin, clone met, clone run, QAQC, scenario comparison, non-destructive | (appropriate specialist) | cloning-hms-components |
-| HMS version, HMS 3.x vs 4.x, Python 2 compatibility, multi-version testing | run-manager-specialist | managing-hms-versions |
-| HMS internals, decompilation, class files, HEC-HMS source code | (handle directly or delegate) | investigating-hms-internals |
-| HMS documentation, User's Manual, Technical Reference, release notes, official docs, method parameters | (handle directly or delegate) | querying-hms-documentation |
+| clone basin, clone met, clone run, QAQC, scenario comparison, non-destructive | (appropriate specialist) | hms_clone_components |
+| HMS version, HMS 3.x vs 4.x, Python 2 compatibility, multi-version testing | run-manager-specialist | hms_manage_versions |
+| HMS internals, decompilation, class files, HEC-HMS source code | (handle directly or delegate) | hms_investigate_internals |
+| HMS documentation, User's Manual, Technical Reference, release notes, official docs, method parameters | (handle directly or delegate) | hms_query_docs |
 | documentation, mkdocs, notebook, API docs, ReadTheDocs, GitHub Pages, example notebooks | documentation-generator | (no skill activation) |
 | environment, conda, pip, kernel, import error, module not found, setup environment, hmscmdr_local, hmscmdr_pip | python-environment-manager | (no skill activation) |
 | Claude Code, SKILL.md, memory hierarchy, imports, skills creation, official Anthropic docs | claude-code-guide | (no skill activation) |
@@ -127,19 +127,19 @@ Delegate IMMEDIATELY when task clearly falls into specialist domain:
 ```
 User: "Update curve numbers for all subbasins"
 → Delegate to: basin-model-specialist
-→ Activate skill: parsing-basin-models
+→ Activate skill: hms_parse_basin-models
 ```
 
 ```
 User: "Assign gages to subbasins"
 → Delegate to: met-model-specialist
-→ Activate skill: updating-met-models
+→ Activate skill: hms_update_met-models
 ```
 
 ```
 User: "Execute Run 1 and extract peak flows"
 → Multi-domain: Coordinate run-manager + dss-integration specialists
-→ Activate skills: executing-hms-runs, extracting-dss-results
+→ Activate skills: hms_execute_runs, hms_extract_dss-results
 ```
 
 #### Handle Directly (Simple Queries)
@@ -369,15 +369,15 @@ Stage 3: Extract results
 
 You have access to ALL library skills:
 
-**Execution**: executing-hms-runs
-**Parsing**: parsing-basin-models
-**Updating**: updating-met-models
-**Extracting**: extracting-dss-results
-**Cloning**: cloning-hms-components
-**Linking**: linking-hms-to-hecras
-**Investigation**: investigating-hms-internals
-**Documentation**: querying-hms-documentation
-**Version Management**: managing-hms-versions
+**Execution**: hms_execute_runs
+**Parsing**: hms_parse_basin-models
+**Updating**: hms_update_met-models
+**Extracting**: hms_extract_dss-results
+**Cloning**: hms_clone_components
+**Linking**: hms_link_to-ras
+**Investigation**: hms_investigate_internals
+**Documentation**: hms_query_docs
+**Version Management**: hms_manage_versions
 
 Activate skills when delegating to specialists or handling tasks yourself.
 

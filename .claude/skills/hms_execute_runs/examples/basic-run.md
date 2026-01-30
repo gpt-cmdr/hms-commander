@@ -86,6 +86,6 @@ HmsCmdr.compute_run("Run 1", timeout=7200)
 
 ## Next Steps
 
-- **Extract results**: See `extracting-dss-results` skill
+- **Extract results**: See `hms_extract_dss-results` skill
 - **Batch execution**: See `batch-runs.md`
 - **Parallel execution**: See `parallel-runs.md`

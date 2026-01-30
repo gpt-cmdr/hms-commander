@@ -203,12 +203,12 @@ return f"Analysis complete. See: {output_file}"
 ### 5. Skills Framework Best Practices
 
 **Naming Convention**: Gerund form (verb + -ing)
-- ✅ `executing-hms-runs`
-- ✅ `parsing-basin-models`
-- ✅ `updating-met-models`
-- ✅ `cloning-hms-components`
-- ✅ `extracting-dss-results`
-- ✅ `managing-hms-versions`
+- ✅ `hms_execute_runs`
+- ✅ `hms_parse_basin-models`
+- ✅ `hms_update_met-models`
+- ✅ `hms_clone_components`
+- ✅ `hms_extract_dss-results`
+- ✅ `hms_manage_versions`
 - ❌ `run-executor` (noun, not verb)
 - ❌ `execute-runs` (imperative, not gerund)
 - ❌ `HMS-helper` (generic, not specific)
@@ -295,7 +295,7 @@ name: basin-model-specialist
 description: Expert in HEC-HMS basin model operations...
 model: sonnet
 tools: [Read, Edit, Grep]
-skills: [parsing-basin-models, cloning-hms-components]
+skills: [hms_parse_basin-models, hms_clone_components]
 working_directory: hms_commander/
 ---
 ```
@@ -356,8 +356,8 @@ working_directory: hms_commander/
 # Task Backlog
 
 ## Ready (actionable now)
-- [ ] Create executing-hms-runs skill
-- [ ] Create parsing-basin-models skill
+- [ ] Create hms_execute_runs skill
+- [ ] Create hms_parse_basin-models skill
 
 ## Blocked (waiting on something)
 - [ ] Create integration tests (waiting for skills completion)
@@ -455,7 +455,7 @@ mv .claude/outputs/basin-model-specialist/ .old/outputs-2025-12-17/
 - .claude/outputs/basin-model-specialist/subbasin_analysis_2025-12-10.md
   → Pattern extracted to .claude/rules/hec-hms/basin-validation-patterns.md
 - .claude/outputs/met-model-specialist/gage_assignment_2025-12-09.md
-  → Workflow added to .claude/skills/updating-met-models/
+  → Workflow added to .claude/skills/hms_update_met-models/
 
 **Recommendation**: Move to .old/outputs-2025-12-17/ ?
 
@@ -637,9 +637,9 @@ See `.claude/rules/testing/` for complete approaches.
 **Size**: SKILL.md < 500 lines, unlimited reference/
 
 **Example skills**:
-- `.claude/skills/executing-hms-runs/`
-- `.claude/skills/parsing-basin-models/`
-- `.claude/skills/updating-met-models/`
+- `.claude/skills/hms_execute_runs/`
+- `.claude/skills/hms_parse_basin-models/`
+- `.claude/skills/hms_update_met-models/`
 
 #### hms_agents/ (Production automation)
 **Use for**:
@@ -782,7 +782,7 @@ def compute_run(run_name: str, hms_object=None, timeout: int = 3600) -> bool:
 - Spatial matching required (HMS outlets → RAS cross sections)
 
 **Relevant Skills & Subagents**:
-- `.claude/skills/linking-hms-to-hecras/` - HMS side workflow
+- `.claude/skills/hms_link_to-ras/` - HMS side workflow
 - `.claude/agents/hms-ras-workflow-coordinator.md` - Coordinates both tools
 - Cross-reference: `ras-commander/.claude/skills/importing-hms-boundaries/`
 
@@ -909,7 +909,7 @@ cd hms_commander/
 - Multi-step workflow that ANY agent can use
 - How-to guide for library functionality
 - Discoverable capability for natural language activation
-- Example: "How do I execute HMS runs?" → `executing-hms-runs` skill
+- Example: "How do I execute HMS runs?" → `hms_execute_runs` skill
 
 **Create a Subagent when**:
 - Specialized domain requiring dedicated agent
@@ -924,7 +924,7 @@ cd hms_commander/
 - How to use hms-commander APIs
 - Part of hms-commander framework
 - Teaches library usage patterns
-- Example: executing-hms-runs, parsing-basin-models, updating-met-models
+- Example: hms_execute_runs, hms_parse_basin-models, hms_update_met-models
 
 **hms_agents/** (Domain automation):
 - Production-ready automation capabilities

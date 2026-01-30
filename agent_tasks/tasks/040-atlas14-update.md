@@ -217,9 +217,9 @@ print(f"Met model: {run_data['met']}")
 ## Related Skills
 
 **Skills activated**:
-- `updating-met-models` - Meteorologic model operations
-- `cloning-hms-components` - Non-destructive QAQC workflow
-- `executing-hms-runs` - Run execution
+- `hms_update_met-models` - Meteorologic model operations
+- `hms_clone_components` - Non-destructive QAQC workflow
+- `hms_execute_runs` - Run execution
 
 **Subagents**:
 - `met-model-specialist` - Met model expertise

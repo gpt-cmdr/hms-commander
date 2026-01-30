@@ -109,15 +109,15 @@ The `.claude/` directory contains the hierarchical knowledge framework for hms-c
 
 | Skill | Purpose | Trigger Keywords |
 |-------|---------|------------------|
-| **executing-hms-runs/** | Run HMS simulations and batch processing | run simulation, compute, execute HMS, batch runs, parallel execution |
-| **parsing-basin-models/** | Extract and modify basin model data | basin file, subbasin, junction, reach, loss method, transform, routing |
-| **updating-met-models/** | Update precipitation and meteorologic data | met model, precipitation, gage assignment, Atlas 14, TP40, frequency storm |
-| **extracting-dss-results/** | Extract results from DSS files | DSS results, peak flow, hydrograph, time series, volume |
-| **cloning-hms-components/** | Non-destructive component duplication | clone basin, clone met, clone run, QAQC, scenario comparison |
-| **linking-hms-to-hecras/** | HMS hydrograph extraction for RAS | HMS to RAS, boundary condition, watershed to river, integrated model |
-| **investigating-hms-internals/** | HMS source code analysis and decompilation | HMS internals, decompilation, class files, HEC-HMS source |
-| **querying-hms-documentation/** | Query official HMS documentation | HMS documentation, User's Manual, Technical Reference, release notes |
-| **managing-hms-versions/** | Multi-version HMS support (3.x vs 4.x) | HMS version, HMS 3.x, HMS 4.x, Python 2 compatibility |
+| **hms_execute_runs/** | Run HMS simulations and batch processing | run simulation, compute, execute HMS, batch runs, parallel execution |
+| **hms_parse_basin-models/** | Extract and modify basin model data | basin file, subbasin, junction, reach, loss method, transform, routing |
+| **hms_update_met-models/** | Update precipitation and meteorologic data | met model, precipitation, gage assignment, Atlas 14, TP40, frequency storm |
+| **hms_extract_dss-results/** | Extract results from DSS files | DSS results, peak flow, hydrograph, time series, volume |
+| **hms_clone_components/** | Non-destructive component duplication | clone basin, clone met, clone run, QAQC, scenario comparison |
+| **hms_link_to-ras/** | HMS hydrograph extraction for RAS | HMS to RAS, boundary condition, watershed to river, integrated model |
+| **hms_investigate_internals/** | HMS source code analysis and decompilation | HMS internals, decompilation, class files, HEC-HMS source |
+| **hms_query_docs/** | Query official HMS documentation | HMS documentation, User's Manual, Technical Reference, release notes |
+| **hms_manage_versions/** | Multi-version HMS support (3.x vs 4.x) | HMS version, HMS 3.x, HMS 4.x, Python 2 compatibility |
 
 ### How to Use Skills
 
@@ -332,9 +332,9 @@ The `.claude/` directory contains the hierarchical knowledge framework for hms-c
 - **met-model-specialist** - Precipitation updates
 
 ### Most Used Skills
-- **executing-hms-runs** - Run simulations
-- **parsing-basin-models** - Basin operations
-- **extracting-dss-results** - Results analysis
+- **hms_execute_runs** - Run simulations
+- **hms_parse_basin-models** - Basin operations
+- **hms_extract_dss-results** - Results analysis
 
 ### Most Used Commands
 - `/hms-run` - Execute HMS simulation

@@ -1,5 +1,5 @@
 ---
-name: investigating-hms-internals
+name: hms_investigate_internals
 description: |
   Investigates HEC-HMS internals through decompiled Java classes. Provides JythonHms
   API reference, CLI options, version-specific differences (3.x vs 4.x), and guides
@@ -101,7 +101,7 @@ decompile.bat "C:\...\hms.jar" "hms.model.ClassName" output
    - See hms-commander documentation
 
 3. **Project File Parsing**
-   - Use **parsing-basin-models** skill
+   - Use **hms_parse_basin-models** skill
    - Use HmsBasin, HmsMet, HmsControl classes
 
 ---
@@ -367,14 +367,14 @@ Document in knowledge/ if API-relevant
 
 **Complementary use**:
 - hms_doc_query → What's documented
-- investigating-hms-internals → How it works internally
+- hms_investigate_internals → How it works internally
 
 ### update_3_to_4 Agent
 **Purpose**: Migrate HMS projects from 3.x to 4.x
 
 **Uses**: HMS_3x_SUPPORT.md for version differences
 
-### managing-hms-versions Skill
+### hms_manage_versions Skill
 **Purpose**: Detect and work with multiple HMS versions
 
 **Uses**: Version detection patterns from decompilation

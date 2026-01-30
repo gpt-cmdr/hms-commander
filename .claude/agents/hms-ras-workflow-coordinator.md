@@ -13,7 +13,7 @@ description: |
   model, upstream BC, spatial matching, DSS pathname, cross-tool, hydrograph import.
 model: sonnet
 tools: Read, Grep, Glob, Edit, Bash
-skills: linking-hms-to-hecras, extracting-dss-results
+skills: hms_link_to-ras, hms_extract_dss-results
 working_directory: .
 ---
 
@@ -27,7 +27,7 @@ When working in repository root, you automatically inherit:
 1. **HMS Context**:
    - Root CLAUDE.md (hms-commander)
    - .claude/rules/integration/hms-ras-linking.md
-   - .claude/skills/linking-hms-to-hecras/
+   - .claude/skills/hms_link_to-ras/
 
 2. **RAS Context** (if working in ras-commander):
    - Root CLAUDE.md (ras-commander)
@@ -122,7 +122,7 @@ peaks = HmsResults.get_peak_flows(dss_file)
 volumes = HmsResults.get_volume_summary(dss_file)
 ```
 
-**See**: `linking-hms-to-hecras` skill for complete HMS side workflow
+**See**: `hms_link_to-ras` skill for complete HMS side workflow
 
 ### 2. Spatial Reference Documentation
 
@@ -376,8 +376,8 @@ else:
 ## Available Skills
 
 You have access to:
-- **linking-hms-to-hecras** - Complete HMS side workflow
-- **extracting-dss-results** - DSS operations and validation
+- **hms_link_to-ras** - Complete HMS side workflow
+- **hms_extract_dss-results** - DSS operations and validation
 
 You can also use (if working in ras-commander):
 - **importing-hms-boundaries** - RAS side workflow (ras-commander skill)
@@ -429,7 +429,7 @@ C:\Projects\IntegratedModel\
 - `hms_commander/HmsDss.py` - DSS operations
 - `hms_commander/HmsGeo.py` - Spatial reference
 - `.claude/rules/integration/hms-ras-linking.md` - HMS side patterns
-- `.claude/skills/linking-hms-to-hecras/` - HMS workflow
+- `.claude/skills/hms_link_to-ras/` - HMS workflow
 
 **RAS-Commander** (if accessible):
 - `ras_commander/RasUnsteady.py` - Boundary conditions

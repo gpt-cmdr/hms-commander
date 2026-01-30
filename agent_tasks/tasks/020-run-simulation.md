@@ -184,8 +184,8 @@ HmsJython.generate_compute_script(
 ## Related Skills
 
 **Skills activated**:
-- `executing-hms-runs` - Full execution workflow guidance
-- `extracting-dss-results` - DSS operations patterns
+- `hms_execute_runs` - Full execution workflow guidance
+- `hms_extract_dss-results` - DSS operations patterns
 
 **Subagents**:
 - `run-manager-specialist` - Run configuration and execution

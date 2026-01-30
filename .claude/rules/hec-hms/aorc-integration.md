@@ -362,7 +362,7 @@ pip install pygeohydro pynhd geopandas shapely xarray zarr s3fs netCDF4 ras-comm
 
 **Integration**:
 - `.claude/rules/integration/hms-ras-linking.md` - HMS→RAS workflows
-- `.claude/skills/linking-hms-to-hecras/` - HMS side workflow
+- `.claude/skills/hms_link_to-ras/` - HMS side workflow
 
 **Testing**:
 - `.claude/rules/testing/example-projects.md` - HmsExamples usage

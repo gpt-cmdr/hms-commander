@@ -11,7 +11,7 @@ description: |
   extract results, RasDss, HMS to RAS, boundary condition, pathname.
 model: sonnet
 tools: Read, Grep, Glob, Bash
-skills: extracting-dss-results
+skills: hms_extract_dss-results
 working_directory: hms_commander/
 ---
 
@@ -187,7 +187,7 @@ from hms_commander import HmsResults
 hms_flows = HmsResults.get_outflow_timeseries("hms_results.dss", "Outlet")
 
 # Convert to RAS boundary condition
-# (See linking-hms-to-hecras skill in Phase 4)
+# (See hms_link_to-ras skill in Phase 4)
 ```
 
 ## Integration Points
@@ -210,7 +210,7 @@ hms_flows = HmsResults.get_outflow_timeseries("hms_results.dss", "Outlet")
 ## Available Skills
 
 You have access to:
-- **extracting-dss-results** - Complete DSS extraction workflows
+- **hms_extract_dss-results** - Complete DSS extraction workflows
 
 ## Primary Sources
 
@@ -224,7 +224,7 @@ Do NOT duplicate API signatures - read from primary sources.
 ## When to Delegate Back
 
 Delegate back to main agent when:
-- Execution needed (use `executing-hms-runs` skill)
+- Execution needed (use `hms_execute_runs` skill)
 - Basin modifications needed (use `basin-model-specialist`)
 - Met updates needed (use `met-model-specialist`)
 - Multi-domain coordination required

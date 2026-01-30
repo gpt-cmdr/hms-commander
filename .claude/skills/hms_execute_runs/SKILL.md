@@ -1,5 +1,5 @@
 ---
-name: executing-hms-runs
+name: hms_execute_runs
 description: |
   Executes HEC-HMS simulations using HmsCmdr.compute_run(), handles parallel
   execution across multiple runs, and manages Jython script generation. Use when
@@ -165,12 +165,12 @@ success, stdout, stderr = HmsJython.execute_script(
 ## Integration Points
 
 **Before Execution**:
-- Use `HmsBasin` to modify parameters (see `parsing-basin-models` skill)
-- Use `HmsMet` to update precipitation (see `updating-met-models` skill)
+- Use `HmsBasin` to modify parameters (see `hms_parse_basin-models` skill)
+- Use `HmsMet` to update precipitation (see `hms_update_met-models` skill)
 - Use `HmsControl` to set time window (see `.claude/rules/hec-hms/control-files.md`)
 
 **After Execution**:
-- Use `HmsDss` to extract results (see `extracting-dss-results` skill)
+- Use `HmsDss` to extract results (see `hms_extract_dss-results` skill)
 - Use `HmsResults` for analysis (see `.claude/rules/hec-hms/dss-operations.md`)
 
 ## Reference Files
@@ -246,11 +246,11 @@ except Exception as e:
 
 ## Related Skills
 
-- **parsing-basin-models** - Modify parameters before execution
-- **updating-met-models** - Update precipitation before execution
-- **extracting-dss-results** - Process outputs after execution
-- **cloning-hms-components** - Create QAQC comparison runs
-- **managing-hms-versions** - Multi-version testing workflows
+- **hms_parse_basin-models** - Modify parameters before execution
+- **hms_update_met-models** - Update precipitation before execution
+- **hms_extract_dss-results** - Process outputs after execution
+- **hms_clone_components** - Create QAQC comparison runs
+- **hms_manage_versions** - Multi-version testing workflows
 
 ---
 

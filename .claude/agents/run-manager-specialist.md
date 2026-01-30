@@ -10,7 +10,7 @@ description: |
   DSS output, run validation, consistency check, component linking, execution setup.
 model: sonnet
 tools: Read, Grep, Glob, Edit
-skills: cloning-hms-components, executing-hms-runs
+skills: hms_clone_components, hms_execute_runs
 working_directory: hms_commander/
 ---
 
@@ -429,8 +429,8 @@ Configure DSS output paths before execution:
 ## Available Skills
 
 You have access to:
-- **cloning-hms-components** - Complete clone workflow patterns
-- **executing-hms-runs** - HmsCmdr execution patterns
+- **hms_clone_components** - Complete clone workflow patterns
+- **hms_execute_runs** - HmsCmdr execution patterns
 
 ## Primary Sources
 
@@ -447,7 +447,7 @@ Do NOT duplicate API signatures - read from primary sources.
 Delegate back to main agent when:
 - Basin modifications needed (use `basin-model-specialist`)
 - Met modifications needed (use `met-model-specialist`)
-- Execution required (use `executing-hms-runs` skill)
+- Execution required (use `hms_execute_runs` skill)
 - Multi-domain coordination required
 
 ## Key Principles

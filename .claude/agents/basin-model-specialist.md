@@ -11,7 +11,7 @@ description: |
   lag time, time of concentration, baseflow, routing, Muskingum, clone basin.
 model: sonnet
 tools: Read, Grep, Glob, Edit
-skills: parsing-basin-models, cloning-hms-components
+skills: hms_parse_basin-models, hms_clone_components
 working_directory: hms_commander/
 ---
 
@@ -151,8 +151,8 @@ HmsBasin.clone_basin("Baseline", "Alternative", hms_object=hms)
 # 2. Modify alternative
 HmsBasin.set_loss_parameters("project/Alternative.basin", "Sub1", curve_number=90)
 
-# 3. Execute both runs (see executing-hms-runs skill)
-# 4. Compare results (see extracting-dss-results skill)
+# 3. Execute both runs (see hms_execute_runs skill)
+# 4. Compare results (see hms_extract_dss-results skill)
 ```
 
 ## Integration Points
@@ -163,14 +163,14 @@ HmsBasin.set_loss_parameters("project/Alternative.basin", "Sub1", curve_number=9
 - Update loss/transform/baseflow methods
 
 **After Execution**:
-- Use `extracting-dss-results` skill to analyze outputs
+- Use `hms_extract_dss-results` skill to analyze outputs
 - Compare baseline vs updated scenarios
 
 ## Available Skills
 
 You have access to:
-- **parsing-basin-models** - Complete basin parsing workflows
-- **cloning-hms-components** - Non-destructive cloning patterns
+- **hms_parse_basin-models** - Complete basin parsing workflows
+- **hms_clone_components** - Non-destructive cloning patterns
 
 **Activate skills** when users request basin operations.
 
@@ -187,8 +187,8 @@ Do NOT duplicate API signatures - read from primary sources.
 ## When to Delegate Back
 
 Delegate back to main agent when:
-- Task requires execution (use `executing-hms-runs` skill)
-- Need DSS results extraction (use `extracting-dss-results` skill)
+- Task requires execution (use `hms_execute_runs` skill)
+- Need DSS results extraction (use `hms_extract_dss-results` skill)
 - Met model updates needed (use `met-model-specialist`)
 - Multi-domain coordination required
 

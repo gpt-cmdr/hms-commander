@@ -1,5 +1,5 @@
 ---
-name: cloning-hms-components
+name: hms_clone_components
 description: |
   Clones HEC-HMS components (basins, met models, control specs, runs) using the
   CLB Engineering LLM Forward approach. Creates non-destructive, traceable, GUI-verifiable
@@ -219,7 +219,7 @@ for scenario in scenarios[1:]:  # Skip baseline
 
 ## Related Skills
 
-- **parsing-basin-models** - Modify cloned basins
-- **updating-met-models** - Modify cloned met models
-- **executing-hms-runs** - Run cloned scenarios
-- **extracting-dss-results** - Compare results from clones
+- **hms_parse_basin-models** - Modify cloned basins
+- **hms_update_met-models** - Modify cloned met models
+- **hms_execute_runs** - Run cloned scenarios
+- **hms_extract_dss-results** - Compare results from clones
