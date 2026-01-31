@@ -667,11 +667,129 @@ class HmsGeo:
         return round(length, 2)
 
     @staticmethod
+    def create_geojson_diversions(diversions: Dict[str, Dict[str, Any]],
+                                  output_path: Union[str, Path],
+                                  crs_epsg: Optional[str] = None) -> None:
+        """
+        Create GeoJSON file from diversion point data.
+
+        Diversions are HMS elements that split flow between two downstream
+        paths. They are critical for accurate upstream drainage area analysis.
+
+        Args:
+            diversions: Dictionary of diversion data (name -> attributes)
+            output_path: Path to output GeoJSON file
+            crs_epsg: Optional CRS EPSG code (defaults to EPSG:2278)
+
+        Example:
+            >>> diversions = HmsGeo._parse_diversions("model.basin")
+            >>> HmsGeo.create_geojson_diversions(diversions, "hms_diversions.geojson")
+        """
+        output_path = Path(output_path)
+        crs_epsg = crs_epsg or HmsGeo.CRS_EPSG_2278
+
+        features = []
+
+        for name, attrs in diversions.items():
+            x = attrs.get('x') or attrs.get('canvas_x')
+            y = attrs.get('y') or attrs.get('canvas_y')
+
+            if x is None or y is None:
+                continue
+
+            feature = {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [x, y]
+                },
+                "properties": {
+                    "name": name,
+                    "downstream": attrs.get('downstream'),
+                    "divert_to": attrs.get('divert_to'),
+                    "description": attrs.get('description', '')
+                }
+            }
+            features.append(feature)
+
+        geojson = HmsGeo._create_geojson_structure(features, crs_epsg)
+
+        with open(output_path, 'w') as f:
+            json.dump(geojson, f, indent=2)
+
+        logger.info(f"Created diversions GeoJSON with {len(features)} features at: {output_path}")
+
+    @staticmethod
+    def _parse_diversions(basin_path: Union[str, Path]) -> Dict[str, Dict[str, Any]]:
+        """
+        Parse diversion elements from basin file for GIS extraction.
+
+        Internal helper used by extract_all_gis(). Returns dict format
+        compatible with create_geojson_diversions().
+
+        Args:
+            basin_path: Path to .basin file
+
+        Returns:
+            Dict mapping diversion names to their attributes
+        """
+        import re as _re
+
+        basin_path = Path(basin_path)
+
+        try:
+            with open(basin_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            with open(basin_path, 'r', encoding='latin-1') as f:
+                content = f.read()
+
+        diversions = {}
+        pattern = r'Diversion:\s*(.+?)\n(.*?)End:'
+        matches = _re.findall(pattern, content, _re.DOTALL | _re.IGNORECASE)
+
+        for match in matches:
+            name = match[0].strip()
+            block = match[1]
+            attrs = {}
+
+            for line in block.splitlines():
+                line = line.strip()
+                if ':' in line and line != 'End:':
+                    key, value = line.split(':', 1)
+                    attrs[key.strip()] = value.strip()
+
+            diversion_data = {
+                'downstream': attrs.get('Downstream', ''),
+                'divert_to': attrs.get('Divert To', ''),
+                'description': attrs.get('Description', ''),
+            }
+
+            # Parse coordinates
+            try:
+                diversion_data['x'] = float(attrs.get('Canvas X', ''))
+                diversion_data['y'] = float(attrs.get('Canvas Y', ''))
+            except (ValueError, TypeError):
+                pass
+
+            try:
+                diversion_data['canvas_x'] = float(attrs.get('Canvas X', ''))
+                diversion_data['canvas_y'] = float(attrs.get('Canvas Y', ''))
+            except (ValueError, TypeError):
+                pass
+
+            diversions[name] = diversion_data
+
+        return diversions
+
+    @staticmethod
+    @log_call
     def extract_all_gis(basin_path: Union[str, Path],
                        geo_path: Optional[Union[str, Path]] = None,
                        map_path: Optional[Union[str, Path]] = None,
                        output_dir: Optional[Union[str, Path]] = None,
-                       crs_epsg: Optional[str] = None) -> Dict[str, Path]:
+                       crs_epsg: Optional[str] = None,
+                       include_diversions: bool = True) -> Dict[str, Path]:
         """
         Extract all GIS data from HEC-HMS model files to GeoJSON.
 
@@ -684,18 +802,22 @@ class HmsGeo:
             map_path: Path to .map file (optional)
             output_dir: Directory for output files (defaults to basin file directory)
             crs_epsg: Optional CRS EPSG code (defaults to EPSG:2278)
+            include_diversions: If True, extract diversion elements to GeoJSON
+                (default True). Diversions are critical for upstream area analysis.
 
         Returns:
-            Dictionary mapping output type to file path
+            Dictionary mapping output type to file path.
+            When include_diversions=True, includes 'diversions' key.
 
         Example:
             >>> outputs = HmsGeo.extract_all_gis(
             ...     "model.basin",
             ...     geo_path="model.geo",
-            ...     map_path="model.map"
+            ...     map_path="model.map",
+            ...     include_diversions=True
             ... )
             >>> print(outputs.keys())
-            dict_keys(['subbasins', 'junctions', 'reaches', 'boundaries', 'rivers'])
+            dict_keys(['subbasins', 'junctions', 'reaches', 'diversions', 'boundaries', 'rivers'])
         """
         basin_path = Path(basin_path)
         output_dir = Path(output_dir) if output_dir else basin_path.parent
@@ -733,6 +855,17 @@ class HmsGeo:
         output_reaches = output_dir / "hms_reaches.geojson"
         HmsGeo.create_geojson_reaches(reaches, output_reaches, crs_epsg)
         outputs['reaches'] = output_reaches
+
+        # Extract diversions if requested
+        if include_diversions:
+            diversions = HmsGeo._parse_diversions(basin_path)
+            if diversions:
+                output_diversions = output_dir / "hms_diversions.geojson"
+                HmsGeo.create_geojson_diversions(diversions, output_diversions, crs_epsg)
+                outputs['diversions'] = output_diversions
+                logger.info(f"Extracted {len(diversions)} diversions")
+            else:
+                logger.info("No diversions found in basin file")
 
         # Parse and export map file if provided
         if map_path:

@@ -600,6 +600,242 @@ class HmsBasin:
         return new_path
 
     # =========================================================================
+    # Diversion and Network Analysis Methods
+    # =========================================================================
+
+    @staticmethod
+    @log_call
+    def get_diversions(
+        basin_path: Union[str, Path],
+        hms_object=None
+    ) -> pd.DataFrame:
+        """
+        Extract diversion elements from basin model file.
+
+        CRITICAL: Diversions are NOT extracted by HmsGeo or other element methods.
+        Without diversions, upstream drainage area calculations can be
+        catastrophically wrong (e.g., 6 sq mi vs 52 sq mi for South Belt).
+
+        Args:
+            basin_path: Path to the .basin file
+            hms_object: Optional HmsPrj instance
+
+        Returns:
+            DataFrame with columns: name, downstream, divert_to, canvas_x,
+            canvas_y, from_canvas_x, from_canvas_y, description
+
+        Example:
+            >>> diversions = HmsBasin.get_diversions("model.basin")
+            >>> print(diversions[['name', 'downstream', 'divert_to']])
+        """
+        basin_path = Path(basin_path)
+        logger.info(f"Reading diversions from: {basin_path}")
+
+        content = HmsBasin._read_basin_file(basin_path)
+        diversions = HmsBasin._parse_elements(content, "Diversion")
+
+        records = []
+        for name, attrs in diversions.items():
+            record = {
+                'name': name,
+                'downstream': attrs.get('Downstream'),
+                'divert_to': attrs.get('Divert To'),
+                'canvas_x': HmsFileParser.to_numeric(attrs.get('Canvas X')),
+                'canvas_y': HmsFileParser.to_numeric(attrs.get('Canvas Y')),
+                'from_canvas_x': HmsFileParser.to_numeric(attrs.get('From Canvas X')),
+                'from_canvas_y': HmsFileParser.to_numeric(attrs.get('From Canvas Y')),
+                'description': attrs.get('Description', ''),
+            }
+            records.append(record)
+
+        df = pd.DataFrame(records)
+        logger.info(f"Found {len(df)} diversions")
+        return df
+
+    @staticmethod
+    @log_call
+    def get_upstream_network(
+        basin_path: Union[str, Path],
+        hms_object=None
+    ) -> Dict[str, List[Dict[str, str]]]:
+        """
+        Build reverse network lookup: for each element, list what flows into it.
+
+        Includes subbasins, junctions, reaches, AND diversions. This is the
+        inverse of the 'downstream' relationship used for upstream traversal.
+
+        Args:
+            basin_path: Path to the .basin file
+            hms_object: Optional HmsPrj instance
+
+        Returns:
+            dict: {element_name: [{'name': str, 'type': str}, ...]}
+                  Each entry lists all elements that flow INTO element_name.
+
+        Example:
+            >>> network = HmsBasin.get_upstream_network("model.basin")
+            >>> print(network["Junction-1"])
+            [{'name': 'Sub-A', 'type': 'subbasin'}, {'name': 'Reach-1', 'type': 'reach'}]
+        """
+        basin_path = Path(basin_path)
+        logger.info(f"Building upstream network from: {basin_path}")
+
+        content = HmsBasin._read_basin_file(basin_path)
+
+        # Parse all element types
+        element_types = {
+            'subbasin': HmsBasin._parse_elements(content, "Subbasin"),
+            'junction': HmsBasin._parse_elements(content, "Junction"),
+            'reach': HmsBasin._parse_elements(content, "Reach"),
+            'diversion': HmsBasin._parse_elements(content, "Diversion"),
+        }
+
+        from collections import defaultdict
+        upstream_lookup = defaultdict(list)
+
+        for elem_type, elements in element_types.items():
+            for name, attrs in elements.items():
+                downstream = attrs.get('Downstream', '')
+                if downstream:
+                    upstream_lookup[downstream].append({
+                        'name': name,
+                        'type': elem_type
+                    })
+
+                # Diversions also route flow via "Divert To"
+                if elem_type == 'diversion':
+                    divert_to = attrs.get('Divert To', '')
+                    if divert_to:
+                        upstream_lookup[divert_to].append({
+                            'name': name,
+                            'type': 'diversion'
+                        })
+
+        total_connections = sum(len(v) for v in upstream_lookup.values())
+        logger.info(f"Built upstream network: {len(upstream_lookup)} targets, "
+                     f"{total_connections} upstream connections")
+
+        return dict(upstream_lookup)
+
+    @staticmethod
+    @log_call
+    def get_upstream_elements(
+        basin_path: Union[str, Path],
+        target_element: str,
+        hms_object=None
+    ) -> Dict[str, List[str]]:
+        """
+        Find all elements upstream of target (recursive, cycle-safe).
+
+        Traverses the network in reverse (upstream) direction, collecting
+        all subbasins, junctions, reaches, and diversions that contribute
+        flow to the target element.
+
+        Args:
+            basin_path: Path to the .basin file
+            target_element: Name of element to find upstream of
+            hms_object: Optional HmsPrj instance
+
+        Returns:
+            dict: {
+                'subbasins': [name, ...],
+                'junctions': [name, ...],
+                'reaches': [name, ...],
+                'diversions': [name, ...]
+            }
+
+        Example:
+            >>> upstream = HmsBasin.get_upstream_elements("model.basin", "Outlet_J")
+            >>> print(f"Upstream subbasins: {len(upstream['subbasins'])}")
+        """
+        basin_path = Path(basin_path)
+
+        # Build upstream network
+        network = HmsBasin.get_upstream_network(basin_path, hms_object=hms_object)
+
+        # Recursive traversal with cycle detection
+        result = {'subbasins': [], 'junctions': [], 'reaches': [], 'diversions': []}
+        visited = set()
+
+        def _traverse(element_name):
+            if element_name in visited:
+                return
+            visited.add(element_name)
+
+            upstream_elements = network.get(element_name, [])
+            for upstream in upstream_elements:
+                name = upstream['name']
+                elem_type = upstream['type']
+
+                # Add to appropriate list
+                type_key = elem_type + 's'  # subbasin -> subbasins
+                if type_key in result:
+                    result[type_key].append(name)
+
+                # Recurse upstream
+                _traverse(name)
+
+        _traverse(target_element)
+
+        logger.info(f"Upstream of '{target_element}': "
+                     f"{len(result['subbasins'])} subbasins, "
+                     f"{len(result['junctions'])} junctions, "
+                     f"{len(result['reaches'])} reaches, "
+                     f"{len(result['diversions'])} diversions")
+
+        return result
+
+    @staticmethod
+    @log_call
+    def get_contributing_area(
+        basin_path: Union[str, Path],
+        target_element: str,
+        hms_object=None
+    ) -> float:
+        """
+        Calculate total contributing drainage area upstream of target element.
+
+        Combines get_upstream_elements() + area summation from subbasin data.
+        Includes areas routed through diversions.
+
+        Args:
+            basin_path: Path to the .basin file
+            target_element: Name of element to calculate area for
+            hms_object: Optional HmsPrj instance
+
+        Returns:
+            float: Total area in square miles (or model units)
+
+        Example:
+            >>> area = HmsBasin.get_contributing_area("model.basin", "Outlet_J")
+            >>> print(f"Contributing area: {area:.2f} sq mi")
+        """
+        basin_path = Path(basin_path)
+
+        # Get upstream subbasins
+        upstream = HmsBasin.get_upstream_elements(
+            basin_path, target_element, hms_object=hms_object
+        )
+
+        # Get subbasin areas
+        subbasins_df = HmsBasin.get_subbasins(basin_path, hms_object=hms_object)
+
+        # Sum areas of upstream subbasins
+        upstream_names = set(upstream['subbasins'])
+        total_area = 0.0
+
+        for _, row in subbasins_df.iterrows():
+            if row['name'] in upstream_names:
+                area = row.get('area')
+                if area is not None and not pd.isna(area):
+                    total_area += float(area)
+
+        logger.info(f"Contributing area for '{target_element}': {total_area:.2f} "
+                     f"({len(upstream_names)} subbasins)")
+
+        return total_area
+
+    # =========================================================================
     # Private helper methods
     # =========================================================================
 

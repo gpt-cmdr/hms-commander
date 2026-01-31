@@ -137,3 +137,7 @@ m3_hms_projects/
 # Runtime/build artifacts
 cache/
 dist/
+
+# Work-in-progress example notebooks (hold until refined)
+examples/15_upstream_network_analysis.ipynb
+examples/upstream_analysis_outputs/
