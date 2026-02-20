@@ -1038,7 +1038,7 @@ except Exception as e:
     def generate_calibration_script(
         project_path: Union[str, Path],
         run_name: str,
-        parameters: Dict[str, float],
+        parameters: Dict[str, Dict[str, Any]],
         basin_name: Optional[str] = None,
         hms_object=None
     ) -> str:
@@ -1051,15 +1051,36 @@ except Exception as e:
         Args:
             project_path: Path to the HEC-HMS project folder
             run_name: Name of the simulation run
-            parameters: Dictionary of parameter names to values
+            parameters: Dictionary mapping element names to parameter changes.
+                Example: {"Subbasin-1": {"CurveNumber": 75, "Lag": 30}}
             basin_name: Name of basin model (auto-detected if None)
             hms_object: Optional HmsPrj instance
 
         Returns:
             Jython script content as string
+
+        Example:
+            >>> params = {"Sub1": {"CurveNumber": 80, "Lag": 45.0}}
+            >>> script = HmsJython.generate_calibration_script(
+            ...     "C:/Projects/MyProject",
+            ...     "Run 1",
+            ...     params,
+            ...     basin_name="Basin 1"
+            ... )
         """
         project_path = Path(project_path)
         project_name = project_path.name
+
+        # Auto-detect basin name from run configuration if not provided
+        if basin_name is None and hms_object is not None:
+            try:
+                run_config = hms_object.get_run_configuration(run_name)
+                basin_name = run_config.get('basin_model', project_name)
+            except Exception:
+                basin_name = project_name
+
+        if basin_name is None:
+            basin_name = project_name
 
         script = HmsJython.SCRIPT_HEADER.format(
             timestamp=datetime.now().isoformat()
@@ -1072,6 +1093,7 @@ except Exception as e:
 project_path = r"{project_path}"
 project_name = "{project_name}"
 run_name = "{run_name}"
+basin_name = "{basin_name}"
 
 # Open project
 try:
@@ -1080,12 +1102,39 @@ except Exception as e:
     print("CALIBRATION_ERROR: " + str(e))
     JythonHms.Exit(1)
 
-# Apply calibration parameters
+# Open basin model to access elements
+try:
+    basin = JythonHms.OpenBasinModel(basin_name)
+    print("Basin model opened: " + basin_name)
+except Exception as e:
+    print("CALIBRATION_ERROR: Could not open basin: " + str(e))
+    JythonHms.Exit(1)
+
+# Apply calibration parameters to elements
 calibration_params = {parameters}
 print("CALIBRATION_PARAMS: " + str(calibration_params))
 
-# TODO: Apply parameters to appropriate elements
-# This requires knowledge of which elements each parameter applies to
+for element_name, params in calibration_params.items():
+    try:
+        element = basin.getElement(element_name)
+        if element is None:
+            print("CALIBRATION_WARNING: Element not found: " + element_name)
+            continue
+
+        for param_name, param_value in params.items():
+            try:
+                setter_name = "set" + param_name
+                setter = getattr(element, setter_name, None)
+                if setter:
+                    setter(param_value)
+                    print("CALIBRATION_SET: " + element_name + "." + param_name + " = " + str(param_value))
+                else:
+                    print("CALIBRATION_WARNING: No setter for " + element_name + "." + param_name)
+            except Exception as e:
+                print("CALIBRATION_ERROR: Setting " + element_name + "." + param_name + ": " + str(e))
+
+    except Exception as e:
+        print("CALIBRATION_ERROR: Element " + element_name + ": " + str(e))
 
 # Run simulation
 try:

@@ -43,7 +43,7 @@ Usage:
     peaks = HmsResults.get_peak_flows("results.dss")
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "hms-commander contributors"
 
 # Core project management
@@ -66,6 +66,7 @@ from .Decorators import log_call, standardize_path
 
 # GIS extraction
 from .HmsGeo import HmsGeo
+from .HmsSqlite import HmsSqlite
 
 # File operations (Phase 2)
 from .HmsBasin import HmsBasin
@@ -137,6 +138,7 @@ __all__ = [
 
     # GIS Operations
     "HmsGeo",
+    "HmsSqlite",
 
     # Utilities
     "HmsUtils",

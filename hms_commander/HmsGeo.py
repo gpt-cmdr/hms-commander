@@ -29,9 +29,8 @@ class HmsGeo:
     All methods in this class are static and designed to be used without instantiation.
     """
 
-    # Constants
-    CRS_EPSG_2278 = "urn:ogc:def:crs:EPSG::2278"
-    CRS_NAME_2278 = "NAD83 / Texas South Central (ftUS)"
+    # TODO: Audit all files referencing EPSG:2278 (HmsGrid.py, HmsAorc.py, etc.)
+    # to make them CRS-agnostic. See _detect_crs() in HmsPrj for auto-detection.
 
     @staticmethod
     def parse_geo_file(geo_path: Union[str, Path]) -> Dict[str, Dict[str, float]]:
@@ -86,7 +85,7 @@ class HmsGeo:
 
         Args:
             geo_path: Path to the .geo file
-            crs_epsg: CRS of the coordinates (default: EPSG:2278 - Texas South Central)
+            crs_epsg: CRS of the coordinates (e.g. "EPSG:2278")
 
         Returns:
             Tuple of (minx, miny, maxx, maxy) in project CRS
@@ -134,7 +133,7 @@ class HmsGeo:
 
         Args:
             geo_path: Path to the .geo file
-            crs_epsg: CRS of the coordinates (default: EPSG:2278 - Texas South Central)
+            crs_epsg: CRS of the coordinates (e.g. "EPSG:2278")
 
         Returns:
             Tuple of (latitude, longitude) in decimal degrees (WGS84, EPSG:4326)
@@ -172,6 +171,206 @@ class HmsGeo:
 
         logger.info(f"Project centroid (WGS84): {lat:.6f}°N, {abs(lon):.6f}°W")
 
+        return (lat, lon)
+
+    @staticmethod
+    @log_call
+    def get_subbasin_centroid(map_path: Union[str, Path],
+                              subbasin_index: int,
+                              crs_epsg: str) -> Tuple[float, float]:
+        """
+        Get the geometric centroid of a single boundary polygon in project CRS.
+
+        Parses the .map file and builds a shapely Polygon from the boundary
+        at the given index, then returns its centroid coordinates.
+
+        Args:
+            map_path: Path to the .map file
+            subbasin_index: Index into the boundaries list from parse_map_file()
+            crs_epsg: Project CRS (for documentation/logging; coords returned in native CRS)
+
+        Returns:
+            Tuple of (x, y) in project CRS
+
+        Raises:
+            ImportError: If shapely is not installed
+            IndexError: If subbasin_index is out of range
+            ValueError: If boundary has insufficient coordinates
+
+        Example:
+            >>> x, y = HmsGeo.get_subbasin_centroid("model.map", 0, "EPSG:2278")
+            >>> print(f"Centroid: ({x:.1f}, {y:.1f})")
+        """
+        try:
+            from shapely.geometry import Polygon
+        except ImportError:
+            raise ImportError(
+                "shapely is required for centroid calculations. "
+                "Install with: pip install shapely"
+            )
+
+        map_path = Path(map_path)
+        logger.info(f"Computing centroid for boundary index {subbasin_index} from {map_path}")
+
+        map_data = HmsGeo.parse_map_file(map_path)
+        boundaries = map_data['boundaries']
+
+        if subbasin_index < 0 or subbasin_index >= len(boundaries):
+            raise IndexError(
+                f"subbasin_index {subbasin_index} out of range "
+                f"(0-{len(boundaries) - 1})"
+            )
+
+        coords = boundaries[subbasin_index]['coordinates']
+        if len(coords) < 3:
+            raise ValueError(
+                f"Boundary {subbasin_index} has only {len(coords)} coordinates "
+                f"(need at least 3 for a polygon)"
+            )
+
+        poly = Polygon(coords)
+        centroid = poly.centroid
+        x, y = centroid.x, centroid.y
+
+        logger.info(f"Boundary {subbasin_index} centroid ({crs_epsg}): ({x:.1f}, {y:.1f})")
+        return (x, y)
+
+    @staticmethod
+    @log_call
+    def get_subbasin_centroids_latlon(map_path: Union[str, Path],
+                                      crs_epsg: str) -> Dict[int, Tuple[float, float]]:
+        """
+        Get centroids of all boundary polygons, transformed to WGS84.
+
+        Parses the .map file, builds a shapely Polygon for each boundary,
+        computes centroids, and transforms them from the project CRS to
+        EPSG:4326 (WGS84 lat/lon).
+
+        Args:
+            map_path: Path to the .map file
+            crs_epsg: Source CRS for transformation (e.g. "EPSG:2278")
+
+        Returns:
+            Dictionary mapping boundary index to (lat, lon) in decimal degrees
+
+        Raises:
+            ImportError: If shapely or pyproj is not installed
+            ValueError: If no boundaries found
+
+        Example:
+            >>> centroids = HmsGeo.get_subbasin_centroids_latlon("model.map", "EPSG:2278")
+            >>> for idx, (lat, lon) in centroids.items():
+            ...     print(f"Boundary {idx}: {lat:.6f}, {lon:.6f}")
+        """
+        try:
+            from shapely.geometry import Polygon
+        except ImportError:
+            raise ImportError(
+                "shapely is required for centroid calculations. "
+                "Install with: pip install shapely"
+            )
+        try:
+            from pyproj import Transformer
+        except ImportError:
+            raise ImportError(
+                "pyproj is required for coordinate transformation. "
+                "Install with: pip install pyproj"
+            )
+
+        map_path = Path(map_path)
+        logger.info(f"Computing all boundary centroids from {map_path} (CRS: {crs_epsg})")
+
+        map_data = HmsGeo.parse_map_file(map_path)
+        boundaries = map_data['boundaries']
+
+        if not boundaries:
+            raise ValueError(f"No boundaries found in {map_path}")
+
+        transformer = Transformer.from_crs(crs_epsg, "EPSG:4326", always_xy=True)
+        centroids = {}
+
+        for idx, boundary in enumerate(boundaries):
+            coords = boundary['coordinates']
+            if len(coords) < 3:
+                logger.warning(f"Skipping boundary {idx} - only {len(coords)} coordinates")
+                continue
+
+            poly = Polygon(coords)
+            c = poly.centroid
+            lon, lat = transformer.transform(c.x, c.y)
+            centroids[idx] = (lat, lon)
+
+        logger.info(f"Computed {len(centroids)} boundary centroids in WGS84")
+        return centroids
+
+    @staticmethod
+    @log_call
+    def get_combined_centroid_latlon(map_path: Union[str, Path],
+                                     crs_epsg: str) -> Tuple[float, float]:
+        """
+        Get the centroid of the union of all boundary polygons in WGS84.
+
+        Unions all boundary polygons into a single geometry, computes its
+        centroid, and transforms from the project CRS to EPSG:4326.
+
+        Args:
+            map_path: Path to the .map file
+            crs_epsg: Source CRS for transformation (e.g. "EPSG:2278")
+
+        Returns:
+            Tuple of (lat, lon) in decimal degrees (WGS84)
+
+        Raises:
+            ImportError: If shapely or pyproj is not installed
+            ValueError: If no valid boundaries found
+
+        Example:
+            >>> lat, lon = HmsGeo.get_combined_centroid_latlon("model.map", "EPSG:2278")
+            >>> print(f"Combined center: {lat:.6f}, {lon:.6f}")
+        """
+        try:
+            from shapely.geometry import Polygon
+            from shapely.ops import unary_union
+        except ImportError:
+            raise ImportError(
+                "shapely is required for centroid calculations. "
+                "Install with: pip install shapely"
+            )
+        try:
+            from pyproj import Transformer
+        except ImportError:
+            raise ImportError(
+                "pyproj is required for coordinate transformation. "
+                "Install with: pip install pyproj"
+            )
+
+        map_path = Path(map_path)
+        logger.info(f"Computing combined centroid from {map_path} (CRS: {crs_epsg})")
+
+        map_data = HmsGeo.parse_map_file(map_path)
+        boundaries = map_data['boundaries']
+
+        if not boundaries:
+            raise ValueError(f"No boundaries found in {map_path}")
+
+        polygons = []
+        for idx, boundary in enumerate(boundaries):
+            coords = boundary['coordinates']
+            if len(coords) < 3:
+                logger.warning(f"Skipping boundary {idx} - only {len(coords)} coordinates")
+                continue
+            polygons.append(Polygon(coords))
+
+        if not polygons:
+            raise ValueError(f"No valid polygons (3+ coordinates) found in {map_path}")
+
+        combined = unary_union(polygons)
+        centroid = combined.centroid
+
+        transformer = Transformer.from_crs(crs_epsg, "EPSG:4326", always_xy=True)
+        lon, lat = transformer.transform(centroid.x, centroid.y)
+
+        logger.info(f"Combined centroid (WGS84): {lat:.6f}°N, {abs(lon):.6f}°W")
         return (lat, lon)
 
     @staticmethod
@@ -396,7 +595,8 @@ class HmsGeo:
             >>> HmsGeo.create_geojson_subbasins(subs, "subbasins.geojson")
         """
         output_path = Path(output_path)
-        crs_epsg = crs_epsg or HmsGeo.CRS_EPSG_2278
+        if not crs_epsg:
+            raise ValueError("crs_epsg is required (e.g. 'EPSG:2278'). Use HmsPrj.crs_epsg for auto-detected CRS.")
 
         features = []
 
@@ -441,7 +641,8 @@ class HmsGeo:
             crs_epsg: Optional CRS EPSG code (defaults to EPSG:2278)
         """
         output_path = Path(output_path)
-        crs_epsg = crs_epsg or HmsGeo.CRS_EPSG_2278
+        if not crs_epsg:
+            raise ValueError("crs_epsg is required (e.g. 'EPSG:2278'). Use HmsPrj.crs_epsg for auto-detected CRS.")
 
         features = []
 
@@ -483,7 +684,8 @@ class HmsGeo:
             crs_epsg: Optional CRS EPSG code (defaults to EPSG:2278)
         """
         output_path = Path(output_path)
-        crs_epsg = crs_epsg or HmsGeo.CRS_EPSG_2278
+        if not crs_epsg:
+            raise ValueError("crs_epsg is required (e.g. 'EPSG:2278'). Use HmsPrj.crs_epsg for auto-detected CRS.")
 
         features = []
 
@@ -531,7 +733,8 @@ class HmsGeo:
             crs_epsg: Optional CRS EPSG code (defaults to EPSG:2278)
         """
         output_path = Path(output_path)
-        crs_epsg = crs_epsg or HmsGeo.CRS_EPSG_2278
+        if not crs_epsg:
+            raise ValueError("crs_epsg is required (e.g. 'EPSG:2278'). Use HmsPrj.crs_epsg for auto-detected CRS.")
 
         features = []
 
@@ -593,7 +796,8 @@ class HmsGeo:
             crs_epsg: Optional CRS EPSG code (defaults to EPSG:2278)
         """
         output_path = Path(output_path)
-        crs_epsg = crs_epsg or HmsGeo.CRS_EPSG_2278
+        if not crs_epsg:
+            raise ValueError("crs_epsg is required (e.g. 'EPSG:2278'). Use HmsPrj.crs_epsg for auto-detected CRS.")
 
         features = []
 
@@ -686,7 +890,8 @@ class HmsGeo:
             >>> HmsGeo.create_geojson_diversions(diversions, "hms_diversions.geojson")
         """
         output_path = Path(output_path)
-        crs_epsg = crs_epsg or HmsGeo.CRS_EPSG_2278
+        if not crs_epsg:
+            raise ValueError("crs_epsg is required (e.g. 'EPSG:2278'). Use HmsPrj.crs_epsg for auto-detected CRS.")
 
         features = []
 
@@ -718,6 +923,38 @@ class HmsGeo:
             json.dump(geojson, f, indent=2)
 
         logger.info(f"Created diversions GeoJSON with {len(features)} features at: {output_path}")
+
+    @staticmethod
+    @log_call
+    def detect_model_type(project_dir: Union[str, Path]) -> str:
+        """
+        Detect whether an HMS project uses gridded or lumped model structure.
+
+        Checks for the presence of .sqlite files in the project directory.
+        Gridded models (Modified Clark, SCS Grid) store spatial geometry in
+        SQLite databases, while lumped models use .geo/.map text files.
+
+        Args:
+            project_dir: Path to the HMS project directory.
+
+        Returns:
+            'gridded' if .sqlite files are found, 'lumped' otherwise.
+
+        Example:
+            >>> model_type = HmsGeo.detect_model_type("HMS_Tickfaw/")
+            >>> print(f"Model type: {model_type}")
+            'gridded'
+        """
+        project_dir = Path(project_dir)
+        if not project_dir.is_dir():
+            raise FileNotFoundError(f"Project directory not found: {project_dir}")
+        sqlite_files = list(project_dir.glob("*.sqlite"))
+        model_type = "gridded" if sqlite_files else "lumped"
+        logger.info(
+            f"Model type: {model_type} "
+            f"({len(sqlite_files)} .sqlite files in {project_dir.name})"
+        )
+        return model_type
 
     @staticmethod
     def _parse_diversions(basin_path: Union[str, Path]) -> Dict[str, Dict[str, Any]]:
@@ -822,7 +1059,8 @@ class HmsGeo:
         basin_path = Path(basin_path)
         output_dir = Path(output_dir) if output_dir else basin_path.parent
         output_dir.mkdir(parents=True, exist_ok=True)
-        crs_epsg = crs_epsg or HmsGeo.CRS_EPSG_2278
+        if not crs_epsg:
+            raise ValueError("crs_epsg is required (e.g. 'EPSG:2278'). Use HmsPrj.crs_epsg for auto-detected CRS.")
 
         logger.info("=" * 70)
         logger.info("HEC-HMS GIS Extraction")

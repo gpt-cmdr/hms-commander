@@ -83,6 +83,15 @@ class HmsPrj:
         self.gage_df: pd.DataFrame = pd.DataFrame()
         self.pdata_df: pd.DataFrame = pd.DataFrame()    # Paired data
 
+        # SQLite grid database discovery
+        self.sqlite_files: List[Path] = []
+        self.is_gridded: bool = False
+
+        # CRS / projection information
+        self.crs = None               # pyproj.CRS object (or None)
+        self.crs_epsg: Optional[str] = None  # str like "EPSG:2278" (or None)
+        self.projection_file: Optional[Path] = None  # Path to .prj file (or None)
+
         # Raw parsed data from project files
         self._project_data: Dict[str, Any] = {}
         self._project_blocks: Dict[str, List[Dict[str, str]]] = {}
@@ -198,6 +207,12 @@ class HmsPrj:
         if load_dss_metadata:
             self._load_dss_metadata()
 
+        # Discover SQLite grid databases (must run before _detect_crs)
+        self._discover_sqlite_files()
+
+        # Auto-detect CRS from SQLite, .prj, or .tif files
+        self._detect_crs()
+
         self.initialized = True
         logger.info(f"HMS project initialized: {self.project_name}")
         logger.info(f"  Version: {self.hms_version}")
@@ -207,8 +222,168 @@ class HmsPrj:
         logger.info(f"  Simulation runs: {len(self.run_df)}")
         logger.info(f"  Gages: {len(self.gage_df)}")
         logger.info(f"  Paired data tables: {len(self.pdata_df)}")
+        if self.is_gridded:
+            logger.info(f"  Model type: gridded ({len(self.sqlite_files)} .sqlite files)")
+        if self.crs_epsg:
+            source = self.projection_file.relative_to(self.project_folder) if self.projection_file else "unknown"
+            logger.info(f"  CRS: {self.crs_epsg} (detected from {source})")
+        elif self.crs:
+            source = self.projection_file.name if self.projection_file else "unknown"
+            logger.info(f"  CRS: custom (no EPSG, detected from {source})")
+        else:
+            logger.info(f"  CRS: Not detected (specify crs_epsg manually)")
 
         return self
+
+    def _discover_sqlite_files(self) -> None:
+        """Discover SQLite grid databases in the project folder.
+
+        Sets self.sqlite_files and self.is_gridded based on presence of
+        .sqlite files, which indicate a gridded HMS model (Modified Clark,
+        SCS Grid).
+        """
+        self.sqlite_files = sorted(self.project_folder.glob("*.sqlite"))
+        self.is_gridded = len(self.sqlite_files) > 0
+        if self.is_gridded:
+            logger.info(f"  Gridded model: {len(self.sqlite_files)} .sqlite files found")
+        else:
+            logger.debug("  Lumped model (no .sqlite files)")
+
+    def _detect_crs(self) -> None:
+        """Auto-detect CRS from SQLite spatial_ref_sys, .prj WKT files, or .tif raster files.
+
+        Detection order:
+            0. Read WKT from SQLite spatial_ref_sys table (gridded models)
+            1. Search for .prj files in project_folder and
+               project_folder/Support_Data/Spatial_Data/
+            2. Search for .tif terrain rasters in project_folder/terrain/
+               and project_folder/maps/
+            3. If nothing found, log a warning.
+        """
+        # --- Strategy 0: SQLite spatial_ref_sys ---
+        if self.sqlite_files:
+            import sqlite3 as _sqlite3
+            try:
+                from pyproj import CRS as PyprojCRS
+            except ImportError:
+                PyprojCRS = None
+
+            for sqlite_file in self.sqlite_files:
+                try:
+                    conn = _sqlite3.connect(str(sqlite_file))
+                    try:
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT srtext FROM spatial_ref_sys LIMIT 1")
+                        row = cursor.fetchone()
+                    finally:
+                        conn.close()
+                    if row and row[0] and row[0].strip():
+                        wkt = row[0].strip()
+                        if PyprojCRS is not None:
+                            crs_obj = PyprojCRS.from_wkt(wkt)
+                            epsg = crs_obj.to_epsg()
+                            self.crs = crs_obj
+                            if epsg:
+                                self.crs_epsg = f"EPSG:{epsg}"
+                            else:
+                                # Fallback: extract AUTHORITY["EPSG","NNNNN"]
+                                # from the end of the WKT (pyproj may fail
+                                # to_epsg() when TOWGS84 params are present)
+                                auth_match = re.search(
+                                    r'AUTHORITY\["EPSG","(\d+)"\]\s*\]?\s*$',
+                                    wkt
+                                )
+                                if auth_match:
+                                    epsg = int(auth_match.group(1))
+                                    self.crs_epsg = f"EPSG:{epsg}"
+                                else:
+                                    # Truly custom CRS - store CRS object
+                                    self.crs_epsg = None
+                            self.projection_file = sqlite_file
+                            logger.debug(
+                                f"CRS detected from {sqlite_file.name}: "
+                                f"{self.crs_epsg or 'custom (no EPSG)'}"
+                            )
+                            return
+                        else:
+                            # No pyproj, store WKT as-is
+                            self.projection_file = sqlite_file
+                            logger.debug(
+                                f"CRS WKT found in {sqlite_file.name} "
+                                "(pyproj not available for parsing)"
+                            )
+                            return
+                except Exception as e:
+                    logger.debug(f"Could not read CRS from {sqlite_file.name}: {e}")
+                    continue
+
+        # --- Strategy 1: .prj WKT files ---
+        try:
+            from pyproj import CRS as PyprojCRS
+        except ImportError:
+            logger.debug("pyproj not installed - skipping .prj CRS detection")
+            PyprojCRS = None
+
+        if PyprojCRS is not None:
+            search_dirs = [
+                self.project_folder,
+                self.project_folder / "Support_Data" / "Spatial_Data",
+            ]
+            for search_dir in search_dirs:
+                if not search_dir.is_dir():
+                    continue
+                for prj_file in search_dir.glob("*.prj"):
+                    try:
+                        wkt = prj_file.read_text(encoding='utf-8').strip()
+                        if not wkt:
+                            continue
+                        crs_obj = PyprojCRS.from_wkt(wkt)
+                        epsg = crs_obj.to_epsg()
+                        if epsg:
+                            self.crs = crs_obj
+                            self.crs_epsg = f"EPSG:{epsg}"
+                            self.projection_file = prj_file
+                            logger.debug(f"CRS detected from {prj_file}: {self.crs_epsg}")
+                            return
+                    except Exception as e:
+                        logger.debug(f"Could not parse CRS from {prj_file}: {e}")
+                        continue
+
+        # --- Strategy 2: .tif raster files ---
+        try:
+            import rasterio
+        except ImportError:
+            logger.debug("rasterio not installed - skipping .tif CRS detection")
+            rasterio = None
+
+        if rasterio is not None:
+            tif_dirs = [
+                self.project_folder / "terrain",
+                self.project_folder / "maps",
+            ]
+            for tif_dir in tif_dirs:
+                if not tif_dir.is_dir():
+                    continue
+                for tif_file in tif_dir.glob("*.tif"):
+                    try:
+                        with rasterio.open(tif_file) as ds:
+                            if ds.crs:
+                                epsg = ds.crs.to_epsg()
+                                if epsg:
+                                    if PyprojCRS is not None:
+                                        self.crs = PyprojCRS.from_epsg(epsg)
+                                    self.crs_epsg = f"EPSG:{epsg}"
+                                    self.projection_file = tif_file
+                                    logger.debug(f"CRS detected from {tif_file}: {self.crs_epsg}")
+                                    return
+                    except Exception as e:
+                        logger.debug(f"Could not read CRS from {tif_file}: {e}")
+                        continue
+
+        logger.warning(
+            "Could not auto-detect CRS. Specify crs_epsg when calling "
+            "methods that require coordinate transformation."
+        )
 
     def _read_file(self, file_path: Path) -> str:
         """Read file content with encoding fallback."""

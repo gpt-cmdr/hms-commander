@@ -4,6 +4,13 @@
 
 ---
 
+## Project Constraints & Proven Workarounds
+
+@.claude/CONSTITUTION.md
+@.claude/LEARNINGS.md
+
+---
+
 ## Python Development Patterns
 
 @.claude/rules/python/static-classes.md
@@ -20,6 +27,7 @@ Additional patterns in `.claude/rules/python/`:
 
 ## HEC-HMS Domain Knowledge
 
+@.claude/rules/hec-hms/critical-bugs-workarounds.md
 @.claude/rules/hec-hms/execution.md
 @.claude/rules/hec-hms/basin-files.md
 @.claude/rules/hec-hms/clone-workflows.md

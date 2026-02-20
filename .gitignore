@@ -134,10 +134,12 @@ C:GHhms-commanderm3_version_testW/
 # HUC watershed downloads (large, regenerable)
 m3_hms_projects/
 
+# Extracted example projects (large, regenerable via HmsExamples)
+hms_example_projects/
+
 # Runtime/build artifacts
 cache/
 dist/
 
-# Work-in-progress example notebooks (hold until refined)
-examples/15_upstream_network_analysis.ipynb
+# Work-in-progress outputs (regenerable)
 examples/upstream_analysis_outputs/
