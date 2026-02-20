@@ -941,7 +941,7 @@ class HmsGeo:
             'gridded' if .sqlite files are found, 'lumped' otherwise.
 
         Example:
-            >>> model_type = HmsGeo.detect_model_type("HMS_Tickfaw/")
+            >>> model_type = HmsGeo.detect_model_type("river_bend/")
             >>> print(f"Model type: {model_type}")
             'gridded'
         """

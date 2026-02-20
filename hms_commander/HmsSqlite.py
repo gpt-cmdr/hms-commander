@@ -105,11 +105,11 @@ class HmsSqlite:
         >>> from hms_commander import HmsSqlite
         >>>
         >>> # Read subbasin polygons
-        >>> subs = HmsSqlite.get_subbasins("TI_Lower.sqlite")
+        >>> subs = HmsSqlite.get_subbasins("Minimum_Facility.sqlite")
         >>> print(f"Found {len(subs)} subbasins")
         >>>
         >>> # Read all layers at once
-        >>> layers = HmsSqlite.read_grid_database("TI_Lower.sqlite")
+        >>> layers = HmsSqlite.read_grid_database("Minimum_Facility.sqlite")
         >>> for name, gdf in layers.items():
         ...     print(f"  {name}: {len(gdf)} features")
     """
@@ -155,7 +155,7 @@ class HmsSqlite:
 
         Example
         -------
-        >>> layers = HmsSqlite.list_layers("TI_Lower.sqlite")
+        >>> layers = HmsSqlite.list_layers("Minimum_Facility.sqlite")
         >>> print(layers)
         """
         sqlite_path = Path(sqlite_path)
@@ -229,9 +229,9 @@ class HmsSqlite:
 
         Example
         -------
-        >>> wkt = HmsSqlite.get_crs("TI_Lower.sqlite")
-        >>> print(wkt[:60])
-        'PROJCS["NAD_1983_Louisiana_South_ftUS",...'
+        >>> wkt = HmsSqlite.get_crs("Minimum_Facility.sqlite")
+        >>> print(wkt[:50])
+        'PROJCS["NAD83 / UTM zone 16N",...'
         """
         sqlite_path = Path(sqlite_path)
         if not sqlite_path.exists():
@@ -286,9 +286,8 @@ class HmsSqlite:
 
         Example
         -------
-        >>> subs = HmsSqlite.get_subbasins("TI_Lower.sqlite")
+        >>> subs = HmsSqlite.get_subbasins("Minimum_Facility.sqlite")
         >>> print(f"Found {len(subs)} subbasins")
-        >>> print(f"Total area: {subs['area_sqkm'].sum():.1f} km2")
         """
         return HmsSqlite._read_layer(sqlite_path, "subbasin2d")
 
@@ -326,7 +325,7 @@ class HmsSqlite:
 
         Example
         -------
-        >>> reaches = HmsSqlite.get_reaches("TI_Lower.sqlite")
+        >>> reaches = HmsSqlite.get_reaches("Minimum_Facility.sqlite")
         >>> print(f"Found {len(reaches)} reaches")
         """
         return HmsSqlite._read_layer(sqlite_path, "reach2d")
@@ -360,7 +359,7 @@ class HmsSqlite:
 
         Example
         -------
-        >>> outlets = HmsSqlite.get_outlets("TI_Lower.sqlite")
+        >>> outlets = HmsSqlite.get_outlets("Minimum_Facility.sqlite")
         >>> for _, row in outlets.iterrows():
         ...     print(f"  {row['name']}: ({row.geometry.x:.1f}, {row.geometry.y:.1f})")
         """
@@ -394,7 +393,7 @@ class HmsSqlite:
 
         Example
         -------
-        >>> junctions = HmsSqlite.get_junctions("TI_Lower.sqlite")
+        >>> junctions = HmsSqlite.get_junctions("Minimum_Facility.sqlite")
         >>> print(f"Found {len(junctions)} junctions")  # Often 0
         """
         return HmsSqlite._read_layer(sqlite_path, "junction")
@@ -427,7 +426,7 @@ class HmsSqlite:
 
         Example
         -------
-        >>> cells = HmsSqlite.get_discretization("TI_Lower.sqlite")
+        >>> cells = HmsSqlite.get_discretization("Minimum_Facility.sqlite")
         >>> print(f"Found {len(cells)} grid cells")
         """
         return HmsSqlite._read_layer(sqlite_path, "discretization")
@@ -465,7 +464,7 @@ class HmsSqlite:
 
         Example
         -------
-        >>> layers = HmsSqlite.read_grid_database("TI_Lower.sqlite")
+        >>> layers = HmsSqlite.read_grid_database("Minimum_Facility.sqlite")
         >>> for name, gdf in layers.items():
         ...     print(f"  {name}: {len(gdf)} features")
         """
@@ -525,7 +524,7 @@ class HmsSqlite:
 
         Example
         -------
-        >>> files = HmsSqlite.discover_sqlite_files("HMS_Tickfaw/")
+        >>> files = HmsSqlite.discover_sqlite_files("river_bend/")
         >>> print(f"Found {len(files)} SQLite files")
         """
         project_dir = Path(project_dir)
@@ -575,9 +574,9 @@ class HmsSqlite:
 
         Example
         -------
-        >>> subs_geo = HmsSqlite.get_subbasins("TI_Lower.sqlite")
+        >>> subs_geo = HmsSqlite.get_subbasins("Minimum_Facility.sqlite")
         >>> from hms_commander import HmsBasin
-        >>> subs_params = HmsBasin.get_subbasins("TI_Lower.basin")
+        >>> subs_params = HmsBasin.get_subbasins("Minimum_Facility.basin")
         >>> merged = HmsSqlite.join_with_parameters(subs_geo, subs_params)
         >>> print(f"Merged: {len(merged)} rows with geometry + parameters")
         """

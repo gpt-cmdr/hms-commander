@@ -135,16 +135,36 @@ class DssCore:
 
         # Set JAVA_HOME if not already set
         if 'JAVA_HOME' not in os.environ:
-            # Try to find Java
-            java_candidates = [
-                Path("C:/Program Files/Java/jre1.8.0_471"),
-                Path("C:/Program Files/Java/jdk-11"),
-                Path("C:/Program Files/Java/jdk-17"),
+            java_candidates = []
+
+            # Check HMS-bundled JREs first (most reliable on Windows)
+            if os.name == 'nt':
+                for hms_dir in [Path("C:/Program Files/HEC/HEC-HMS"),
+                                Path("C:/Program Files (x86)/HEC/HEC-HMS")]:
+                    if hms_dir.exists():
+                        # Sort versions descending to prefer newest
+                        versions = sorted(hms_dir.iterdir(), reverse=True)
+                        for v in versions:
+                            jre = v / "jre"
+                            if jre.exists() and (jre / "bin").exists():
+                                java_candidates.append(jre)
+
+            # Standard Java installations
+            java_candidates.extend([
                 Path("C:/Program Files/Java/jdk-21"),
-                Path("C:/Program Files (x86)/Java/jre1.8.0_471"),
-                Path("/usr/lib/jvm/java-11-openjdk"),
+                Path("C:/Program Files/Java/jdk-17"),
+                Path("C:/Program Files/Java/jdk-11"),
                 Path("/usr/lib/jvm/java-17-openjdk"),
-            ]
+                Path("/usr/lib/jvm/java-11-openjdk"),
+            ])
+
+            # Also scan C:/Program Files/Java/ for any JRE/JDK
+            java_base = Path("C:/Program Files/Java")
+            if java_base.exists():
+                for d in sorted(java_base.iterdir(), reverse=True):
+                    if d.is_dir() and (d / "bin").exists():
+                        java_candidates.append(d)
+
             for java_home in java_candidates:
                 if java_home.exists():
                     os.environ['JAVA_HOME'] = str(java_home)

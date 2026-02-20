@@ -192,20 +192,38 @@ class HmsUtils:
         """
         Parse HMS date/time strings to datetime.
 
+        Handles multiple HMS date formats:
+        - "16 January 1973" (full month, spaces)
+        - "16 Jan 1973" (abbreviated month, spaces)
+        - "16Jan1973" (compact, no spaces)
+
         Args:
-            date_str: Date string in HMS format (e.g., "01Jan2020")
+            date_str: Date string in any HMS format
             time_str: Time string (e.g., "00:00")
 
         Returns:
             datetime object
 
         Example:
-            >>> dt = HmsUtils.parse_hms_date("15Mar2020", "12:30")
+            >>> dt = HmsUtils.parse_hms_date("15 March 2020", "12:30")
             >>> print(dt)
             2020-03-15 12:30:00
         """
         datetime_str = f"{date_str} {time_str}"
-        return datetime.strptime(datetime_str, "%d%b%Y %H:%M")
+        formats = [
+            "%d %B %Y %H:%M",   # "16 January 1973 03:00"
+            "%d %b %Y %H:%M",   # "16 Jan 1973 03:00"
+            "%d%b%Y %H:%M",     # "16Jan1973 03:00"
+        ]
+        for fmt in formats:
+            try:
+                return datetime.strptime(datetime_str, fmt)
+            except ValueError:
+                continue
+        raise ValueError(
+            f"Error parsing date/time: time data '{datetime_str}' "
+            f"does not match any HMS date format"
+        )
 
     @staticmethod
     @log_call
