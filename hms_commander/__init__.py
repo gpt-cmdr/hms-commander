@@ -43,7 +43,7 @@ Usage:
     peaks = HmsResults.get_peak_flows("results.dss")
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 __author__ = "hms-commander contributors"
 
 # Core project management
