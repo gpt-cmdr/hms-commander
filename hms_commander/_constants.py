@@ -432,6 +432,142 @@ SUPPORTED_ENCODINGS: Final[List[str]] = ['utf-8', 'latin-1', 'cp1252']
 # Regular expressions for matching HMS result types in DSS pathnames.
 # The C-part of DSS pathnames indicates the data type (FLOW, PRECIP, etc.).
 
+# =========================================================================
+# BATCH PARAMETER MAPPING DICTS
+# =========================================================================
+# Maps HMS file keys to snake_case DataFrame columns for batch read/write.
+# Each dict maps HMS_file_key -> snake_case_column_name.
+# Reverse maps are auto-generated for writing back to HMS files.
+
+LOSS_PARAM_MAP: Final[Dict[str, str]] = {
+    'LossRate': 'loss_method',
+    'Percent Impervious Area': 'percent_impervious',
+    'Initial Loss': 'initial_loss',
+    'Moisture Deficit': 'moisture_deficit',
+    'Wetting Front Suction': 'wetting_front_suction',
+    'Hydraulic Conductivity': 'hydraulic_conductivity',
+    'Initial Variable': 'initial_variable',
+    # Deficit and Constant
+    'Initial Deficit': 'initial_deficit',
+    'Maximum Deficit': 'maximum_deficit',
+    'Constant Rate': 'constant_rate',
+    'Percolation Rate': 'percolation_rate',
+    # SCS Curve Number
+    'Curve Number': 'curve_number',
+    'Initial Abstraction': 'initial_abstraction',
+    # Initial and Constant
+    'Initial Rate': 'initial_rate',
+    # Smith Parlange
+    'Saturated Conductivity': 'saturated_conductivity',
+    'Wetting Front Capillary': 'wetting_front_capillary',
+    # Note: 'Initial Variable' also appears in ROUTING_PARAM_MAP (Muskingum-Cunge).
+    # In loss context: Green & Ampt initial condition type.
+    # In routing context: Muskingum-Cunge initial condition type.
+    # No collision because they operate on different element types (Subbasin vs Reach).
+    # Soil Moisture Accounting
+    'Soil': 'soil',
+    'Groundwater 1': 'groundwater_1',
+    'Groundwater 2': 'groundwater_2',
+    'Max Infiltration': 'max_infiltration',
+}
+"""Maps HMS loss parameter file keys to snake_case column names."""
+
+LOSS_PARAM_REVERSE_MAP: Final[Dict[str, str]] = {v: k for k, v in LOSS_PARAM_MAP.items()}
+"""Reverse map: snake_case column names to HMS file keys."""
+
+TRANSFORM_PARAM_MAP: Final[Dict[str, str]] = {
+    'Transform': 'transform_method',
+    # Clark Unit Hydrograph
+    'Time of Concentration': 'time_of_concentration',
+    'Storage Coefficient': 'storage_coefficient',
+    'Clark Method': 'clark_method',
+    # SCS Unit Hydrograph
+    'Lag': 'lag',
+    'Graph Type': 'graph_type',
+    # Snyder
+    'Snyder Tp': 'snyder_tp',
+    'Snyder Cp': 'snyder_cp',
+    # Kinematic Wave
+    'Number of Subreaches': 'number_of_subreaches',
+}
+"""Maps HMS transform parameter file keys to snake_case column names."""
+
+TRANSFORM_PARAM_REVERSE_MAP: Final[Dict[str, str]] = {v: k for k, v in TRANSFORM_PARAM_MAP.items()}
+"""Reverse map: snake_case column names to HMS file keys."""
+
+BASEFLOW_PARAM_MAP: Final[Dict[str, str]] = {
+    'Baseflow': 'baseflow_method',
+    # Recession
+    'Recession Factor': 'recession_factor',
+    'Initial Discharge': 'initial_discharge',
+    'Threshold Type': 'threshold_type',
+    'Threshold Flow': 'threshold_flow',
+    'Threshold Ratio': 'threshold_ratio',
+    # Linear Reservoir
+    'GW 1 Initial': 'gw1_initial',
+    'GW 1 Coefficient': 'gw1_coefficient',
+    'GW 1 Reservoirs': 'gw1_reservoirs',
+    'GW 2 Initial': 'gw2_initial',
+    'GW 2 Coefficient': 'gw2_coefficient',
+    'GW 2 Reservoirs': 'gw2_reservoirs',
+    # Bounded Recession
+    'Max Baseflow': 'max_baseflow',
+    # Constant Monthly
+    'January Baseflow': 'january_baseflow',
+    'February Baseflow': 'february_baseflow',
+    'March Baseflow': 'march_baseflow',
+    'April Baseflow': 'april_baseflow',
+    'May Baseflow': 'may_baseflow',
+    'June Baseflow': 'june_baseflow',
+    'July Baseflow': 'july_baseflow',
+    'August Baseflow': 'august_baseflow',
+    'September Baseflow': 'september_baseflow',
+    'October Baseflow': 'october_baseflow',
+    'November Baseflow': 'november_baseflow',
+    'December Baseflow': 'december_baseflow',
+}
+"""Maps HMS baseflow parameter file keys to snake_case column names."""
+
+BASEFLOW_PARAM_REVERSE_MAP: Final[Dict[str, str]] = {v: k for k, v in BASEFLOW_PARAM_MAP.items()}
+"""Reverse map: snake_case column names to HMS file keys."""
+
+ROUTING_PARAM_MAP: Final[Dict[str, str]] = {
+    'Route': 'route_method',
+    # Muskingum
+    'Muskingum K': 'muskingum_k',
+    'Muskingum x': 'muskingum_x',
+    'Muskingum Steps': 'muskingum_steps',
+    # Lag
+    'Lag': 'lag',
+    # Modified Puls
+    'Number of Reaches': 'number_of_reaches',
+    'Initial Outflow Equals Inflow': 'initial_outflow_equals_inflow',
+    'Storage Outflow Table Name': 'storage_outflow_table_name',
+    # Muskingum-Cunge
+    'Channel': 'channel',
+    'Length': 'length',
+    'Energy Slope': 'energy_slope',
+    'Mannings n': 'mannings_n',
+    'Left Mannings n': 'left_mannings_n',
+    'Right Mannings n': 'right_mannings_n',
+    'Cross Section Name': 'cross_section_name',
+    # Note: 'Initial Variable' also appears in LOSS_PARAM_MAP (Green & Ampt).
+    # No collision because they operate on different element types (Subbasin vs Reach).
+    'Initial Variable': 'initial_variable',
+    'Space-Time Method': 'space_time_method',
+    'Index Parameter Type': 'index_parameter_type',
+    'Index Celerity': 'index_celerity',
+    'Index Flow': 'index_flow',
+    'Maximum Depth Iterations': 'maximum_depth_iterations',
+    'Maximum Route Step Iterations': 'maximum_route_step_iterations',
+    # Channel Loss (shared)
+    'Channel Loss': 'channel_loss',
+}
+"""Maps HMS routing parameter file keys to snake_case column names."""
+
+ROUTING_PARAM_REVERSE_MAP: Final[Dict[str, str]] = {v: k for k, v in ROUTING_PARAM_MAP.items()}
+"""Reverse map: snake_case column names to HMS file keys."""
+
 HMS_RESULT_PATTERNS: Final[Dict[str, str]] = {
     'flow': r'/FLOW[^/]*/|/FLOW/',
     'flow-total': r'/FLOW/',

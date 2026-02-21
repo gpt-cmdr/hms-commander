@@ -8,7 +8,7 @@ All methods are static and designed for internal use by HMS file
 operation classes.
 """
 from pathlib import Path
-from typing import Dict, Any, Tuple, Union, Optional
+from typing import Dict, Any, List, Tuple, Union, Optional
 import re
 
 from .LoggingConfig import get_logger
@@ -114,6 +114,41 @@ class HmsFileParser:
             elements[name] = attrs
 
         return elements
+
+    @staticmethod
+    def find_all_blocks(
+        content: str,
+        block_keyword: str
+    ) -> List[Tuple[re.Match, str, Dict[str, str]]]:
+        """
+        Find all blocks of a given type, returning match objects with positions.
+
+        Unlike parse_blocks() which returns only parsed data, this method
+        preserves the regex Match objects so callers can do positional
+        replacement (e.g., reverse-iteration for in-place editing).
+
+        Args:
+            content: HMS file content
+            block_keyword: Block type (Subbasin, Junction, Reach, etc.)
+
+        Returns:
+            List of (match_object, element_name, parsed_attrs) tuples,
+            ordered by position in file.
+
+        Example:
+            >>> blocks = HmsFileParser.find_all_blocks(content, "Subbasin")
+            >>> for match, name, attrs in reversed(blocks):
+            ...     # Edit in reverse order to preserve string offsets
+            ...     content = content[:match.start()] + new_block + content[match.end():]
+        """
+        results = []
+        pattern = rf'({block_keyword}:\s*(.+?)\n)(.*?)(End:)'
+        for match in re.finditer(pattern, content, re.DOTALL | re.IGNORECASE):
+            name = match.group(2).strip()
+            block_body = match.group(3)
+            attrs = HmsFileParser._parse_attribute_block(block_body)
+            results.append((match, name, attrs))
+        return results
 
     @staticmethod
     def _parse_attribute_block(block: str) -> Dict[str, str]:

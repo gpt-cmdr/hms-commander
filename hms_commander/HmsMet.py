@@ -210,6 +210,122 @@ End:
 
     @staticmethod
     @log_call
+    def set_all_gage_assignments(
+        met_path: Union[str, Path],
+        assignments_df: pd.DataFrame,
+        create_backup: bool = True,
+        hms_object=None
+    ) -> Dict:
+        """
+        Set precipitation gage assignments for multiple subbasins from a DataFrame.
+
+        The DataFrame should have columns: subbasin, precip_gage, and optionally
+        weight. Only rows where precip_gage is not NaN are updated.
+
+        Args:
+            met_path: Path to the .met file
+            assignments_df: DataFrame with columns: subbasin, precip_gage, weight
+            create_backup: Create .bak backup before writing (default True)
+            hms_object: Optional HmsPrj instance
+
+        Returns:
+            Summary dict with keys: subbasins_modified, subbasins_not_found,
+            warnings, backup_path
+
+        Example:
+            >>> df = HmsMet.get_gage_assignments("model.met")
+            >>> df['precip_gage'] = 'New_Gage'  # Reassign all
+            >>> result = HmsMet.set_all_gage_assignments("model.met", df)
+        """
+        import shutil
+
+        met_path = Path(met_path)
+        content = HmsMet._read_met_file(met_path)
+
+        summary = {
+            'subbasins_modified': 0,
+            'subbasins_not_found': [],
+            'warnings': [],
+            'backup_path': None,
+        }
+
+        if 'subbasin' not in assignments_df.columns:
+            raise ValueError("assignments_df must have a 'subbasin' column")
+        if 'precip_gage' not in assignments_df.columns:
+            raise ValueError("assignments_df must have a 'precip_gage' column")
+
+        # Create backup
+        if create_backup:
+            backup_path = met_path.with_suffix('.met.bak')
+            shutil.copy2(met_path, backup_path)
+            summary['backup_path'] = str(backup_path)
+            logger.info(f"Created backup: {backup_path}")
+
+        # Build lookup: subbasin_name -> {precip_gage, weight}
+        update_lookup = {}
+        for _, row in assignments_df.iterrows():
+            name = row['subbasin']
+            gage = row.get('precip_gage')
+            if pd.notna(gage):
+                update_lookup[name] = {
+                    'Precip Gage': str(gage),
+                }
+                weight = row.get('weight')
+                if pd.notna(weight):
+                    update_lookup[name]['Weight'] = str(weight)
+
+        # Find all Subbasin blocks with positions
+        blocks = HmsFileParser.find_all_blocks(content, "Subbasin")
+
+        found_names = set()
+
+        # Iterate in reverse order to preserve offsets
+        for match, name, attrs in reversed(blocks):
+            if name not in update_lookup:
+                continue
+
+            found_names.add(name)
+            updates = update_lookup[name]
+            block_body = match.group(3)
+            modified = False
+
+            for param_key, new_value in updates.items():
+                updated_body, changed = HmsFileParser.update_parameter(
+                    block_body, param_key, new_value
+                )
+                if changed:
+                    block_body = updated_body
+                    modified = True
+                elif param_key not in attrs:
+                    # Parameter doesn't exist yet — insert it
+                    block_body = block_body + f"     {param_key}: {new_value}\n"
+                    modified = True
+
+            if modified:
+                header = match.group(1)
+                footer = match.group(4)
+                new_block = header + block_body + footer
+                content = content[:match.start()] + new_block + content[match.end():]
+                summary['subbasins_modified'] += 1
+
+        # Check for names not found
+        for name in update_lookup:
+            if name not in found_names:
+                summary['subbasins_not_found'].append(name)
+
+        if summary['subbasins_not_found']:
+            summary['warnings'].append(
+                f"{len(summary['subbasins_not_found'])} subbasins not found: "
+                f"{summary['subbasins_not_found'][:5]}"
+            )
+
+        HmsFileParser.write_file(met_path, content)
+        logger.info(f"Updated {summary['subbasins_modified']} gage assignments in {met_path.name}")
+
+        return summary
+
+    @staticmethod
+    @log_call
     def get_dss_references(
         met_path: Union[str, Path],
         hms_object=None

@@ -15,7 +15,13 @@ import pandas as pd
 from .LoggingConfig import get_logger
 from .Decorators import log_call
 from ._parsing import HmsFileParser
-from ._constants import LOSS_METHODS, TRANSFORM_METHODS, BASEFLOW_METHODS, ROUTING_METHODS
+from ._constants import (
+    LOSS_METHODS, TRANSFORM_METHODS, BASEFLOW_METHODS, ROUTING_METHODS,
+    LOSS_PARAM_MAP, LOSS_PARAM_REVERSE_MAP,
+    TRANSFORM_PARAM_MAP, TRANSFORM_PARAM_REVERSE_MAP,
+    BASEFLOW_PARAM_MAP, BASEFLOW_PARAM_REVERSE_MAP,
+    ROUTING_PARAM_MAP, ROUTING_PARAM_REVERSE_MAP,
+)
 
 logger = get_logger(__name__)
 
@@ -71,7 +77,7 @@ class HmsBasin:
                 'name': name,
                 'area': HmsFileParser.to_numeric(attrs.get('Area')),
                 'downstream': attrs.get('Downstream'),
-                'loss_method': attrs.get('Loss'),
+                'loss_method': attrs.get('LossRate', attrs.get('Loss')),
                 'transform_method': attrs.get('Transform'),
                 'baseflow_method': attrs.get('Baseflow'),
                 'percent_impervious': HmsFileParser.to_numeric(attrs.get('Percent Impervious Area')),
@@ -188,7 +194,7 @@ class HmsBasin:
             raise ValueError(f"Subbasin '{subbasin_name}' not found in basin file")
 
         attrs = subbasins[subbasin_name]
-        loss_method = attrs.get('Loss', 'None')
+        loss_method = attrs.get('LossRate', attrs.get('Loss', 'None'))
 
         params = {'method': loss_method}
 
@@ -836,8 +842,606 @@ class HmsBasin:
         return total_area
 
     # =========================================================================
+    # Batch Parameter Methods
+    # =========================================================================
+
+    @staticmethod
+    @log_call
+    def get_all_loss_parameters(
+        basin_path: Union[str, Path],
+        hms_object=None
+    ) -> pd.DataFrame:
+        """
+        Get loss parameters for ALL subbasins as a DataFrame.
+
+        Each row is a subbasin. Columns are snake_case parameter names.
+        Parameters not applicable to a subbasin's loss method are NaN.
+
+        Args:
+            basin_path: Path to the .basin file
+            hms_object: Optional HmsPrj instance
+
+        Returns:
+            DataFrame with 'name' column identifying each subbasin and
+            loss parameter columns. Parameters not applicable to a
+            subbasin's method are NaN.
+
+        Example:
+            >>> df = HmsBasin.get_all_loss_parameters("model.basin")
+            >>> print(df[['loss_method', 'hydraulic_conductivity']])
+        """
+        return HmsBasin._get_all_element_params(
+            basin_path, "Subbasin", LOSS_PARAM_MAP
+        )
+
+    @staticmethod
+    @log_call
+    def get_all_transform_parameters(
+        basin_path: Union[str, Path],
+        hms_object=None
+    ) -> pd.DataFrame:
+        """
+        Get transform parameters for ALL subbasins as a DataFrame.
+
+        Args:
+            basin_path: Path to the .basin file
+            hms_object: Optional HmsPrj instance
+
+        Returns:
+            DataFrame with 'name' column identifying each subbasin and
+            transform parameter columns.
+
+        Example:
+            >>> df = HmsBasin.get_all_transform_parameters("model.basin")
+            >>> print(df[['transform_method', 'time_of_concentration']])
+        """
+        return HmsBasin._get_all_element_params(
+            basin_path, "Subbasin", TRANSFORM_PARAM_MAP
+        )
+
+    @staticmethod
+    @log_call
+    def get_all_baseflow_parameters(
+        basin_path: Union[str, Path],
+        hms_object=None
+    ) -> pd.DataFrame:
+        """
+        Get baseflow parameters for ALL subbasins as a DataFrame.
+
+        Args:
+            basin_path: Path to the .basin file
+            hms_object: Optional HmsPrj instance
+
+        Returns:
+            DataFrame with 'name' column identifying each subbasin and
+            baseflow parameter columns.
+
+        Example:
+            >>> df = HmsBasin.get_all_baseflow_parameters("model.basin")
+        """
+        return HmsBasin._get_all_element_params(
+            basin_path, "Subbasin", BASEFLOW_PARAM_MAP
+        )
+
+    @staticmethod
+    @log_call
+    def get_all_routing_parameters(
+        basin_path: Union[str, Path],
+        hms_object=None
+    ) -> pd.DataFrame:
+        """
+        Get routing parameters for ALL reaches as a DataFrame.
+
+        Args:
+            basin_path: Path to the .basin file
+            hms_object: Optional HmsPrj instance
+
+        Returns:
+            DataFrame with 'name' column identifying each reach and
+            routing parameter columns.
+
+        Example:
+            >>> df = HmsBasin.get_all_routing_parameters("model.basin")
+            >>> print(df[['route_method', 'muskingum_k']])
+        """
+        return HmsBasin._get_all_element_params(
+            basin_path, "Reach", ROUTING_PARAM_MAP
+        )
+
+    @staticmethod
+    @log_call
+    def set_all_loss_parameters(
+        basin_path: Union[str, Path],
+        params_df: pd.DataFrame,
+        create_backup: bool = True,
+        hms_object=None
+    ) -> Dict:
+        """
+        Set loss parameters for multiple subbasins from a DataFrame.
+
+        Only non-NaN values in the DataFrame are written. NaN columns are
+        skipped, making it safe to pass a DataFrame from get_all_loss_parameters()
+        with selective edits.
+
+        Args:
+            basin_path: Path to the .basin file
+            params_df: DataFrame with 'name' column and parameter columns
+            create_backup: Create .bak backup before writing (default True)
+            hms_object: Optional HmsPrj instance
+
+        Returns:
+            Summary dict with keys: elements_modified, parameters_changed,
+            elements_not_found, warnings, backup_path
+
+        Example:
+            >>> df = HmsBasin.get_all_loss_parameters("model.basin")
+            >>> df['hydraulic_conductivity'] = 0.05  # Update all
+            >>> result = HmsBasin.set_all_loss_parameters("model.basin", df)
+        """
+        return HmsBasin._set_all_element_params(
+            basin_path, "Subbasin", params_df,
+            LOSS_PARAM_REVERSE_MAP, create_backup
+        )
+
+    @staticmethod
+    @log_call
+    def set_all_transform_parameters(
+        basin_path: Union[str, Path],
+        params_df: pd.DataFrame,
+        create_backup: bool = True,
+        hms_object=None
+    ) -> Dict:
+        """
+        Set transform parameters for multiple subbasins from a DataFrame.
+
+        Args:
+            basin_path: Path to the .basin file
+            params_df: DataFrame with 'name' column and parameter columns
+            create_backup: Create .bak backup before writing (default True)
+            hms_object: Optional HmsPrj instance
+
+        Returns:
+            Summary dict
+
+        Example:
+            >>> df = HmsBasin.get_all_transform_parameters("model.basin")
+            >>> df['time_of_concentration'] *= 1.1  # Increase Tc by 10%
+            >>> result = HmsBasin.set_all_transform_parameters("model.basin", df)
+        """
+        return HmsBasin._set_all_element_params(
+            basin_path, "Subbasin", params_df,
+            TRANSFORM_PARAM_REVERSE_MAP, create_backup
+        )
+
+    @staticmethod
+    @log_call
+    def set_all_baseflow_parameters(
+        basin_path: Union[str, Path],
+        params_df: pd.DataFrame,
+        create_backup: bool = True,
+        hms_object=None
+    ) -> Dict:
+        """
+        Set baseflow parameters for multiple subbasins from a DataFrame.
+
+        Args:
+            basin_path: Path to the .basin file
+            params_df: DataFrame with 'name' column and parameter columns
+            create_backup: Create .bak backup before writing (default True)
+            hms_object: Optional HmsPrj instance
+
+        Returns:
+            Summary dict
+        """
+        return HmsBasin._set_all_element_params(
+            basin_path, "Subbasin", params_df,
+            BASEFLOW_PARAM_REVERSE_MAP, create_backup
+        )
+
+    @staticmethod
+    @log_call
+    def set_all_routing_parameters(
+        basin_path: Union[str, Path],
+        params_df: pd.DataFrame,
+        create_backup: bool = True,
+        hms_object=None
+    ) -> Dict:
+        """
+        Set routing parameters for multiple reaches from a DataFrame.
+
+        Args:
+            basin_path: Path to the .basin file
+            params_df: DataFrame with 'name' column and parameter columns
+            create_backup: Create .bak backup before writing (default True)
+            hms_object: Optional HmsPrj instance
+
+        Returns:
+            Summary dict
+        """
+        return HmsBasin._set_all_element_params(
+            basin_path, "Reach", params_df,
+            ROUTING_PARAM_REVERSE_MAP, create_backup
+        )
+
+    @staticmethod
+    @log_call
+    def export_parameters_csv(
+        basin_path: Union[str, Path],
+        output_csv: Union[str, Path],
+        param_types: Optional[List[str]] = None,
+        hms_object=None
+    ) -> Path:
+        """
+        Export basin parameters to a CSV file for editing in Excel.
+
+        Creates a CSV with comment header rows containing metadata, then
+        standard CSV data. Edit in Excel, then import back with
+        import_parameters_csv().
+
+        Args:
+            basin_path: Path to the .basin file
+            output_csv: Path for the output CSV file
+            param_types: List of parameter types to export. Options:
+                'loss', 'transform', 'baseflow', 'routing'.
+                Default None exports all types.
+            hms_object: Optional HmsPrj instance
+
+        Returns:
+            Path to the created CSV file
+
+        Example:
+            >>> path = HmsBasin.export_parameters_csv("model.basin", "params.csv")
+            >>> # Edit params.csv in Excel
+            >>> HmsBasin.import_parameters_csv("model.basin", "params.csv")
+        """
+        from datetime import datetime
+
+        basin_path = Path(basin_path)
+        output_csv = Path(output_csv)
+
+        if param_types is None:
+            param_types = ['loss', 'transform', 'baseflow', 'routing']
+
+        type_map = {
+            'loss': ('Subbasin', LOSS_PARAM_MAP, 'get_all_loss_parameters'),
+            'transform': ('Subbasin', TRANSFORM_PARAM_MAP, 'get_all_transform_parameters'),
+            'baseflow': ('Subbasin', BASEFLOW_PARAM_MAP, 'get_all_baseflow_parameters'),
+            'routing': ('Reach', ROUTING_PARAM_MAP, 'get_all_routing_parameters'),
+        }
+
+        # Collect DataFrames
+        all_dfs = {}
+        for ptype in param_types:
+            if ptype not in type_map:
+                logger.warning(f"Unknown param_type '{ptype}', skipping")
+                continue
+            getter = getattr(HmsBasin, type_map[ptype][2])
+            df = getter(basin_path, hms_object=hms_object)
+            if not df.empty:
+                all_dfs[ptype] = df
+
+        if not all_dfs:
+            logger.warning("No parameters found to export")
+            return output_csv
+
+        # Write each param_type as its own CSV file (type suffix)
+        # e.g., params_loss.csv, params_transform.csv, etc.
+        written_files = []
+        for ptype, df in all_dfs.items():
+            if output_csv.suffix:
+                type_csv = output_csv.with_name(
+                    output_csv.stem + f'_{ptype}' + output_csv.suffix
+                )
+            else:
+                type_csv = output_csv.with_name(output_csv.name + f'_{ptype}.csv')
+
+            df = df.copy()
+            df.insert(0, 'param_type', ptype)
+
+            header_lines = [
+                f"# HMS Basin Parameters - {ptype}",
+                f"# Source: {basin_path.name}",
+                f"# Exported: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                f"# Import with: HmsBasin.import_parameters_csv(\"{basin_path.name}\", \"{type_csv.name}\")",
+            ]
+            csv_text = df.to_csv(index=False)
+            type_csv.write_text(
+                '\n'.join(header_lines) + '\n' + csv_text,
+                encoding='utf-8'
+            )
+            written_files.append(type_csv)
+            logger.info(f"Exported {ptype} parameters to {type_csv}")
+
+        # Also write a combined file if multiple types
+        if len(all_dfs) > 1:
+            header_lines = [
+                f"# HMS Basin Parameters (combined)",
+                f"# Source: {basin_path.name}",
+                f"# Exported: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                f"# Parameter types: {', '.join(all_dfs.keys())}",
+            ]
+            # Merge all into one wide DataFrame with param_type column
+            combined_parts = []
+            for ptype, df in all_dfs.items():
+                df = df.copy()
+                # Drop all-NA columns to avoid FutureWarning from pd.concat
+                df = df.dropna(axis=1, how='all')
+                df.insert(0, 'param_type', ptype)
+                combined_parts.append(df)
+            combined = pd.concat(combined_parts, ignore_index=True, sort=False)
+            csv_text = combined.to_csv(index=False)
+            output_csv.write_text(
+                '\n'.join(header_lines) + '\n' + csv_text,
+                encoding='utf-8'
+            )
+            written_files.insert(0, output_csv)
+
+        elif len(all_dfs) == 1:
+            # Single type — write directly to the requested path too
+            import shutil
+            shutil.copy2(written_files[0], output_csv)
+            written_files.insert(0, output_csv)
+
+        logger.info(f"Exported parameters to {output_csv}")
+        return output_csv
+
+    @staticmethod
+    @log_call
+    def import_parameters_csv(
+        basin_path: Union[str, Path],
+        input_csv: Union[str, Path],
+        create_backup: bool = True,
+        hms_object=None
+    ) -> Dict:
+        """
+        Import basin parameters from a CSV file previously created by
+        export_parameters_csv().
+
+        The CSV should have a 'param_type' column ('loss', 'transform',
+        'baseflow', 'routing') and a 'name' column. Comment rows starting
+        with '#' are ignored.
+
+        Args:
+            basin_path: Path to the .basin file
+            input_csv: Path to the input CSV file
+            create_backup: Create .bak backup before writing (default True)
+            hms_object: Optional HmsPrj instance
+
+        Returns:
+            Dict with results per param_type:
+            {'loss': {summary}, 'transform': {summary}, ...}
+
+        Example:
+            >>> result = HmsBasin.import_parameters_csv("model.basin", "params.csv")
+            >>> print(result['loss']['elements_modified'])
+        """
+        basin_path = Path(basin_path)
+        input_csv = Path(input_csv)
+
+        df = pd.read_csv(input_csv, comment='#')
+
+        if 'param_type' not in df.columns:
+            raise ValueError(
+                "CSV must have 'param_type' column. "
+                "Use export_parameters_csv() to generate the correct format."
+            )
+
+        if 'name' not in df.columns:
+            raise ValueError("CSV must have 'name' column.")
+
+        results = {}
+        setter_map = {
+            'loss': ('set_all_loss_parameters', LOSS_PARAM_REVERSE_MAP),
+            'transform': ('set_all_transform_parameters', TRANSFORM_PARAM_REVERSE_MAP),
+            'baseflow': ('set_all_baseflow_parameters', BASEFLOW_PARAM_REVERSE_MAP),
+            'routing': ('set_all_routing_parameters', ROUTING_PARAM_REVERSE_MAP),
+        }
+
+        # Only create backup once
+        backup_created = False
+
+        for ptype, group_df in df.groupby('param_type'):
+            if ptype not in setter_map:
+                logger.warning(f"Unknown param_type '{ptype}' in CSV, skipping")
+                continue
+
+            setter_name, _ = setter_map[ptype]
+            setter = getattr(HmsBasin, setter_name)
+
+            # Drop the param_type column before passing to setter
+            param_df = group_df.drop(columns=['param_type'])
+
+            # Only create backup on first write
+            should_backup = create_backup and not backup_created
+            result = setter(basin_path, param_df, create_backup=should_backup, hms_object=hms_object)
+            results[ptype] = result
+
+            if should_backup and result.get('backup_path'):
+                backup_created = True
+
+        logger.info(f"Imported parameters from {input_csv}")
+        return results
+
+    # =========================================================================
     # Private helper methods
     # =========================================================================
+
+    @staticmethod
+    def _get_all_element_params(
+        basin_path: Union[str, Path],
+        element_type: str,
+        param_map: Dict[str, str]
+    ) -> pd.DataFrame:
+        """
+        Generic reader: get parameters for all elements of a type.
+
+        Reads the file once, parses all blocks, maps HMS keys to snake_case
+        columns using param_map.
+
+        Args:
+            basin_path: Path to the .basin file
+            element_type: 'Subbasin' or 'Reach'
+            param_map: Dict mapping HMS file keys to snake_case column names
+
+        Returns:
+            DataFrame with 'name' column plus parameter columns
+        """
+        basin_path = Path(basin_path)
+        content = HmsFileParser.read_file(basin_path)
+        elements = HmsFileParser.parse_blocks(content, element_type)
+
+        records = []
+        for name, attrs in elements.items():
+            record = {'name': name}
+            # Also include Area and Downstream for subbasins
+            if element_type == "Subbasin":
+                record['area'] = HmsFileParser.to_numeric(attrs.get('Area'))
+            for hms_key, col_name in param_map.items():
+                raw_val = attrs.get(hms_key)
+                if raw_val is not None:
+                    record[col_name] = HmsFileParser.to_numeric(raw_val)
+                # Leave absent keys out — they become NaN in DataFrame
+            records.append(record)
+
+        df = pd.DataFrame(records)
+        if not df.empty:
+            # Ensure all param_map columns exist (NaN for missing)
+            for col_name in param_map.values():
+                if col_name not in df.columns:
+                    df[col_name] = pd.NA
+        logger.info(f"Read {len(df)} {element_type} parameter records from {basin_path.name}")
+        return df
+
+    @staticmethod
+    def _set_all_element_params(
+        basin_path: Union[str, Path],
+        element_type: str,
+        params_df: pd.DataFrame,
+        reverse_map: Dict[str, str],
+        create_backup: bool = True
+    ) -> Dict:
+        """
+        Generic writer: set parameters for multiple elements from a DataFrame.
+
+        Reads file once, finds all blocks with positions, iterates in reverse
+        order (to preserve string offsets during replacement), updates non-NaN
+        columns, writes file once.
+
+        Args:
+            basin_path: Path to the .basin file
+            element_type: 'Subbasin' or 'Reach'
+            params_df: DataFrame with 'name' column and parameter columns
+            reverse_map: Dict mapping snake_case column names to HMS file keys
+            create_backup: Create .bak backup before writing
+
+        Returns:
+            Summary dict with keys: elements_modified, parameters_changed,
+            elements_not_found, warnings, backup_path
+        """
+        import shutil
+
+        basin_path = Path(basin_path)
+        content = HmsFileParser.read_file(basin_path)
+
+        summary = {
+            'elements_modified': 0,
+            'parameters_changed': 0,
+            'elements_not_found': [],
+            'warnings': [],
+            'backup_path': None,
+        }
+
+        if 'name' not in params_df.columns:
+            raise ValueError("params_df must have a 'name' column")
+
+        # Create backup
+        if create_backup:
+            backup_path = basin_path.with_suffix('.basin.bak')
+            shutil.copy2(basin_path, backup_path)
+            summary['backup_path'] = str(backup_path)
+            logger.info(f"Created backup: {backup_path}")
+
+        # Build lookup from DataFrame: name -> {col: value} (non-NaN only)
+        df_lookup = {}
+        for _, row in params_df.iterrows():
+            name = row['name']
+            updates = {}
+            for col_name, hms_key in reverse_map.items():
+                if col_name in row.index:
+                    val = row[col_name]
+                    if pd.notna(val):
+                        updates[hms_key] = val
+            if updates:
+                df_lookup[name] = updates
+
+        # Find all blocks with positions
+        blocks = HmsFileParser.find_all_blocks(content, element_type)
+
+        # Track which names from the DataFrame were found in the file
+        found_names = set()
+
+        # Iterate in reverse order to preserve offsets
+        for match, name, attrs in reversed(blocks):
+            if name not in df_lookup:
+                continue
+
+            found_names.add(name)
+            updates = df_lookup[name]
+            block_body = match.group(3)  # The content between header and End:
+            element_modified = False
+
+            for hms_key, new_value in updates.items():
+                # Check if old value differs from new value
+                old_raw = attrs.get(hms_key)
+                if old_raw is not None:
+                    old_numeric = HmsFileParser.to_numeric(old_raw)
+                    try:
+                        if float(old_numeric) == float(new_value):
+                            continue  # Skip — value unchanged
+                    except (ValueError, TypeError):
+                        if str(new_value) == old_raw:
+                            continue  # Skip — string value unchanged
+
+                updated_body, changed = HmsFileParser.update_parameter(
+                    block_body, hms_key, new_value
+                )
+                if changed:
+                    block_body = updated_body
+                    summary['parameters_changed'] += 1
+                    element_modified = True
+                elif old_raw is None:
+                    # Parameter absent from file — warn caller
+                    summary['warnings'].append(
+                        f"Parameter '{hms_key}' not found in {element_type} '{name}', skipped"
+                    )
+
+            if element_modified:
+                # Reconstruct the full block: header + body + End:
+                header = match.group(1)
+                footer = match.group(4)
+                new_block = header + block_body + footer
+                content = content[:match.start()] + new_block + content[match.end():]
+                summary['elements_modified'] += 1
+
+        # Check for names in DataFrame but not in file
+        for name in df_lookup:
+            if name not in found_names:
+                summary['elements_not_found'].append(name)
+
+        if summary['elements_not_found']:
+            summary['warnings'].append(
+                f"{len(summary['elements_not_found'])} elements not found in file: "
+                f"{summary['elements_not_found'][:5]}"
+            )
+
+        # Write modified content
+        HmsFileParser.write_file(basin_path, content)
+        logger.info(
+            f"Updated {summary['elements_modified']} {element_type}s, "
+            f"{summary['parameters_changed']} parameters changed"
+        )
+
+        return summary
 
     @staticmethod
     def _read_basin_file(basin_path: Path) -> str:
