@@ -11,20 +11,22 @@ examples/hms_example_projects/
 
 # Local workspaces / scratch project folders (user-specific)
 workspace/
-projects/
+/projects/
 my_projects/
 test_projects/
 custom_extraction_folder/
 working/
 examples/working/
 
-# Test projects and regenerable outputs (large)
-tests/
-tests/projects/
+# Test artifacts and regenerable outputs (large)
 test_project/
 test_hms33/
 test_output/
 tests/test_output.txt
+# Keep test source and project files but ignore large generated outputs
+tests/**/*.dss
+tests/**/*.log
+tests/**/*.out
 
 # Development notes / decompilation artifacts (too large/noisy for git right now)
 feature_dev_notes/

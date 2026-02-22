@@ -1,0 +1,200 @@
+Gage Manager: A1000000
+     Version: 3.3
+End:
+
+Gage: A120_10_ex
+     Last Modified Date: 20 July 2012
+     Last Modified Time: 18:41:55
+     Units System: English
+     Gage Type: Flow
+     Units: CFS
+     Data Type: INST-VAL
+     Local to Project: YES
+     Start Time: 1 June 2007, 00:00
+     End Time: 4 June 2007, 02:45
+     DSS File: A1000000.dss
+     Pathname: //A120_10_EX/FLOW//5MIN/GAGE/
+End:
+
+Gage: A120_10_uni_ex
+     Last Modified Date: 20 July 2012
+     Last Modified Time: 19:36:12
+     Units System: English
+     Gage Type: Flow
+     Units: CFS
+     Data Type: INST-VAL
+     Local to Project: YES
+     Start Time: 1 June 2007, 00:00
+     End Time: 4 June 2007, 02:45
+     DSS File: A1000000.dss
+     Pathname: //A120_10_UNI_EX/FLOW//5MIN/GAGE/
+End:
+
+Gage: A120_100_ex
+     Last Modified Date: 20 July 2012
+     Last Modified Time: 18:42:38
+     Units System: English
+     Gage Type: Flow
+     Units: CFS
+     Data Type: INST-VAL
+     Local to Project: YES
+     Start Time: 1 June 2007, 00:00
+     End Time: 4 June 2007, 02:45
+     DSS File: A1000000.dss
+     Pathname: //A120_100_EX/FLOW//5MIN/GAGE/
+End:
+
+Gage: A120_100_uni_ex
+     Last Modified Date: 20 July 2012
+     Last Modified Time: 19:37:02
+     Units System: English
+     Gage Type: Flow
+     Units: CFS
+     Data Type: INST-VAL
+     Local to Project: YES
+     Start Time: 1 June 2007, 00:00
+     End Time: 4 June 2007, 02:45
+     DSS File: A1000000.dss
+     Pathname: //A120_100_UNI_EX/FLOW//5MIN/GAGE/
+End:
+
+Gage: A120_10_pr
+     Last Modified Date: 23 July 2012
+     Last Modified Time: 19:07:36
+     Units System: English
+     Gage Type: Flow
+     Units: CFS
+     Data Type: INST-VAL
+     Local to Project: YES
+     Start Time: 1 June 2007, 00:00
+     End Time: 4 June 2007, 02:45
+     DSS File: A1000000.dss
+     Pathname: //A120_10_PR/FLOW//5MIN/GAGE/
+End:
+
+Gage: A120_100_pr
+     Last Modified Date: 23 July 2012
+     Last Modified Time: 19:08:56
+     Units System: English
+     Gage Type: Flow
+     Units: CFS
+     Data Type: INST-VAL
+     Local to Project: YES
+     Start Time: 1 June 2007, 00:00
+     End Time: 4 June 2007, 02:45
+     DSS File: A1000000.dss
+     Pathname: //A120_100_PR/FLOW//5MIN/GAGE/
+End:
+
+Gage: SGDN_100_post
+     Last Modified Date: 3 April 2013
+     Last Modified Time: 18:26:38
+     Units System: English
+     Gage Type: Flow
+     Units: CFS
+     Data Type: INST-VAL
+     Local to Project: YES
+     Start Time: 1 June 2007, 00:00
+     End Time: 4 June 2007, 02:45
+     DSS File: A1000000.dss
+     Pathname: //SGDN_100_POST/FLOW//5MIN/GAGE/
+End:
+
+Gage: SGDN_100_pre
+     Last Modified Date: 3 April 2013
+     Last Modified Time: 18:24:19
+     Units System: English
+     Gage Type: Flow
+     Units: CFS
+     Data Type: INST-VAL
+     Local to Project: YES
+     Start Time: 1 June 2007, 00:00
+     End Time: 4 June 2007, 02:45
+     DSS File: A1000000.dss
+     Pathname: //SGDN_100_PRE/FLOW//5MIN/GAGE/
+End:
+
+Gage: MUD_100_pre
+     Last Modified Date: 3 April 2013
+     Last Modified Time: 18:21:18
+     Units System: English
+     Gage Type: Flow
+     Units: CFS
+     Data Type: INST-VAL
+     Local to Project: YES
+     Start Time: 1 June 2007, 00:00
+     End Time: 4 June 2007, 02:45
+     DSS File: A1000000.dss
+     Pathname: //MUD_100_PRE/FLOW//5MIN/GAGE/
+End:
+
+Gage: MUD_100_post_w
+     Last Modified Date: 3 April 2013
+     Last Modified Time: 18:26:02
+     Units System: English
+     Gage Type: Flow
+     Units: CFS
+     Data Type: INST-VAL
+     Local to Project: YES
+     Start Time: 1 June 2007, 00:00
+     End Time: 4 June 2007, 02:45
+     DSS File: A1000000.dss
+     Pathname: //MUD_100_POST_W/FLOW//5MIN/GAGE/
+End:
+
+Gage: MUD_100_post_wo
+     Last Modified Date: 3 April 2013
+     Last Modified Time: 18:29:53
+     Units System: English
+     Gage Type: Flow
+     Units: CFS
+     Data Type: INST-VAL
+     Local to Project: YES
+     Start Time: 1 June 2007, 00:00
+     End Time: 4 June 2007, 02:45
+     DSS File: A1000000.dss
+     Pathname: //MUD_100_POST_WO/FLOW//5MIN/GAGE/
+End:
+
+Gage: MUD_10_pre_
+     Last Modified Date: 3 April 2013
+     Last Modified Time: 18:30:58
+     Units System: English
+     Gage Type: Flow
+     Units: CFS
+     Data Type: INST-VAL
+     Local to Project: YES
+     Start Time: 1 June 2007, 00:00
+     End Time: 4 June 2007, 02:45
+     DSS File: A1000000.dss
+     Pathname: //MUD_10_PRE_/FLOW//5MIN/GAGE/
+End:
+
+Gage: MUD_10_post_w_
+     Last Modified Date: 3 April 2013
+     Last Modified Time: 18:31:36
+     Units System: English
+     Gage Type: Flow
+     Units: CFS
+     Data Type: INST-VAL
+     Local to Project: YES
+     Start Time: 1 June 2007, 00:00
+     End Time: 4 June 2007, 02:45
+     DSS File: A1000000.dss
+     Pathname: //MUD_10_POST_W_/FLOW//5MIN/GAGE/
+End:
+
+Gage: MUD_10_post_wo_
+     Last Modified Date: 3 April 2013
+     Last Modified Time: 18:32:59
+     Units System: English
+     Gage Type: Flow
+     Units: CFS
+     Data Type: INST-VAL
+     Local to Project: YES
+     Start Time: 1 June 2007, 00:00
+     End Time: 4 June 2007, 02:45
+     DSS File: A1000000.dss
+     Pathname: //MUD_10_POST_WO_/FLOW//5MIN/GAGE/
+End:
+

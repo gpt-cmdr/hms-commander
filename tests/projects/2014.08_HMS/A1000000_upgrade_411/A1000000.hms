@@ -1,0 +1,98 @@
+Project: A1000000
+     Description: HCFCD Unit # A100-00-00                                                               Filename:A1000000.hms                                                                               Version: 2.2.1
+     Version: 4.11
+     Filepath Separator: \
+     DSS File Name: A1000000.dss
+     Time Zone ID: America/New_York
+Met File: 1%_24HR_Atlas14.met
+End:
+
+Precipitation: 1%_24HR
+     Filename: 1__24HR.met
+     Description: 1% Frequency Storm (100-YR) - Region 3
+     Last Modified Date: 12 November 2013
+     Last Modified Time: 12:55:57
+End:
+
+Precipitation: 10%_24HR
+     Filename: 10__24HR.met
+     Description: 10% Frequency Storm (10-YR) - Region 3
+     Last Modified Date: 12 November 2013
+     Last Modified Time: 12:51:17
+End:
+
+Basin: 10PCT_A120D_Split
+     Filename: 10PCT_A120D_Split.basin
+     Description: 
+     Last Modified Date: 11 November 2013
+     Last Modified Time: 20:30:13
+End:
+
+Basin: 1PCT_A120D_Split
+     Filename: 1PCT_A120D_Split.basin
+     Description: 
+     Last Modified Date: 11 November 2013
+     Last Modified Time: 20:24:31
+End:
+
+Basin: A100_10PCT
+     Filename: A100_10PCT.basin
+     Description: 
+     Last Modified Date: 4 December 2008
+     Last Modified Time: 22:19:36
+End:
+
+Basin: A100_1PCT
+     Filename: A100_1PCT.basin
+     Description: 
+     Last Modified Date: 25 August 2014
+     Last Modified Time: 12:22:14
+End:
+
+Basin: Ph1_10PCT
+     Filename: Ph1_10PCT.basin
+     Description: 
+     Last Modified Date: 7 August 2014
+     Last Modified Time: 19:36:44
+End:
+
+Basin: Ph1_1PCT
+     Filename: Ph1_1PCT.basin
+     Description: 
+     Last Modified Date: 7 August 2014
+     Last Modified Time: 19:24:24
+End:
+
+Basin: Post_10PCT
+     Filename: Post_10PCT.basin
+     Description: 
+     Last Modified Date: 11 November 2013
+     Last Modified Time: 20:46:37
+End:
+
+Basin: Post_1PCT
+     Filename: Post_1PCT.basin
+     Description: 
+     Last Modified Date: 11 November 2013
+     Last Modified Time: 20:55:46
+End:
+
+Basin: Pre_10PCT
+     Filename: Pre_10PCT.basin
+     Description: 
+     Last Modified Date: 12 November 2013
+     Last Modified Time: 12:50:58
+End:
+
+Basin: Pre_1PCT
+     Filename: Pre_1PCT.basin
+     Description: 
+     Last Modified Date: 12 November 2013
+     Last Modified Time: 12:55:32
+End:
+
+Control: Control 5
+     FileName: Control_5.control
+     Description: 
+End:
+

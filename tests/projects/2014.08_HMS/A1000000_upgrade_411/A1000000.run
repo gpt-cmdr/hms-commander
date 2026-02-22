@@ -1,0 +1,166 @@
+Run: 1%(100YR)RUN
+     Description: Basin: A100_1PCT  &  Met: 1%_24HR  &  Control: Control 5
+     Log File: A100B100_1_.log
+     DSS File: A1000000.dss
+     Is Save Spatial Results: No
+     Last Modified Date: 10 December 2025
+     Last Modified Time: 21:22:08
+     Last Execution Date: 11 December 2025
+     Last Execution Time: 00:25:29
+     Basin: A100_1PCT
+     Precip: 1%_24HR
+     Control: Control 5
+     Time-Series Output: Save All
+     Time Series Results Manager Start:
+     Time Series Results Manager End:
+End:
+
+Run: 1% A120D Split
+     Default Description: Yes
+     Log File: 1__A120D_Split.log
+     DSS File: A1000000.dss
+     Is Save Spatial Results: No
+     Last Modified Date: 10 December 2025
+     Last Modified Time: 21:22:08
+     Last Execution Date: 11 December 2025
+     Last Execution Time: 00:26:18
+     Basin: 1PCT_A120D_Split
+     Precip: 1%_24HR
+     Control: Control 5
+     Time-Series Output: Save All
+     Time Series Results Manager Start:
+     Time Series Results Manager End:
+End:
+
+Run: 10%(10YR)RUN
+     Description: Basin: A100_10PCT  &  Met: 10%_24HR  &  Control: Control 5
+     Log File: A100B100_10_.log
+     DSS File: A1000000.dss
+     Is Save Spatial Results: No
+     Last Modified Date: 10 December 2025
+     Last Modified Time: 21:22:08
+     Basin: A100_10PCT
+     Precip: 10%_24HR
+     Control: Control 5
+     Time-Series Output: Save All
+     Time Series Results Manager Start:
+     Time Series Results Manager End:
+End:
+
+Run: 10% A120D Split
+     Default Description: Yes
+     Log File: 10__A120D_Split.log
+     DSS File: A1000000.dss
+     Is Save Spatial Results: No
+     Last Modified Date: 10 December 2025
+     Last Modified Time: 21:22:08
+     Basin: 10PCT_A120D_Split
+     Precip: 10%_24HR
+     Control: Control 5
+     Time-Series Output: Save All
+     Time Series Results Manager Start:
+     Time Series Results Manager End:
+End:
+
+Run: Ph1_10PCT_Run
+     Default Description: Yes
+     Log File: Ph1_10PCT_Run.log
+     DSS File: A1000000.dss
+     Is Save Spatial Results: No
+     Last Modified Date: 10 December 2025
+     Last Modified Time: 21:22:08
+     Last Execution Date: 11 December 2025
+     Last Execution Time: 01:35:55
+     Basin: Ph1_10PCT
+     Precip: 10%_24HR
+     Control: Control 5
+     Time-Series Output: Save All
+     Time Series Results Manager Start:
+     Time Series Results Manager End:
+End:
+
+Run: Ph1_1PCT_Run
+     Default Description: Yes
+     Log File: Ph1_1PCT_Run.log
+     DSS File: A1000000.dss
+     Is Save Spatial Results: No
+     Last Modified Date: 10 December 2025
+     Last Modified Time: 21:22:08
+     Last Execution Date: 11 December 2025
+     Last Execution Time: 00:27:05
+     Basin: Ph1_1PCT
+     Precip: 1%_24HR
+     Control: Control 5
+     Time-Series Output: Save All
+     Time Series Results Manager Start:
+     Time Series Results Manager End:
+End:
+
+Run: Post_10PCT_Run
+     Default Description: Yes
+     Log File: Post_10PCT_Run.log
+     DSS File: A1000000.dss
+     Is Save Spatial Results: No
+     Last Modified Date: 10 December 2025
+     Last Modified Time: 21:22:08
+     Last Execution Date: 11 December 2025
+     Last Execution Time: 01:34:09
+     Basin: Post_10PCT
+     Precip: 10%_24HR
+     Control: Control 5
+     Time-Series Output: Save All
+     Time Series Results Manager Start:
+     Time Series Results Manager End:
+End:
+
+Run: Post_1PCT_Run
+     Default Description: Yes
+     Log File: Post_1PCT_Run.log
+     DSS File: A1000000.dss
+     Is Save Spatial Results: No
+     Last Modified Date: 10 December 2025
+     Last Modified Time: 21:22:08
+     Last Execution Date: 11 December 2025
+     Last Execution Time: 00:27:41
+     Basin: Post_1PCT
+     Precip: 1%_24HR
+     Control: Control 5
+     Time-Series Output: Save All
+     Time Series Results Manager Start:
+     Time Series Results Manager End:
+End:
+
+Run: Pre_10PCT_Run
+     Default Description: Yes
+     Log File: Pre_10PCT_Run.log
+     DSS File: A1000000.dss
+     Is Save Spatial Results: No
+     Last Modified Date: 10 December 2025
+     Last Modified Time: 21:22:08
+     Last Execution Date: 11 December 2025
+     Last Execution Time: 01:33:37
+     Basin: Pre_10PCT
+     Precip: 10%_24HR
+     Control: Control 5
+     Time-Series Output: Save All
+     Time Series Results Manager Start:
+     Time Series Results Manager End:
+End:
+
+Run: Pre_1PCT_Run
+     Default Description: Yes
+     Log File: Pre_1PCT_Run.log
+     DSS File: A1000000.dss
+     Is Save Spatial Results: No
+     Last Modified Date: 10 December 2025
+     Last Modified Time: 21:22:08
+     Last Execution Date: 11 December 2025
+     Last Execution Time: 00:29:35
+     Basin: Pre_1PCT
+     Precip: 1%_24HR
+     Control: Control 5
+     Time-Series Output: Save All
+     Time Series Results Manager Start:
+     Time Series Results Manager End:
+End:
+

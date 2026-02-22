@@ -1,0 +1,130 @@
+Run: 1%(100YR)RUN
+     Description: Basin: A100_1PCT  &  Met: 1%_24HR  &  Control: Control 5
+     Log File: A100B100_1_.log
+     DSS File: A1000000.dss
+     Basin: A100_1PCT
+     Precip: 1%_24HR
+     Control: Control 5
+     Precip Last Execution Date: 25 August 2014
+     Precip Last Execution Time: 12:19:50
+     Basin Last Execution Date: 25 August 2014
+     Basin Last Execution Time: 12:20:25
+End:
+
+Run: 1% A120D Split
+     Default Description: Yes
+     Log File: 1__A120D_Split.log
+     DSS File: A1000000.dss
+     Basin: 1PCT_A120D_Split
+     Precip: 1%_24HR
+     Control: Control 5
+     Precip Last Execution Date: 11 November 2013
+     Precip Last Execution Time: 20:26:09
+     Basin Last Execution Date: 11 November 2013
+     Basin Last Execution Time: 20:26:30
+End:
+
+Run: 10%(10YR)RUN
+     Description: Basin: A100_10PCT  &  Met: 10%_24HR  &  Control: Control 5
+     Log File: A100B100_10_.log
+     DSS File: A1000000.dss
+     Basin: A100_10PCT
+     Precip: 10%_24HR
+     Control: Control 5
+     Precip Last Execution Date: 17 October 2012
+     Precip Last Execution Time: 19:20:13
+     Basin Last Execution Date: 17 October 2012
+     Basin Last Execution Time: 19:20:41
+End:
+
+Run: 10% A120D Split
+     Default Description: Yes
+     Log File: 10__A120D_Split.log
+     DSS File: A1000000.dss
+     Basin: 10PCT_A120D_Split
+     Precip: 10%_24HR
+     Control: Control 5
+     Precip Last Execution Date: 11 November 2013
+     Precip Last Execution Time: 20:30:25
+     Basin Last Execution Date: 11 November 2013
+     Basin Last Execution Time: 20:30:45
+End:
+
+Run: Ph1_10PCT_Run
+     Default Description: Yes
+     Log File: Ph1_10PCT_Run.log
+     DSS File: A1000000.dss
+     Basin: Ph1_10PCT
+     Precip: 10%_24HR
+     Control: Control 5
+     Precip Last Execution Date: 7 August 2014
+     Precip Last Execution Time: 19:36:54
+     Basin Last Execution Date: 7 August 2014
+     Basin Last Execution Time: 19:37:31
+End:
+
+Run: Ph1_1PCT_Run
+     Default Description: Yes
+     Log File: Ph1_1PCT_Run.log
+     DSS File: A1000000.dss
+     Basin: Ph1_1PCT
+     Precip: 1%_24HR
+     Control: Control 5
+     Precip Last Execution Date: 28 August 2014
+     Precip Last Execution Time: 12:06:33
+     Basin Last Execution Date: 7 August 2014
+     Basin Last Execution Time: 19:25:16
+End:
+
+Run: Post_10PCT_Run
+     Default Description: Yes
+     Log File: Post_10PCT_Run.log
+     DSS File: A1000000.dss
+     Basin: Post_10PCT
+     Precip: 10%_24HR
+     Control: Control 5
+     Precip Last Execution Date: 6 August 2014
+     Precip Last Execution Time: 13:49:03
+     Basin Last Execution Date: 6 August 2014
+     Basin Last Execution Time: 13:49:37
+End:
+
+Run: Post_1PCT_Run
+     Default Description: Yes
+     Log File: Post_1PCT_Run.log
+     DSS File: A1000000.dss
+     Basin: Post_1PCT
+     Precip: 1%_24HR
+     Control: Control 5
+     Precip Last Execution Date: 6 August 2014
+     Precip Last Execution Time: 13:45:14
+     Basin Last Execution Date: 6 August 2014
+     Basin Last Execution Time: 13:45:49
+End:
+
+Run: Pre_10PCT_Run
+     Default Description: Yes
+     Log File: Pre_10PCT_Run.log
+     DSS File: A1000000.dss
+     Basin: Pre_10PCT
+     Precip: 10%_24HR
+     Control: Control 5
+     Precip Last Execution Date: 12 November 2013
+     Precip Last Execution Time: 12:51:38
+     Basin Last Execution Date: 12 November 2013
+     Basin Last Execution Time: 12:52:09
+End:
+
+Run: Pre_1PCT_Run
+     Default Description: Yes
+     Log File: Pre_1PCT_Run.log
+     DSS File: A1000000.dss
+     Basin: Pre_1PCT
+     Precip: 1%_24HR
+     Control: Control 5
+     Precip Last Execution Date: 12 November 2013
+     Precip Last Execution Time: 13:23:11
+     Basin Last Execution Date: 12 November 2013
+     Basin Last Execution Time: 13:23:45
+End:
+

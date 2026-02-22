@@ -101,3 +101,15 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
+markers = [
+    "requires_hms: test needs HEC-HMS installation",
+    "requires_java: test needs Java/pyjnius",
+    "requires_gis: test needs geopandas/shapely",
+    "requires_network: test needs internet access",
+    "slow: test takes more than 5 seconds",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::FutureWarning",
+]
+addopts = "-v --tb=short --strict-markers"

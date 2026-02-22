@@ -1,0 +1,436 @@
+Meteorology: 1%_24HR
+     Description: 1% Frequency Storm (100-YR) - Region 3
+     Last Modified Date: 12 November 2013
+     Last Modified Time: 12:55:57
+     Version: 3.3
+     Unit System: English
+     Precipitation Method: Frequency Based Hypothetical
+     Snowmelt Method: None
+     Use Basin Model: A100_1PCT
+     Use Basin Model: 1PCT_A120D_Split
+     Use Basin Model: Ph1_1PCT
+     Use Basin Model: Post_1PCT
+     Use Basin Model: Pre_1PCT
+End:
+
+Precip Method Parameters: Frequency Based Hypothetical
+     Exceedence Frequency: 1
+     Single Hypothetical Storm Size: Yes
+     Convert From Annual Series: No
+     Convert to Annual Series: Yes
+     Storm Size: 0.01
+     Total Duration: 1440
+     Time Interval: 5
+     Percent of Duration Before Peak Rainfall: 67
+     Depth: 1.2000
+     Depth: 2.1000
+     Depth: 4.3000
+     Depth: 5.7000
+     Depth: 6.8000
+     Depth: 9.1000
+     Depth: 11.100
+     Depth: 13.500
+     Depth: 0.0
+     Depth: 0.0
+     Depth: 0.0
+     Depth: 0.0
+End:
+
+Subbasin: A100A
+End:
+
+Subbasin: A100B
+End:
+
+Subbasin: A100C
+End:
+
+Subbasin: A100D
+End:
+
+Subbasin: A100E
+End:
+
+Subbasin: A100F
+End:
+
+Subbasin: A100G
+End:
+
+Subbasin: A100H
+End:
+
+Subbasin: A100I
+End:
+
+Subbasin: A100J
+End:
+
+Subbasin: A100K
+End:
+
+Subbasin: A100L
+End:
+
+Subbasin: A100M
+End:
+
+Subbasin: A100N
+End:
+
+Subbasin: A100O
+End:
+
+Subbasin: A100P
+End:
+
+Subbasin: A100Q
+End:
+
+Subbasin: A100R
+End:
+
+Subbasin: A100S
+End:
+
+Subbasin: A100T
+End:
+
+Subbasin: A100U
+End:
+
+Subbasin: A10404A
+End:
+
+Subbasin: A10407A
+End:
+
+Subbasin: A10413A
+End:
+
+Subbasin: A104A
+End:
+
+Subbasin: A104B
+End:
+
+Subbasin: A104C
+End:
+
+Subbasin: A104D
+End:
+
+Subbasin: A107A
+End:
+
+Subbasin: A107B
+End:
+
+Subbasin: A111A
+End:
+
+Subbasin: A118A
+End:
+
+Subbasin: A11902A
+End:
+
+Subbasin: A11905A
+End:
+
+Subbasin: A119A
+End:
+
+Subbasin: A119C
+End:
+
+Subbasin: A120A
+End:
+
+Subbasin: A120B
+End:
+
+Subbasin: A120D
+End:
+
+Subbasin: B100A
+End:
+
+Subbasin: B100B
+End:
+
+Subbasin: B100C
+End:
+
+Subbasin: B100D
+End:
+
+Subbasin: B100E
+End:
+
+Subbasin: B100F
+End:
+
+Subbasin: B100G
+End:
+
+Subbasin: B100H
+End:
+
+Subbasin: B10401A
+End:
+
+Subbasin: B10402A
+End:
+
+Subbasin: B10403A
+End:
+
+Subbasin: B10404A
+End:
+
+Subbasin: B10404B
+End:
+
+Subbasin: B10404C
+End:
+
+Subbasin: B10404D
+End:
+
+Subbasin: B10405A
+End:
+
+Subbasin: B10405B
+End:
+
+Subbasin: B10408A
+End:
+
+Subbasin: B104A
+End:
+
+Subbasin: B104B
+End:
+
+Subbasin: B104C
+End:
+
+Subbasin: B104D
+End:
+
+Subbasin: B104E
+End:
+
+Subbasin: B104F
+End:
+
+Subbasin: B104G
+End:
+
+Subbasin: B104H
+End:
+
+Subbasin: B104I
+End:
+
+Subbasin: B104J
+End:
+
+Subbasin: B104K
+End:
+
+Subbasin: B104L
+End:
+
+Subbasin: B104M
+End:
+
+Subbasin: B104N
+End:
+
+Subbasin: B106A
+End:
+
+Subbasin: B106B
+End:
+
+Subbasin: B106C
+End:
+
+Subbasin: B106D
+End:
+
+Subbasin: B106E
+End:
+
+Subbasin: B109A
+End:
+
+Subbasin: B111A
+End:
+
+Subbasin: B111B
+End:
+
+Subbasin: B11202A
+End:
+
+Subbasin: B112A
+End:
+
+Subbasin: B112B
+End:
+
+Subbasin: B113B
+End:
+
+Subbasin: B114A
+End:
+
+Subbasin: B115B
+End:
+
+Subbasin: CH100A
+End:
+
+Subbasin: CH100B
+End:
+
+Subbasin: CH100C
+End:
+
+Subbasin: CH100D
+End:
+
+Subbasin: CH100E
+End:
+
+Subbasin: CH100F
+End:
+
+Subbasin: CW100A
+End:
+
+Subbasin: CW100B
+End:
+
+Subbasin: CW100C
+End:
+
+Subbasin: CW100D
+End:
+
+Subbasin: CW102A
+End:
+
+Subbasin: CW102B
+End:
+
+Subbasin: CW103A
+End:
+
+Subbasin: CW103B
+End:
+
+Subbasin: CW103C
+End:
+
+Subbasin: HI100A
+End:
+
+Subbasin: HI100B
+End:
+
+Subbasin: JB100A
+End:
+
+Subbasin: LD100A
+End:
+
+Subbasin: MA100A
+End:
+
+Subbasin: MA100B
+End:
+
+Subbasin: MA100C
+End:
+
+Subbasin: MA100D
+End:
+
+Subbasin: MA100E
+End:
+
+Subbasin: MG100A
+End:
+
+Subbasin: MG100B
+End:
+
+Subbasin: MG100C
+End:
+
+Subbasin: MG100D
+End:
+
+Subbasin: MG100E
+End:
+
+Subbasin: MG100F
+End:
+
+Subbasin: MG100G
+End:
+
+Subbasin: MG100H
+End:
+
+Subbasin: MG100I
+End:
+
+Subbasin: MG100J
+End:
+
+Subbasin: RB100A
+End:
+
+Subbasin: A120C
+End:
+
+Subbasin: LAKE
+End:
+
+Subbasin: B115A
+End:
+
+Subbasin: B113A
+End:
+
+Subbasin: A119B
+End:
+
+Subbasin: A11907A
+End:
+
+Subbasin: A11906A
+End:
+
+Subbasin: A11906B
+End:
+
+Subbasin: A11906C
+End:
+
+Subbasin: A11905B
+End:
+
+Subbasin: CW104A
+End:
+
+Subbasin: A120D2
+End:
+
+Subbasin: A120D1
+End:
