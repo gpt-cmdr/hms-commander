@@ -100,6 +100,9 @@ from .HmsAorc import HmsAorc
 from .HmsGrid import HmsGrid
 # Note: HmsDssGrid is imported from .dss above
 
+# Areal Reduction Factors
+from .HmsArf import HmsArf
+
 # Atlas 14 Hyetograph Generation
 from .Atlas14Storm import Atlas14Storm, Atlas14Config
 
@@ -154,6 +157,9 @@ __all__ = [
     "HmsAorc",
     "HmsGrid",
 
+
+    # Areal Reduction Factors
+    "HmsArf",
 
     # Atlas 14
     "Atlas14Storm",

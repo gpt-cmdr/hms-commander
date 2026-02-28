@@ -660,6 +660,123 @@ class HmsBasin:
 
     @staticmethod
     @log_call
+    def get_reservoirs(
+        basin_path: Union[str, Path],
+        hms_object=None
+    ) -> pd.DataFrame:
+        """
+        Extract reservoir elements from basin model file.
+
+        Args:
+            basin_path: Path to the .basin file
+            hms_object: Optional HmsPrj instance
+
+        Returns:
+            DataFrame with columns: name, downstream, canvas_x, canvas_y,
+            from_canvas_x, from_canvas_y, description
+        """
+        basin_path = Path(basin_path)
+        logger.info(f"Reading reservoirs from: {basin_path}")
+
+        content = HmsBasin._read_basin_file(basin_path)
+        reservoirs = HmsBasin._parse_elements(content, "Reservoir")
+
+        records = []
+        for name, attrs in reservoirs.items():
+            record = {
+                'name': name,
+                'downstream': attrs.get('Downstream'),
+                'canvas_x': HmsFileParser.to_numeric(attrs.get('Canvas X')),
+                'canvas_y': HmsFileParser.to_numeric(attrs.get('Canvas Y')),
+                'from_canvas_x': HmsFileParser.to_numeric(attrs.get('From Canvas X')),
+                'from_canvas_y': HmsFileParser.to_numeric(attrs.get('From Canvas Y')),
+                'description': attrs.get('Description', ''),
+            }
+            records.append(record)
+
+        df = pd.DataFrame(records)
+        logger.info(f"Found {len(df)} reservoirs")
+        return df
+
+    @staticmethod
+    @log_call
+    def get_sources(
+        basin_path: Union[str, Path],
+        hms_object=None
+    ) -> pd.DataFrame:
+        """
+        Extract source elements from basin model file.
+
+        Args:
+            basin_path: Path to the .basin file
+            hms_object: Optional HmsPrj instance
+
+        Returns:
+            DataFrame with columns: name, downstream, area, canvas_x, canvas_y,
+            from_canvas_x, from_canvas_y, description
+        """
+        basin_path = Path(basin_path)
+        logger.info(f"Reading sources from: {basin_path}")
+
+        content = HmsBasin._read_basin_file(basin_path)
+        sources = HmsBasin._parse_elements(content, "Source")
+
+        records = []
+        for name, attrs in sources.items():
+            record = {
+                'name': name,
+                'downstream': attrs.get('Downstream'),
+                'area': HmsFileParser.to_numeric(attrs.get('Area')),
+                'canvas_x': HmsFileParser.to_numeric(attrs.get('Canvas X')),
+                'canvas_y': HmsFileParser.to_numeric(attrs.get('Canvas Y')),
+                'from_canvas_x': HmsFileParser.to_numeric(attrs.get('From Canvas X')),
+                'from_canvas_y': HmsFileParser.to_numeric(attrs.get('From Canvas Y')),
+                'description': attrs.get('Description', ''),
+            }
+            records.append(record)
+
+        df = pd.DataFrame(records)
+        logger.info(f"Found {len(df)} sources")
+        return df
+
+    @staticmethod
+    @log_call
+    def get_sinks(
+        basin_path: Union[str, Path],
+        hms_object=None
+    ) -> pd.DataFrame:
+        """
+        Extract sink elements from basin model file.
+
+        Args:
+            basin_path: Path to the .basin file
+            hms_object: Optional HmsPrj instance
+
+        Returns:
+            DataFrame with columns: name, canvas_x, canvas_y, description
+        """
+        basin_path = Path(basin_path)
+        logger.info(f"Reading sinks from: {basin_path}")
+
+        content = HmsBasin._read_basin_file(basin_path)
+        sinks = HmsBasin._parse_elements(content, "Sink")
+
+        records = []
+        for name, attrs in sinks.items():
+            record = {
+                'name': name,
+                'canvas_x': HmsFileParser.to_numeric(attrs.get('Canvas X')),
+                'canvas_y': HmsFileParser.to_numeric(attrs.get('Canvas Y')),
+                'description': attrs.get('Description', ''),
+            }
+            records.append(record)
+
+        df = pd.DataFrame(records)
+        logger.info(f"Found {len(df)} sinks")
+        return df
+
+    @staticmethod
+    @log_call
     def get_upstream_network(
         basin_path: Union[str, Path],
         hms_object=None
@@ -1475,3 +1592,235 @@ class HmsBasin:
             Tuple of (modified content, whether change was made)
         """
         return HmsFileParser.update_parameter(block_content, param_name, new_value)
+
+    @staticmethod
+    @log_call
+    def import_modified_puls_table(
+        basin_path: Union[str, Path],
+        reach_name: str,
+        storage_discharge_data: pd.DataFrame,
+        table_name: Optional[str] = None,
+        hms_object=None
+    ) -> Path:
+        """
+        Create an HMS storage-discharge table file and assign it to a reach.
+
+        Creates an HMS-format .tbl file with storage-discharge pairs for
+        Modified Puls routing, and updates the reach's routing parameters
+        in the .basin file.
+
+        Parameters
+        ----------
+        basin_path : str or Path
+            Path to the .basin file
+        reach_name : str
+            Name of the reach to assign the table to
+        storage_discharge_data : pd.DataFrame
+            DataFrame with columns:
+            - storage_acft: Storage values in acre-feet
+            - outflow_cfs: Outflow/discharge values in cfs
+        table_name : str, optional
+            Name for the table. If None, auto-generated from reach name.
+        hms_object : optional
+            Optional HmsPrj instance
+
+        Returns
+        -------
+        Path
+            Path to the created .tbl file
+
+        Raises
+        ------
+        ValueError
+            If data has < 2 rows or values are not monotonically increasing
+
+        Example
+        -------
+        >>> import pandas as pd
+        >>> from hms_commander import HmsBasin
+        >>> sd_data = pd.DataFrame({
+        ...     'storage_acft': [0, 100, 500, 1000, 2000, 5000],
+        ...     'outflow_cfs': [0, 50, 200, 500, 1200, 3500]
+        ... })
+        >>> tbl_path = HmsBasin.import_modified_puls_table(
+        ...     "model.basin", "Reach-1", sd_data
+        ... )
+        >>> print(f"Table created: {tbl_path}")
+
+        Notes
+        -----
+        The .tbl file is created in the same directory as the .basin file.
+        The reach's 'Storage Outflow Table Name' parameter is updated in
+        the .basin file to reference the new table.
+        """
+        basin_path = Path(basin_path)
+        if not basin_path.exists():
+            raise FileNotFoundError(f"Basin file not found: {basin_path}")
+
+        # Validate input data
+        if 'storage_acft' not in storage_discharge_data.columns:
+            raise ValueError("DataFrame must have 'storage_acft' column")
+        if 'outflow_cfs' not in storage_discharge_data.columns:
+            raise ValueError("DataFrame must have 'outflow_cfs' column")
+
+        if len(storage_discharge_data) < 2:
+            raise ValueError("Storage-discharge table must have at least 2 rows")
+
+        storage = storage_discharge_data['storage_acft'].values
+        outflow = storage_discharge_data['outflow_cfs'].values
+
+        # Validate monotonically increasing
+        if not all(storage[i] <= storage[i + 1] for i in range(len(storage) - 1)):
+            raise ValueError("Storage values must be monotonically increasing")
+        if not all(outflow[i] <= outflow[i + 1] for i in range(len(outflow) - 1)):
+            raise ValueError("Outflow values must be monotonically increasing")
+
+        # Verify reach exists
+        reaches = HmsBasin.get_reaches(basin_path, hms_object=hms_object)
+        if reaches.empty or reach_name not in reaches['name'].values:
+            raise ValueError(f"Reach '{reach_name}' not found in {basin_path.name}")
+
+        # Generate table name
+        if table_name is None:
+            table_name = f"{reach_name} SD"
+
+        # Create .tbl file in HMS format
+        tbl_dir = basin_path.parent
+        tbl_filename = f"{table_name}.tbl"
+        tbl_path = tbl_dir / tbl_filename
+
+        # Build HMS table content
+        lines = []
+        lines.append(f"Table: {table_name}")
+        lines.append(f"  Number of Rows: {len(storage_discharge_data)}")
+        for i in range(len(storage_discharge_data)):
+            lines.append(f"  Storage-Outflow: {storage[i]:.2f}, {outflow[i]:.2f}")
+        lines.append("End:")
+        lines.append("")
+
+        tbl_content = "\n".join(lines)
+        HmsFileParser.write_file(tbl_path, tbl_content)
+        logger.info(f"Created storage-discharge table: {tbl_path.name} ({len(storage_discharge_data)} rows)")
+
+        # Update basin file to reference the table
+        content = HmsBasin._read_basin_file(basin_path)
+
+        # Find the reach block and update Storage Outflow Table Name
+        reach_blocks = HmsFileParser.find_all_blocks(content, "Reach")
+        updated = False
+
+        for match, name, attrs in reach_blocks:
+            if name == reach_name:
+                block_body = match.group(3)
+                # Check if parameter already exists
+                param_line = f"     Storage Outflow Table Name: {table_name}"
+                new_block, changed = HmsFileParser.update_parameter(
+                    block_body, "Storage Outflow Table Name", table_name
+                )
+
+                if changed:
+                    content = content[:match.start(3)] + new_block + content[match.end(3):]
+                else:
+                    # Insert parameter before End:
+                    insert_content = block_body.rstrip() + f"\n{param_line}\n"
+                    content = content[:match.start(3)] + insert_content + content[match.end(3):]
+
+                updated = True
+                break
+
+        if updated:
+            HmsFileParser.write_file(basin_path, content)
+            logger.info(f"Updated reach '{reach_name}' with table reference: {table_name}")
+        else:
+            logger.warning(f"Could not update reach '{reach_name}' in basin file")
+
+        return tbl_path
+
+    @staticmethod
+    @log_call
+    def get_modified_puls_table(
+        basin_path: Union[str, Path],
+        reach_name: str,
+        hms_object=None
+    ) -> Optional[pd.DataFrame]:
+        """
+        Read a Modified Puls storage-discharge table for a reach.
+
+        Looks up the table reference in the basin file, then reads and parses
+        the .tbl file.
+
+        Parameters
+        ----------
+        basin_path : str or Path
+            Path to the .basin file
+        reach_name : str
+            Name of the reach to read table for
+        hms_object : optional
+            Optional HmsPrj instance
+
+        Returns
+        -------
+        pd.DataFrame or None
+            DataFrame with columns 'storage_acft' and 'outflow_cfs',
+            or None if no table is assigned.
+
+        Example
+        -------
+        >>> table = HmsBasin.get_modified_puls_table("model.basin", "Reach-1")
+        >>> if table is not None:
+        ...     print(table)
+        """
+        basin_path = Path(basin_path)
+        content = HmsBasin._read_basin_file(basin_path)
+
+        # Find reach block and get table name
+        reach_blocks = HmsFileParser.find_all_blocks(content, "Reach")
+        table_name = None
+
+        for match, name, attrs in reach_blocks:
+            if name == reach_name:
+                table_name = attrs.get('Storage Outflow Table Name')
+                break
+
+        if table_name is None:
+            logger.info(f"No storage outflow table assigned to reach '{reach_name}'")
+            return None
+
+        # Find and read the .tbl file
+        tbl_path = basin_path.parent / f"{table_name}.tbl"
+        if not tbl_path.exists():
+            # Try without extension suffix variations
+            possible_paths = list(basin_path.parent.glob(f"*{table_name}*.tbl"))
+            if possible_paths:
+                tbl_path = possible_paths[0]
+            else:
+                logger.warning(f"Table file not found: {tbl_path}")
+                return None
+
+        # Parse table file
+        tbl_content = HmsFileParser.read_file(tbl_path)
+        storage_values = []
+        outflow_values = []
+
+        for line in tbl_content.splitlines():
+            line = line.strip()
+            if line.startswith('Storage-Outflow:'):
+                values_str = line.replace('Storage-Outflow:', '').strip()
+                parts = [v.strip() for v in values_str.split(',')]
+                if len(parts) >= 2:
+                    try:
+                        storage_values.append(float(parts[0]))
+                        outflow_values.append(float(parts[1]))
+                    except ValueError:
+                        continue
+
+        if not storage_values:
+            logger.warning(f"No storage-outflow data found in {tbl_path.name}")
+            return None
+
+        df = pd.DataFrame({
+            'storage_acft': storage_values,
+            'outflow_cfs': outflow_values
+        })
+        logger.info(f"Read {len(df)} storage-outflow pairs from {tbl_path.name}")
+        return df
