@@ -615,8 +615,186 @@ class HmsSqlite:
         return merged
 
     # =========================================================================
+    # Subbasin & reach statistics / flow paths
+    # =========================================================================
+
+    @staticmethod
+    @log_call
+    def get_subbasin_statistics(sqlite_path: Union[str, Path]) -> pd.DataFrame:
+        """
+        Read subbasin statistics (longest flow path, slopes, relief, etc.).
+
+        Reads from the ``subbasin_statistics`` table that HEC-HMS populates
+        when terrain/GIS preprocessing has been performed.
+
+        Parameters
+        ----------
+        sqlite_path : Union[str, Path]
+            Path to the SQLite database file.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame with columns including: subbasin_name, longest_length,
+            longest_slope, centroidal_length, centroidal_slope, 10_85_length,
+            10_85_slope, basin_slope, basin_relief, elongation_ratio,
+            relief_ratio, drainage_density, length_units.
+
+        Raises
+        ------
+        FileNotFoundError
+            If sqlite_path does not exist.
+        ValueError
+            If the subbasin_statistics table is not found.
+        """
+        return HmsSqlite._read_table(sqlite_path, "subbasin_statistics")
+
+    @staticmethod
+    @log_call
+    def get_reach_statistics(sqlite_path: Union[str, Path]) -> pd.DataFrame:
+        """
+        Read reach statistics (length, slope, relief, sinuosity).
+
+        Parameters
+        ----------
+        sqlite_path : Union[str, Path]
+            Path to the SQLite database file.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame with columns: reach_name, reach_length, reach_slope,
+            reach_relief, reach_sinuosity, length_units.
+
+        Raises
+        ------
+        FileNotFoundError
+            If sqlite_path does not exist.
+        ValueError
+            If the reach_statistics table is not found.
+        """
+        return HmsSqlite._read_table(sqlite_path, "reach_statistics")
+
+    @staticmethod
+    @log_call
+    def get_longest_flowpaths(sqlite_path: Union[str, Path]) -> 'gpd.GeoDataFrame':
+        """
+        Read longest flow path linestrings per subbasin.
+
+        Parameters
+        ----------
+        sqlite_path : Union[str, Path]
+            Path to the SQLite database file.
+
+        Returns
+        -------
+        gpd.GeoDataFrame
+            GeoDataFrame with columns: subbasin, geometry (LineString).
+
+        Raises
+        ------
+        FileNotFoundError
+            If sqlite_path does not exist.
+        ValueError
+            If the longest_flowpath table is not found.
+        """
+        return HmsSqlite._read_layer(sqlite_path, "longest_flowpath")
+
+    @staticmethod
+    @log_call
+    def get_centroidal_flowpaths(sqlite_path: Union[str, Path]) -> 'gpd.GeoDataFrame':
+        """
+        Read centroidal flow path linestrings per subbasin.
+
+        Parameters
+        ----------
+        sqlite_path : Union[str, Path]
+            Path to the SQLite database file.
+
+        Returns
+        -------
+        gpd.GeoDataFrame
+            GeoDataFrame with columns: subbasin, geometry (LineString).
+
+        Raises
+        ------
+        FileNotFoundError
+            If sqlite_path does not exist.
+        ValueError
+            If the centroidal_flowpath table is not found.
+        """
+        return HmsSqlite._read_layer(sqlite_path, "centroidal_flowpath")
+
+    @staticmethod
+    @log_call
+    def get_teneightyfive_flowpaths(sqlite_path: Union[str, Path]) -> 'gpd.GeoDataFrame':
+        """
+        Read 10-85% flow path linestrings per subbasin.
+
+        Parameters
+        ----------
+        sqlite_path : Union[str, Path]
+            Path to the SQLite database file.
+
+        Returns
+        -------
+        gpd.GeoDataFrame
+            GeoDataFrame with columns: subbasin, geometry (LineString).
+
+        Raises
+        ------
+        FileNotFoundError
+            If sqlite_path does not exist.
+        ValueError
+            If the teneightyfive_flowpath table is not found.
+        """
+        return HmsSqlite._read_layer(sqlite_path, "teneightyfive_flowpath")
+
+    # =========================================================================
     # Internal helpers
     # =========================================================================
+
+    @staticmethod
+    def _read_table(
+        sqlite_path: Union[str, Path],
+        table_name: str
+    ) -> pd.DataFrame:
+        """
+        Read a non-spatial table from an HMS SQLite database.
+
+        Parameters
+        ----------
+        sqlite_path : Union[str, Path]
+            Path to the SQLite database file.
+        table_name : str
+            Name of the table to read.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame with table data.
+        """
+        sqlite_path = Path(sqlite_path)
+        if not sqlite_path.exists():
+            raise FileNotFoundError(f"SQLite file not found: {sqlite_path}")
+
+        conn = sqlite3.connect(str(sqlite_path))
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                (table_name,)
+            )
+            if cursor.fetchone() is None:
+                raise ValueError(
+                    f"Table '{table_name}' not found in {sqlite_path.name}"
+                )
+
+            df = pd.read_sql(f'SELECT * FROM "{table_name}"', conn)
+            logger.debug(f"Read {len(df)} rows from {sqlite_path.name}:{table_name}")
+            return df
+        finally:
+            conn.close()
 
     @staticmethod
     def _read_layer(
