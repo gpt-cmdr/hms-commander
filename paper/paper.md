@@ -197,7 +197,22 @@ through results visualization.
 
 HMS-Commander was developed using an AI-assisted workflow termed the "LLM Forward Approach,"
 where large language models (Claude by Anthropic) served as coding assistants throughout
-development. AI tools were used for code generation, documentation writing, test development,
+development. Critically, the library is not simply a programmatic interface retrofitted with
+AI tooling---it was designed from the ground up with LLM-agentic engineering workflows in
+mind. The repository's hierarchical memory system (`.claude/rules/`, skill definitions, and
+specialist subagent configurations) enables AI agents to navigate HMS domain knowledge,
+execute multi-step hydrologic workflows, and maintain context across sessions.
+
+The library's twenty Jupyter notebooks serve a dual purpose: they are both human-readable
+documentation and the primary vehicle for test-driven development. Rather than relying on
+atomized unit tests with mocked dependencies, HMS-Commander validates functionality through
+whole-project workflow notebooks that initialize real HMS projects, execute simulations,
+and verify results end-to-end. This approach ensures that tests capture critical
+application-specific and project-level context that isolated unit tests would miss, while
+simultaneously producing examples that both human engineers and AI agents can interpret to
+learn correct usage patterns.
+
+AI tools were used for code generation, documentation writing, test development,
 and iterative refinement of library architecture. All AI-generated code was reviewed,
 tested against real HEC-HMS projects, and validated by the author, a licensed Professional
 Engineer. This paper was drafted with AI assistance and reviewed and edited by the author.
