@@ -15,7 +15,7 @@ authors:
     affiliation: 1
     corresponding: true
 affiliations:
-  - name: CLB Engineering, Inc., Houston, Texas, United States
+  - name: CLB Engineering, Inc., Bethany, Connecticut, United States
     index: 1
 date: 3 March 2026
 bibliography: paper.bib
