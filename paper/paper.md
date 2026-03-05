@@ -225,9 +225,9 @@ agent spans both repositories to guide multi-step coupled modeling workflows).
 
 # LLM Forward Methodology
 
-hms-commander was developed using the "LLM Forward" methodology [@llmforward2024], a framework
-for domain experts who leverage AI agents as primary collaborators while maintaining full
-professional responsibility for engineering decisions. The six tenets that governed development
+hms-commander was developed using the "LLM Forward" methodology [@llmforward2024], a term coined
+by CLB Engineering Corporation for a framework in which domain experts leverage AI agents as
+primary collaborators while maintaining full professional responsibility for engineering decisions. The six tenets that governed development
 are:
 
 1. **Professional Responsibility First**: All AI-generated code is reviewed and validated by
