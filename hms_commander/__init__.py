@@ -1,6 +1,10 @@
 """
 hms-commander: HEC-HMS Automation Library
 
+An open-source project of CLB Engineering Corporation (https://clbengineering.com/)
+Docs: https://hms-commander.readthedocs.io
+GitHub: https://github.com/gpt-cmdr/hms-commander
+
 A Python library for automating HEC-HMS (Hydrologic Engineering Center's
 Hydrologic Modeling System) operations, following the architectural patterns
 established by ras-commander.
@@ -44,7 +48,7 @@ Usage:
 """
 
 __version__ = "0.2.1"
-__author__ = "hms-commander contributors"
+__author__ = "CLB Engineering Corporation"
 
 # Core project management
 from .HmsPrj import HmsPrj, init_hms_project, hms

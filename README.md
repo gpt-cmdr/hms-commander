@@ -4,12 +4,19 @@
   <img src="hms-commander_logo.svg" width=70%>
 </p>
 
+<p align="center">
+  <strong>An open-source project of <a href="https://clbengineering.com/">CLB Engineering Corporation</a></strong><br>
+  <em>LLM-Forward Engineering Solutions</em>
+</p>
+
+---
+
 [![PyPI version](https://badge.fury.io/py/hms-commander.svg)](https://pypi.org/project/hms-commander/)
 [![Documentation Status](https://readthedocs.org/projects/hms-commander/badge/?version=latest)](https://hms-commander.readthedocs.io/en/latest/?badge=latest)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**[📖 Full Documentation](https://hms-commander.readthedocs.io/)**
+**[📖 Full Documentation](https://hms-commander.readthedocs.io/)** | **[CLB Engineering](https://clbengineering.com/)**
 
 > **Beta Software - Engineering Oversight Required**
 >
@@ -33,19 +40,23 @@ This library exists to **bridge that gap**—extending the [ras-commander](https
 
 **LLM Forward Hydrologic Modeling Automation**
 
-A Python library for automating HEC-HMS operations, built using [CLB Engineering's LLM Forward Approach](https://clbengineering.com/). Follows the architectural patterns established by [ras-commander](https://github.com/gpt-cmdr/ras-commander).
+A Python library for automating HEC-HMS operations, built using [CLB Engineering's LLM Forward Approach](https://clbengineering.com/llm-forward). Within two years, CLB Engineering built the **most robust and feature-complete HEC-RAS and HEC-HMS automation solution on the open internet** using LLM Forward approaches -- proving that licensed professional engineers working alongside Large Language Models can create extraordinary value in compressed timeframes.
 
 ## LLM Forward Approach
 
-HMS Commander implements [CLB Engineering's five core principles](docs/CLB_ENGINEERING_APPROACH.md):
+<a href="https://clbengineering.com/">
+  <img src="docs/assets/CLBEngineeringHzLogo.png" alt="CLB Engineering Corporation" width="280" align="right" style="margin-left: 16px; margin-bottom: 8px;">
+</a>
 
-1. **GUI Verifiability** - All changes inspectable in HEC-HMS GUI (no coding required for QAQC)
-2. **Traceability** - Complete audit trail of model modifications
-3. **QAQC-able Workflows** - Automated quality checks with pass/fail criteria
-4. **Non-Destructive Operations** - Original models preserved via cloning
-5. **Professional Documentation** - Client-ready reports and modeling logs
+This library was developed using the **[LLM Forward](https://clbengineering.com/llm-forward)** approach -- a framework pioneered by [CLB Engineering Corporation](https://clbengineering.com/) for responsible adoption of Large Language Models in professional engineering practice. LLM Forward places professional responsibility first while positioning LLMs forward to accelerate insight and automation.
 
-**Result:** Automate tedious tasks while maintaining professional engineering standards.
+**Core Tenets:**
+- **Professional Responsibility First** -- Public safety, ethics, and licensure remain paramount
+- **LLMs Forward (Not First)** -- Technology accelerates engineering insight without replacing professional judgment
+- **Multi-Level Verifiability** -- HEC-HMS GUI review + visual outputs + code audit trails
+- **Human-in-the-Loop** -- Licensed professionals in responsible charge at all times
+
+See the [CLB Engineering LLM Forward Approach](docs/CLB_ENGINEERING_APPROACH.md) for full philosophy and best practices.
 
 ## ⚠️ Breaking Changes in v0.2.0
 
@@ -256,13 +267,27 @@ HmsDss.extract_hms_results("results.dss", result_type="flow")
 
 ## Related Projects
 
-- [ras-commander](https://github.com/billk-FM/ras-commander) - HEC-RAS automation
+- [ras-commander](https://github.com/gpt-cmdr/ras-commander) - HEC-RAS automation
 - [HEC-HMS](https://www.hec.usace.army.mil/software/hec-hms/) - USACE software
+
+## Partner with CLB Engineering
+
+**For Agencies & Government Organizations:** Looking to modernize your HEC-HMS workflows? CLB Engineering Corporation created hms-commander and pioneered LLM Forward engineering. As early LLM pioneers in civil engineering, CLB delivers extraordinary value in compressed timeframes. [Contact CLB](https://clbengineering.com/) to bring this expertise to your organization's toughest H&H challenges.
+
+**For Engineering Firms:** Need a technology partner for your next H&H proposal or joint venture? CLB Engineering brings unmatched HEC-HMS automation expertise. With the hms-commander and ras-commander libraries, CLB can dramatically accelerate model development, calibration, and QA/QC workflows. Partner with the engineers who wrote the automation.
+
+**Building on HMS Commander?** If you are building products or workflows on top of hms-commander, please cite the library and provide a link to the [GitHub repository](https://github.com/gpt-cmdr/hms-commander). Acknowledgment of CLB Engineering Corporation as the library's creator is appreciated.
 
 ## Author
 
-**William Katzenmeyer, PE, CFM** - [CLB Engineering](https://clbengineering.com/)
+**William Katzenmeyer, P.E., C.F.M.** - [CLB Engineering Corporation](https://clbengineering.com/)
 
 ## License
 
-MIT License
+This software is released under the MIT license. HMS Commander is a free and open-source project of [CLB Engineering Corporation](https://clbengineering.com/).
+
+## Contact
+
+For questions, suggestions, or support, please contact:
+William Katzenmeyer, P.E., C.F.M. - info@clbengineering.com
+[CLB Engineering Corporation](https://clbengineering.com/) | [LLM Forward Engineering](https://clbengineering.com/llm-forward)

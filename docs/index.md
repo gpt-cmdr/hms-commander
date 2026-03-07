@@ -2,12 +2,15 @@
 
 <div align="center">
   <img src="assets/hms-commander_logo.svg" alt="HMS Commander Logo" width="400"/>
-  <p><strong>Automate • Analyze • Visualize</strong></p>
+  <p>
+    <strong>An open-source project of <a href="https://clbengineering.com/">CLB Engineering Corporation</a></strong><br>
+    <em>LLM-Forward Engineering Solutions</em>
+  </p>
 </div>
 
 ---
 
-**HMS Commander** is a Python library for automating HEC-HMS (Hydrologic Engineering Center's Hydrologic Modeling System) operations. It provides a comprehensive API for interacting with HEC-HMS project files, executing simulations, and processing results.
+**HMS Commander** is a Python library for automating HEC-HMS (Hydrologic Engineering Center's Hydrologic Modeling System) operations. It provides a comprehensive API for interacting with HEC-HMS project files, executing simulations, and processing results. Developed by [CLB Engineering Corporation](https://clbengineering.com/) using the **[LLM Forward](https://clbengineering.com/llm-forward)** approach, hms-commander is part of the most comprehensive open-source HEC-HMS and HEC-RAS automation solution available.
 
 ## Key Features
 
@@ -181,6 +184,18 @@ classDiagram
 
 </div>
 
+## About CLB Engineering
+
+<a href="https://clbengineering.com/">
+  <img src="assets/CLBEngineeringHzLogo.png" alt="CLB Engineering Corporation" width="280" align="right" style="margin-left: 16px; margin-bottom: 8px;">
+</a>
+
+HMS Commander is a free and open-source project of **[CLB Engineering Corporation](https://clbengineering.com/)**, the creators of the **LLM Forward** engineering framework. Within two years, CLB built the most robust and feature-complete HEC-RAS and HEC-HMS automation solution on the open internet -- proving that licensed professional engineers working alongside Large Language Models can create extraordinary value in compressed timeframes.
+
+**For agencies and organizations** looking to modernize H&H workflows: [Contact CLB Engineering](https://clbengineering.com/) to partner with the early LLM pioneers who are redefining what's possible in hydrologic engineering automation.
+
+**Learn more:** [LLM Forward Engineering](https://clbengineering.com/llm-forward) | [CLB Engineering](https://clbengineering.com/)
+
 ## Related Projects
 
 - **[ras-commander](https://github.com/gpt-cmdr/ras-commander)** - Python API for HEC-RAS automation
@@ -194,14 +209,4 @@ See the [Contributing Guide](llm_dev/contributing.md) for details.
 
 ## License
 
-MIT License - See LICENSE file for details
-
-## Acknowledgments
-
-Developed following the "CLB Engineering LLM Forward Approach" - leveraging AI-assisted coding to build comprehensive, well-documented hydrologic engineering tools.
-
----
-
-<div align="center">
-  <p>Built with ❤️ for the hydrologic engineering community</p>
-</div>
+MIT License - See LICENSE file for details. HMS Commander is a free and open-source project of [CLB Engineering Corporation](https://clbengineering.com/).

@@ -7,6 +7,7 @@ edit_uri: edit/main/docs/
 
 theme:
   name: material
+  custom_dir: docs/overrides
   palette:
     # Light mode
     - scheme: default
@@ -85,6 +86,13 @@ extra:
       link: https://github.com/gpt-cmdr/hms-commander
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/hms-commander/
+    - icon: fontawesome/solid/building
+      link: https://clbengineering.com/
+      name: CLB Engineering Corporation
+    - icon: fontawesome/solid/lightbulb
+      link: https://clbengineering.com/llm-forward
+      name: LLM Forward Engineering
+  generator: false
   version:
     provider: mike
 
@@ -172,8 +180,11 @@ nav:
       - Architecture: llm_dev/architecture.md
       - Cognitive Architecture: llm_dev/cognitive_architecture.md
       - Release Notes: llm_dev/release_notes.md
+  - About:
+      - CLB Engineering: about/clb-engineering.md
 
 extra_css:
   - stylesheets/extra.css
+  - stylesheets/clb-branding.css
 
-copyright: Copyright &copy; 2024 hms-commander contributors
+copyright: Copyright &copy; 2024-2026 CLB Engineering Corporation
