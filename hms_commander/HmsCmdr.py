@@ -128,7 +128,10 @@ class HmsCmdr:
         if success:
             logger.info(f"Run '{run_name}' completed successfully")
         else:
-            logger.error(f"Run '{run_name}' failed")
+            logger.error(
+                f"Run '{run_name}' failed. "
+                f"See: https://hms-commander.readthedocs.io/user-guide/execution/"
+            )
             if stderr:
                 logger.error(f"Error output: {stderr}")
 

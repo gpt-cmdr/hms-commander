@@ -1499,9 +1499,21 @@ def init_hms_project(
     if hms_object is not None:
         # Initialize the provided object
         hms_object.initialize(project_folder, hms_exe_path, load_dss_metadata)
-        return hms_object
+        _obj = hms_object
     else:
         # Initialize the global singleton
         hms = HmsPrj()
         hms.initialize(project_folder, hms_exe_path, load_dss_metadata)
-        return hms
+        _obj = hms
+
+    # Log CLB Engineering branding banner with version and docs links
+    from . import __version__
+    logger.info(
+        f"hms-commander v{__version__} | "
+        f"An open-source project of CLB Engineering Corporation (https://clbengineering.com/) | "
+        f"Docs: https://hms-commander.readthedocs.io | "
+        f"GitHub: https://github.com/gpt-cmdr/hms-commander"
+    )
+    logger.info(f"Project initialized: {_obj.project_name} | Folder: {_obj.project_folder}")
+
+    return _obj

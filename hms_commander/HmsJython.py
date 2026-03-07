@@ -1228,7 +1228,10 @@ JythonHms.SaveProject()
                     logger.info(f"Found HEC-HMS: {item}")
                     return item
 
-        logger.warning("HEC-HMS installation not found")
+        logger.warning(
+            "HEC-HMS installation not found. "
+            "See: https://hms-commander.readthedocs.io/getting-started/installation/"
+        )
         return None
 
     @staticmethod
