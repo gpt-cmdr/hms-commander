@@ -1,0 +1,1 @@
+../../rules/documentation/mkdocs-config.md

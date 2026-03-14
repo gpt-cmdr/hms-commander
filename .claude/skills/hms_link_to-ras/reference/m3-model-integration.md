@@ -1,0 +1,1 @@
+../../../rules/integration/m3-model-integration.md

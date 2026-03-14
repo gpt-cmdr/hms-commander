@@ -1,0 +1,1 @@
+../../skills/hms_manage_versions/SKILL.md

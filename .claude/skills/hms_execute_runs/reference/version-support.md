@@ -1,0 +1,1 @@
+../../../rules/hec-hms/version-support.md

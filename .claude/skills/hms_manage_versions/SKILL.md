@@ -4,274 +4,113 @@ description: |
   Manages HEC-HMS version differences (3.x vs 4.x), handles Python 2/3 compatibility,
   detects HMS installations, and generates version-appropriate Jython scripts. Use when
   working with legacy HMS 3.x projects, upgrading models from 3.x to 4.x, testing across
-  multiple HMS versions, or troubleshooting version-specific issues. Handles 32-bit vs
-  64-bit architecture differences, memory limits, and script syntax variations.
+  multiple HMS versions, troubleshooting version-specific issues, or understanding 32-bit
+  vs 64-bit architecture differences and memory limits.
   Trigger keywords: HMS version, HMS 3.x, HMS 4.x, legacy, upgrade, Python 2 compatible,
   32-bit, 64-bit, version detection, multi-version testing.
 ---
 
 # Managing HMS Versions
 
-## Quick Start
+## When This Skill Is Activated
 
-```python
-from hms_commander import HmsJython
+You are the HMS version management specialist. Route the user's request through the decision tree below.
 
-# Auto-detect HMS installations
-hms_exe = HmsJython.find_hms_executable()
-print(f"Found: {hms_exe}")
+## Decision Tree
 
-# Generate version-appropriate script
-is_3x = "(x86)" in str(hms_exe)  # 32-bit = HMS 3.x
-script = HmsJython.generate_compute_script(
-    project_path="project",
-    run_name="Run 1",
-    python2_compatible=is_3x  # Critical for 3.x!
-)
+1. **User needs to detect installed version** → "Version Detection"
+2. **User has a HMS 3.x project** → "Working with HMS 3.x"
+3. **User wants to upgrade 3.x to 4.x** → "Version Upgrade"
+4. **User wants multi-version testing** → "Multi-Version Testing"
+5. **Automated upgrade workflow** → Delegate to `.claude/agents/update_3_to_4/AGENT.md`
 
-# Execute with detected version
-success, stdout, stderr = HmsJython.execute_script(script, hms_exe)
-```
+## Version Detection
 
-## Primary Sources
+1. Find the HMS executable:
+   ```python
+   from hms_commander import HmsJython
+   hms_exe = HmsJython.find_hms_executable()
+   ```
+2. Determine version from path:
+   ```python
+   is_3x = "(x86)" in str(hms_exe)
+   print(f"HMS {'3.x (32-bit)' if is_3x else '4.x (64-bit)'}: {hms_exe}")
+   ```
 
-**Code**: `hms_commander/HmsJython.py` - Version detection and script generation
+## Working with HMS 3.x
 
-**Rules**: `.claude/rules/hec-hms/version-support.md` - Complete differences
-
-**Examples**: `examples/01_multi_version_execution.ipynb` - Multi-version workflow
-
-**Task Agent**: `hms_agents/update_3_to_4/` - Automated 3.x → 4.x upgrade
-
-## When to Use This Skill
-
-- Working with legacy HMS 3.x projects
-- Upgrading models from 3.x to 4.x
-- Testing across multiple HMS versions
-- Troubleshooting version-specific script errors
-- Setting up multi-version test environments
-- Understanding memory and architecture limitations
-
-## Supported Versions
-
-| Version | Support | Architecture | Python | Notes |
-|---------|---------|--------------|--------|-------|
-| **HMS 4.4.1+** | ✅ Full | 64-bit | Python 3 | Recommended |
-| **HMS 3.3-3.5** | ✅ Full | 32-bit | Python 2 | Requires `python2_compatible=True` |
-| HMS 4.0-4.3 | ❌ | 64-bit | Python 3 | Legacy classpath not supported |
-| HMS 3.0-3.2 | ❓ | 32-bit | Python 2 | Untested |
-
-**See**: `.claude/rules/hec-hms/version-support.md` for complete table
-
-## Critical Differences
-
-### HMS 3.x (32-bit, Python 2)
-
-**Install Path**: `C:\Program Files (x86)\HEC\HEC-HMS\3.x\`
-**Max Memory**: ~1.3 GB
-**Java**: `java/bin/java.exe`
-**Python**: Jython 2.5 (Python 2 syntax)
-
-**Script Generation**:
-```python
-script = HmsJython.generate_compute_script(
-    project_path=path,
-    run_name=run,
-    python2_compatible=True  # MUST be True for 3.x!
-)
-```
-
-**Python 2 Syntax**:
-```python
-print "Computing run"  # No parentheses
-```
-
-### HMS 4.x (64-bit, Python 3)
-
-**Install Path**: `C:\Program Files\HEC\HEC-HMS\4.x\`
-**Max Memory**: 32+ GB
-**Java**: `jre/bin/java.exe`
-**Python**: Jython 2.7 (Python 3 syntax)
-
-**Script Generation**:
-```python
-script = HmsJython.generate_compute_script(
-    project_path=path,
-    run_name=run
-    # python2_compatible=False (default)
-)
-```
-
-**Python 3 Syntax**:
-```python
-print(f"Computing {run_name}")  # Parentheses required
-```
-
-## Core Capabilities
-
-### 1. Version Detection
-
-```python
-# Auto-detect from common install locations
-hms_exe = HmsJython.find_hms_executable()
-
-# Check if 3.x or 4.x
-if "(x86)" in str(hms_exe):
-    print("HMS 3.x detected (32-bit)")
-    python2_compatible = True
-else:
-    print("HMS 4.x detected (64-bit)")
-    python2_compatible = False
-```
-
-### 2. Version-Appropriate Script Generation
+When working with any HMS 3.x project, you MUST set `python2_compatible=True`:
 
 ```python
 script = HmsJython.generate_compute_script(
-    project_path=project_path,
-    run_name=run_name,
-    python2_compatible=python2_compatible
+    project_path=path, run_name="Run 1",
+    python2_compatible=True  # CRITICAL — HMS 3.x uses Python 2 Jython
 )
+success, stdout, stderr = HmsJython.execute_script(script, hms_exe_path=hms_3x_path)
 ```
 
-HmsJython handles syntax differences automatically.
+Key 3.x constraints:
+- 32-bit architecture, max ~1.3 GB memory
+- Install path: `C:\Program Files (x86)\HEC\HEC-HMS\3.x\`
+- Java: `java/bin/java.exe` (not `jre/`)
+- Print syntax: `print "text"` (no parentheses)
 
-### 3. Multi-Version Testing
+## Version Upgrade
 
+**Manual**: Open the project in HMS 4.x GUI and save — this converts the file format.
+
+**Automated**: Delegate to the production agent:
+`.claude/agents/update_3_to_4/AGENT.md`
+
+**Before upgrading**: Clone the project first to preserve the 3.x baseline:
+```python
+# Delegate to hms_clone_components skill
+```
+
+## Multi-Version Testing
+
+Test the same project across installed HMS versions:
 ```python
 from hms_commander import HmsExamples
 
-# List installed versions
 versions = HmsExamples.list_versions()
-print(f"Found HMS versions: {versions}")
-
-# Test across all versions
 for version in versions:
-    HmsExamples.extract_project("tifton", version=version)
-    # Run tests for this version
-```
-
-**See**: `examples/01_multi_version_execution.ipynb` for complete workflow
-
-### 4. Version Upgrade
-
-**Automated approach** (Recommended):
-```python
-# Use update_3_to_4 task agent
-# See: hms_agents/update_3_to_4/README.md
-```
-
-**Manual approach**: Open in HMS 4.x GUI, save (converts file format)
-
-## Common Workflows
-
-### Workflow 1: Legacy 3.x Project
-
-```python
-# 1. Detect HMS 3.x
-hms_3x_path = r"C:\Program Files (x86)\HEC\HEC-HMS\3.5"
-
-# 2. Generate Python 2 script
-script = HmsJython.generate_compute_script(
-    project_path=r"C:\Projects\old_project",
-    run_name="Run 1",
-    python2_compatible=True
-)
-
-# 3. Execute
-success, stdout, stderr = HmsJython.execute_script(
-    script_content=script,
-    hms_exe_path=hms_3x_path
-)
-
-# 4. Check for Python 2 syntax errors
-if "SyntaxError" in stderr:
-    print("Forgot python2_compatible=True!")
-```
-
-### Workflow 2: Multi-Version Testing
-
-```python
-for version in ["3.5", "4.11", "4.13"]:
-    # Extract version-specific example
-    HmsExamples.extract_project("tifton", version=version)
-
-    # Detect Python 2 vs 3
     python2 = version.startswith("3.")
-
-    # Generate script
     script = HmsJython.generate_compute_script(
-        f"tifton_{version}/tifton",
-        "1970_simulation",
-        python2_compatible=python2
-    )
-
-    # Execute
+        path, run, python2_compatible=python2)
     hms_exe = HmsExamples.get_hms_exe(version)
     success, stdout, stderr = HmsJython.execute_script(script, hms_exe)
-
-    print(f"HMS {version}: {'✅' if success else '❌'}")
+    print(f"HMS {version}: {'PASS' if success else 'FAIL'}")
 ```
 
-### Workflow 3: Upgrade 3.x to 4.x
+## Version Quick Reference
 
-**Use the update_3_to_4 task agent**:
-```python
-# See: hms_agents/update_3_to_4/AGENT.md
-from hms_agents.update_3_to_4 import VersionUpgrader
+| Aspect | HMS 3.x | HMS 4.x |
+|--------|---------|---------|
+| Architecture | 32-bit | 64-bit |
+| Max memory | ~1.3 GB | 32+ GB |
+| Python | `python2_compatible=True` | Default (Python 3) |
+| Install path | `Program Files (x86)` | `Program Files` |
+| Java | `java/bin/java.exe` | `jre/bin/java.exe` |
+| Supported | HMS 3.3-3.5 | HMS 4.4.1+ |
+| Not supported | — | HMS 4.0-4.3 (legacy classpath) |
 
-upgrader = VersionUpgrader(
-    project_3x="path/to/hms3x/project",
-    project_4x="path/to/hms4x/project"
-)
+## If Something Goes Wrong
 
-verdict = upgrader.execute()
-upgrader.export_modeling_log("UPGRADE_LOG.md")
-```
+- **SyntaxError**: Forgot `python2_compatible=True` for HMS 3.x — this is the #1 error
+- **OutOfMemoryError**: HMS 3.x limited to ~1.3 GB — upgrade to 4.x
+- **HMS not found**: Specify path manually via `hms_exe_path=`
+- **File format errors after upgrade**: Some 3.x features don't map 1:1 — check HMS log
 
-## Troubleshooting
+## Primary Sources
 
-### Issue: Python 2 Syntax Error
+- `hms_commander/HmsJython.py` — Version detection and script generation
+- `.claude/rules/hec-hms/version-support.md` — Complete differences
+- `examples/01_multi_version_execution.ipynb` — Multi-version workflow
+- `.claude/agents/update_3_to_4/` — Automated upgrade agent
 
-**Error**: `SyntaxError: invalid syntax`
+## Delegation Points
 
-**Cause**: Forgot `python2_compatible=True` for HMS 3.x
-
-**Fix**:
-```python
-script = HmsJython.generate_compute_script(
-    project_path=path,
-    run_name=run,
-    python2_compatible=True  # Add this!
-)
-```
-
-### Issue: Memory Error (HMS 3.x)
-
-**Error**: `OutOfMemoryError`
-
-**Cause**: HMS 3.x limited to ~1.3 GB (32-bit)
-
-**Fix**: Upgrade to HMS 4.x (64-bit) for large models
-
-### Issue: HMS Not Found
-
-**Error**: `FileNotFoundError: HMS executable not found`
-
-**Fix**:
-```python
-# Specify path manually
-hms_exe = r"C:\Program Files\HEC\HEC-HMS\4.11\HEC-HMS.cmd"
-HmsJython.execute_script(script, hms_exe_path=hms_exe)
-```
-
-## Reference Files
-
-- `reference/hms-3x-vs-4x.md` - Complete differences table
-- `reference/python2-compatibility.md` - Script syntax differences
-- `examples/legacy-projects.md` - HMS 3.x workflow examples
-
-## Related Skills
-
-- **hms_execute_runs** - Uses version detection for execution
-- **hms_clone_components** - Clone before upgrading
+- **Execute after version setup** → `hms_execute_runs` skill
+- **Clone before upgrading** → `hms_clone_components` skill
+- **Automated 3→4 upgrade** → `.claude/agents/update_3_to_4/AGENT.md`

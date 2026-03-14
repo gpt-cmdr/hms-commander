@@ -4,132 +4,110 @@ description: |
   Updates HEC-HMS meteorologic model files (.met) including precipitation methods,
   gage assignments, evapotranspiration, and Atlas 14 frequency storms. Use when
   configuring precipitation, assigning gages to subbasins, updating TP40 to Atlas 14,
-  or modifying ET methods. Handles clone workflows for QAQC comparison.
+  modifying ET methods, or cloning met models for scenario comparison.
   Trigger keywords: met model, precipitation, gage assignment, Atlas 14, TP40,
   frequency storm, evapotranspiration, ET, meteorologic model, update precip.
 ---
 
 # Updating Meteorologic Models
 
-## Quick Start
+## When This Skill Is Activated
 
-```python
-from hms_commander import HmsMet
+You are the meteorologic model specialist. Route the user's request through the decision tree below.
 
-# Read met configuration
-precip_method = HmsMet.get_precipitation_method("project.met")
-gage_assignments = HmsMet.get_gage_assignments("project.met")
+## Decision Tree
 
-# Update gage assignments
-HmsMet.set_gage_assignment("project.met", "Subbasin1", "Gage1")
+1. **User wants to READ met configuration** → "Reading Met Configuration"
+2. **User wants to MODIFY precipitation depths** → "Modifying Precipitation"
+3. **User wants to ASSIGN gages** → "Gage Assignment"
+4. **User wants Atlas 14 update** → "Atlas 14 Workflow"
+5. **User wants to CLONE met for comparison** → Delegate to `hms_clone_components` skill
+6. **Complex met automation** → Delegate to `met-model-specialist` agent
 
-# Update Atlas 14 depths
-new_depths = [2.5, 3.1, 3.8, 4.5, 5.2, 6.0]  # 6-hour storm depths
-HmsMet.set_precipitation_depths("project.met", new_depths)
-```
+## Reading Met Configuration
+
+1. Determine which `.met` file to work with
+2. Read the precipitation method:
+   ```python
+   from hms_commander import HmsMet
+   method = HmsMet.get_precipitation_method("project.met")
+   ```
+3. Read gage assignments:
+   ```python
+   assignments = HmsMet.get_gage_assignments("project.met")
+   ```
+4. Read current precipitation depths (for frequency storms):
+   ```python
+   depths = HmsMet.get_precipitation_depths("project.met")
+   ```
+5. Display results to the user
+
+## Modifying Precipitation
+
+1. Read current depths first — show the user what exists:
+   ```python
+   current = HmsMet.get_precipitation_depths("project.met")
+   ```
+2. Confirm the new values with the user
+3. Apply the change:
+   ```python
+   HmsMet.set_precipitation_depths("project.met", [2.5, 3.1, 3.8, 4.5, 5.2, 6.0])
+   ```
+4. Re-read to verify: `HmsMet.get_precipitation_depths("project.met")`
+
+## Gage Assignment
+
+1. Read current assignments: `HmsMet.get_gage_assignments("project.met")`
+2. Apply new assignment:
+   ```python
+   HmsMet.set_gage_assignment("project.met", "Subbasin1", "Gage1")
+   ```
+3. For bulk assignment:
+   ```python
+   for sub, gage in zip(subbasins, gages):
+       HmsMet.set_gage_assignment("project.met", sub, gage)
+   ```
+
+## Atlas 14 Workflow
+
+**Automated** (recommended): Delegate to the production agent at `.claude/agents/hms_atlas14/AGENT.md`
+
+**Manual steps**:
+1. Get project coordinates:
+   ```python
+   from hms_commander import HmsGeo
+   lat, lon = HmsGeo.get_project_centroid_latlon("project.geo")
+   ```
+2. Download Atlas 14 depths from NOAA for those coordinates
+3. Clone the met model first (preserve baseline):
+   ```python
+   HmsMet.clone_met("Baseline_Met", "Atlas14_Met", hms_object=hms)
+   ```
+4. Update the clone with Atlas 14 depths:
+   ```python
+   HmsMet.set_precipitation_depths("project/Atlas14_Met.met", atlas14_depths)
+   ```
+5. Clone the run to use the new met → delegate to `hms_clone_components` skill
+
+## If Something Goes Wrong
+
+- **Depths not updating**: Check that the met file uses a frequency storm method that stores depths
+- **Gage not found**: Verify gage name matches exactly (case-sensitive)
+- **Wrong met file**: If project has multiple met files, confirm which one the user intends
 
 ## Primary Sources
 
-**Code**: `hms_commander/HmsMet.py` - Complete API
+- `hms_commander/HmsMet.py` — Complete API
+- `hms_agents/hms_atlas14/` — Automated Atlas 14 updates
+- `.claude/rules/hec-hms/met-files.md` — Met file patterns
 
-**Task Agent**: `hms_agents/hms_atlas14/` - Automated Atlas 14 updates
+## Implementing Agent
 
-**Rules**: `.claude/rules/hec-hms/met-files.md` - Met file patterns
+For complex met model operations, delegate to:
+`.claude/agents/met-model-specialist.md`
 
-**Examples**: `examples/04_hms_workflow.ipynb` cells 8-12 - Met operations
+## Delegation Points
 
-## When to Use This Skill
-
-- Configuring precipitation methods (Gage weights, Gridded, Frequency storm)
-- Assigning gages to subbasins
-- Updating TP40 to Atlas 14 precipitation depths
-- Modifying evapotranspiration methods
-- Cloning met models for scenario comparison
-
-## Core Capabilities
-
-### 1. Precipitation Configuration
-
-Supported methods:
-- Specified Hyetograph
-- Gage Weights
-- Gridded Precipitation
-- Frequency Storm (TP40, Atlas 14)
-- SCS Storm
-- Standard Project Storm
-
-### 2. Gage Assignment
-
-Map gages to subbasins:
-```python
-assignments = HmsMet.get_gage_assignments("project.met")
-# Returns DataFrame: Subbasin → Gage mapping
-```
-
-### 3. Atlas 14 Integration
-
-Update frequency storm depths:
-```python
-# Get current depths
-depths = HmsMet.get_precipitation_depths("project.met")
-
-# Update with Atlas 14 (from NOAA API or manual)
-atlas14_depths = [2.8, 3.5, 4.2, 4.9, 5.7, 6.5]
-HmsMet.set_precipitation_depths("project.met", atlas14_depths)
-```
-
-**See**: `hms_agents/hms_atlas14/` for automated workflow
-
-### 4. Clone Workflows
-
-```python
-from hms_commander import init_hms_project, hms, HmsMet
-
-init_hms_project("project")
-HmsMet.clone_met("Baseline_Met", "Atlas14_Met", hms_object=hms)
-# Update Atlas14_Met with new precipitation depths
-```
-
-## Common Workflows
-
-### Workflow 1: Atlas 14 Update
-
-**Automated approach** (Recommended):
-```python
-# Use hms_atlas14 task agent
-# See: hms_agents/hms_atlas14/README.md
-```
-
-**Manual approach**:
-```python
-# 1. Get project centroid
-from hms_commander import HmsGeo
-lat, lon = HmsGeo.get_project_centroid_latlon("project.geo")
-
-# 2. Download Atlas 14 from NOAA API (requires manual step)
-
-# 3. Update met file
-HmsMet.set_precipitation_depths("project.met", atlas14_depths)
-```
-
-### Workflow 2: Gage Weight Configuration
-
-```python
-# Assign gages to all subbasins
-subbasins = ["Sub1", "Sub2", "Sub3"]
-gages = ["Gage1", "Gage1", "Gage2"]
-
-for sub, gage in zip(subbasins, gages):
-    HmsMet.set_gage_assignment("project.met", sub, gage)
-```
-
-## Reference Files
-
-- `reference/precipitation_methods.md` - All precip method details
-- `reference/atlas14.md` - Atlas 14 integration guide
-- `examples/atlas14_update.md` - Complete Atlas 14 workflow
-
-## Related Skills
-
-- **hms_execute_runs** - Run after updating precipitation
-- **hms_clone_components** - Clone met for scenario comparison
+- **Run after updating** → `hms_execute_runs` skill
+- **Clone for comparison** → `hms_clone_components` skill
+- **Full Atlas 14 automation** → `.claude/agents/hms_atlas14/AGENT.md`
