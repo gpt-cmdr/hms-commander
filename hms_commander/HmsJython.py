@@ -18,8 +18,8 @@ HEC-HMS Jython API Reference:
     from hms.model import JythonHms
     JythonHms.OpenProject(name, path)
     JythonHms.OpenBasinModel(name)
-    JythonHms.Compute(runName)
-    JythonHms.SaveProject()  # or SaveAllProjectComponents() for HMS 3.x
+    JythonHms.ComputeRun(runName)  # HMS 4.x; use Compute(runName) for HMS 3.x
+    JythonHms.SaveAllProjectComponents()
     JythonHms.Exit(code)
 
 Example (HMS 4.x):
@@ -751,7 +751,7 @@ except Exception as e:
 # Compute the simulation run
 run_name = "{run_name}"
 try:
-    JythonHms.Compute(run_name)
+    JythonHms.ComputeRun(run_name)
     print("Computation completed for: " + run_name)
 except Exception as e:
     print("Error during computation: " + str(e))
@@ -761,17 +761,10 @@ except Exception as e:
         # Save project if requested
         if save_project:
             script += '''
-# Save the project (method name varies by HMS version)
+# Save the project
 try:
-    # Try different method names for different HMS versions
-    if hasattr(JythonHms, 'saveProject'):
-        JythonHms.saveProject()
-        print("Project saved successfully")
-    elif hasattr(JythonHms, 'SaveProject'):
-        JythonHms.SaveProject()
-        print("Project saved successfully")
-    else:
-        print("Note: Project save method not available - results stored in DSS")
+    JythonHms.SaveAllProjectComponents()
+    print("Project saved successfully")
 except Exception as e:
     print("Warning: Could not save project: " + str(e))
 '''
@@ -884,14 +877,14 @@ results = {{}}
 for run_name in run_names:
     try:
         print("Computing: " + run_name)
-        JythonHms.Compute(run_name)
+        JythonHms.ComputeRun(run_name)
         results[run_name] = "Success"
         print("Completed: " + run_name)
 '''
 
         if save_after_each:
             script += '''
-        JythonHms.SaveProject()
+        JythonHms.SaveAllProjectComponents()
 '''
 
         script += '''
@@ -906,7 +899,7 @@ for run_name, status in results.items():
 
 # Save project at the end
 try:
-    JythonHms.SaveProject()
+    JythonHms.SaveAllProjectComponents()
     print("Project saved successfully")
 except Exception as e:
     print("Warning: Could not save project: " + str(e))
@@ -1003,7 +996,7 @@ for element_name, params in modifications.items():
 
 # Save modifications
 try:
-    JythonHms.SaveProject()
+    JythonHms.SaveAllProjectComponents()
     print("Project saved with modifications")
 except Exception as e:
     print("Error saving project: " + str(e))
@@ -1016,7 +1009,7 @@ except Exception as e:
 # Compute simulation with modified parameters
 run_name = "{run_name}"
 try:
-    JythonHms.Compute(run_name)
+    JythonHms.ComputeRun(run_name)
     print("Computation completed: " + run_name)
 except Exception as e:
     print("Error during computation: " + str(e))
@@ -1024,7 +1017,7 @@ except Exception as e:
 
 # Save results
 try:
-    JythonHms.SaveProject()
+    JythonHms.SaveAllProjectComponents()
     print("Results saved")
 except Exception as e:
     print("Warning: Could not save results: " + str(e))
@@ -1138,14 +1131,14 @@ for element_name, params in calibration_params.items():
 
 # Run simulation
 try:
-    JythonHms.Compute(run_name)
+    JythonHms.ComputeRun(run_name)
     print("CALIBRATION_COMPLETE: " + run_name)
 except Exception as e:
     print("CALIBRATION_ERROR: " + str(e))
     JythonHms.Exit(1)
 
 # Save
-JythonHms.SaveProject()
+JythonHms.SaveAllProjectComponents()
 '''
 
         script += HmsJython.SCRIPT_FOOTER
@@ -1249,8 +1242,9 @@ HEC-HMS JythonHms API Reference
 Basic Operations:
     JythonHms.OpenProject(name, path)     - Open a project
     JythonHms.OpenBasinModel(name)        - Open a basin model
-    JythonHms.Compute(runName)            - Run a simulation
-    JythonHms.SaveProject()               - Save the project
+    JythonHms.ComputeRun(runName)         - Run a simulation (HMS 4.x)
+    JythonHms.Compute(runName)            - Run a simulation (HMS 3.x, deprecated in 4.x)
+    JythonHms.SaveAllProjectComponents()  - Save the project
     JythonHms.Exit(code)                  - Exit (0=success, 1=error)
 
 Basin Model Access:
