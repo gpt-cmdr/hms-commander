@@ -478,7 +478,96 @@ class HmsBasin:
         if 'Manning n' in attrs:
             params['mannings_n'] = float(attrs['Manning n'])
 
+        # Modified Puls parameters
+        if 'Number of Reaches' in attrs:
+            params['number_of_reaches'] = int(attrs['Number of Reaches'])
+        if 'Storage Outflow Table Name' in attrs:
+            params['storage_outflow_table_name'] = attrs['Storage Outflow Table Name']
+
         return params
+
+    @staticmethod
+    @log_call
+    def set_modified_puls_routing(
+        basin_path: Union[str, Path],
+        reach_name: str,
+        sd_df,
+        number_of_subreaches: int,
+        table_name: Optional[str] = None,
+        hms_object=None,
+    ) -> str:
+        """
+        Set Modified Puls routing for an HMS reach.
+
+        Convenience wrapper that calls ``import_modified_puls_table()`` to write
+        the .tbl and .pdata files, then updates the .basin file routing method
+        and number of subreaches.
+
+        Args:
+            basin_path: Path to the .basin file
+            reach_name: Name of the reach to update
+            sd_df: DataFrame with columns ``['storage_acft', 'outflow_cfs']``
+                   (as returned by ``RasModPuls.extract_storage_outflow()``)
+            number_of_subreaches: Number of Modified Puls subreaches
+                                   (from ``RasModPuls.compute_subreach_count()``)
+            table_name: Name for the paired data table. Auto-generated from reach
+                        name if None (e.g., "ModPuls_{reach_name}").
+            hms_object: Optional HmsPrj instance
+
+        Returns:
+            str: Name of the paired data table written
+
+        Example:
+            >>> sq_df = RasModPuls.extract_storage_outflow(plan_hdf, profile_line, "01")
+            >>> n = RasModPuls.compute_subreach_count(travel_time_hours=6.0)
+            >>> table = HmsBasin.set_modified_puls_routing(
+            ...     "MyProject.basin", "Reach-1", sq_df, n
+            ... )
+            >>> print(f"Table written: {table}")
+        """
+        basin_path = Path(basin_path)
+
+        # Generate table name if not provided
+        if table_name is None:
+            safe_name = reach_name.replace(" ", "_").replace("-", "_")
+            table_name = f"ModPuls_{safe_name}"
+
+        # Write S-Q table to .tbl and .pdata files, and update basin reference
+        HmsBasin.import_modified_puls_table(
+            basin_path=basin_path,
+            reach_name=reach_name,
+            storage_discharge_data=sd_df,
+            table_name=table_name,
+            hms_object=hms_object,
+        )
+
+        # Update routing method and subreaches in the basin file
+        content = HmsBasin._read_basin_file(basin_path)
+        from .HmsFileParser import HmsFileParser
+
+        reach_blocks = HmsFileParser.find_all_blocks(content, "Reach")
+        for match, name, attrs in reach_blocks:
+            if name == reach_name:
+                block_body = match.group(3)
+
+                # Set routing method to Modified Puls
+                new_block, _ = HmsFileParser.update_parameter(
+                    block_body, "Route", "Modified Puls"
+                )
+                # Set number of subreaches
+                new_block, _ = HmsFileParser.update_parameter(
+                    new_block, "Number of Reaches", str(number_of_subreaches)
+                )
+
+                content = content[: match.start(3)] + new_block + content[match.end(3):]
+                break
+
+        HmsBasin._write_basin_file(basin_path, content)
+        logger.info(
+            f"Set Modified Puls routing on reach '{reach_name}': "
+            f"table='{table_name}', subreaches={number_of_subreaches}"
+        )
+        return table_name
 
     @staticmethod
     @log_call

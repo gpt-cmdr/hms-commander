@@ -1,5 +1,7 @@
 # .claude Framework Index
 
+**Last Refreshed**: 2026-04-12
+
 **Purpose**: Navigation index for the hms-commander cognitive infrastructure including subagents, skills, commands, and architectural patterns.
 
 ---
@@ -11,6 +13,7 @@ The `.claude/` directory contains the hierarchical knowledge framework for hms-c
 ```
 .claude/
 ├── INDEX.md                 # This file - Navigation index
+├── MANIFEST.md              # Quick-load registry for Codex / fresh Claude sessions
 ├── CLAUDE.md                # Framework aggregation (@imports)
 │
 ├── agents/                  # Specialist domain experts + development agents
@@ -177,6 +180,12 @@ The `.claude/` directory contains the hierarchical knowledge framework for hms-c
 
 **Format**: Markdown files organized by category
 **Location**: `.claude/rules/{category}/`
+
+### Cross-Cutting Rules (`.claude/rules/`)
+
+| Rule | Purpose |
+|------|---------|
+| **subagent-output-pattern.md** | Persist subagent work as markdown artifacts and return paths instead of raw text |
 
 ### Python Development Patterns (`.claude/rules/python/`)
 

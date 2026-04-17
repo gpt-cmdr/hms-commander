@@ -4,6 +4,10 @@ This directory provides structured task templates and reusable workflows for hms
 
 **Philosophy**: "This becomes your cognitive backbone: subagents and skills can reference these tasks, and your slash commands can pull them into action quickly."
 
+**Current shared workflow**: committed plan files in `agent_tasks/plans/` are the primary cross-session roadmap for major features, investigations, and refactors. The older `.agent/` memory files remain useful for personal scratch state, but they are optional and should not be treated as the only source of truth for work that spans commits or multiple agents.
+
+**Cross-repo handoff rule**: land work where it is most generalizable. Keep reusable hydrology, TauDEM, GIS preprocessing, and HMS-facing workflow patterns in `hms-commander`; upstream reusable HEC-RAS primitives to `ras-commander`; keep region-specific product adaptation in sibling application repos such as `ras-agent`. When another repo needs a feature here, or this repo needs a feature elsewhere, the canonical request should be a GitHub issue in the target repository. Freeze region-specific prototype snapshots under `feature_dev_notes/completed/` when they are no longer the active target.
+
 ---
 
 ## Directory Structure
@@ -11,6 +15,7 @@ This directory provides structured task templates and reusable workflows for hms
 ```
 agent_tasks/
   README.md            # This file
+  plans/               # Committed roadmap / investigation plans for major work
   templates/           # Task templates for common patterns
     bugfix.md          # Bug investigation and fix
     feature.md         # Feature implementation
@@ -36,6 +41,34 @@ agent_tasks/
 
 ---
 
+## Current Repo Usage
+
+### `plans/` - Shared, Committed Roadmap
+
+Use `agent_tasks/plans/` for any work item that should survive sessions, conversations, and branch changes:
+- major features (`HmsGui`, watershed delineation, version upgrades)
+- research-backed investigations
+- roadmap refreshes
+- multi-step refactors where commit history alone is not enough
+
+Recommended plan hygiene:
+- one plan file per major initiative
+- keep status current when commits land
+- if a plan is fully implemented, mark it complete and move/archive it rather than silently reusing the same file for a different topic
+- include the validating commit hash(es), notebook(s), or test file(s) that prove completion
+- if the implementation work moves to another repository, mark the local plan as archived/completed-for-learning and point to the successor repo/plan explicitly
+
+### `.agent/` - Optional Local Scratch State
+
+Use `.agent/` only for transient local coordination:
+- current focus
+- short-lived backlog
+- session notes that do not belong in git history
+
+If information needs to be visible to other sessions, other agents, or future branch work, it belongs in `plans/`, `feature_dev_notes/`, or `.claude/outputs/` instead.
+
+---
+
 ## Purpose
 
 Complex tasks span multiple sessions. This system enables:
@@ -46,7 +79,7 @@ Complex tasks span multiple sessions. This system enables:
 
 ## Getting Started
 
-### Initialize .agent/ Directory
+### Initialize .agent/ Directory (Optional)
 
 The `.agent/` directory is gitignored (personal session state). Create it locally:
 
@@ -90,6 +123,10 @@ Then create these files:
 
 - **000-050**: Generic templates and examples (committed to repo)
 - **051+**: Personal tasks (create locally, not committed by default)
+
+### Plan Naming
+
+Plans in `plans/` should use descriptive filenames that match their contents (for example `hmsgui-jab-gui-automation.md`). Keep names stable once referenced elsewhere, but prefer clarity over generated slugs.
 
 ---
 
@@ -153,16 +190,16 @@ Use for detailed reference on specific implementations.
 
 ### Session Start
 
-1. Read `.agent/STATE.md` - Current state
-2. Read `.agent/PROGRESS.md` (last 3 entries) - Recent history
-3. Read `.agent/BACKLOG.md` - Pending work
-4. Summarize: "Last session worked on X, completed Y, pending Z"
+1. Read the relevant file in `plans/` for the active initiative
+2. Check recent commits and tests that landed after the plan was written
+3. Read `.agent/STATE.md` / `.agent/PROGRESS.md` only if local scratch context is needed
+4. Summarize: what is complete, what is still active, and what evidence proves each claim
 
 ### Session End
 
-1. Update `.agent/STATE.md` with current status
-2. Append to `.agent/PROGRESS.md` with accomplishments
-3. Update `.agent/BACKLOG.md` with remaining items
+1. Update the relevant `plans/` entry if roadmap status changed
+2. Update `.agent/STATE.md` / `.agent/PROGRESS.md` if you are using local scratch memory
+3. Move completed plan files out of the active set when the implementation is actually shipped
 
 ## Cross-Repository Coordination
 
@@ -174,8 +211,8 @@ See `cross-repo/README.md` for workflow involving ras-commander.
 
 | Repository | Local Path | Purpose |
 |------------|------------|---------|
-| hms-commander | `C:\GH\hms-commander` | HEC-HMS automation (this repo) |
-| ras-commander | `C:\GH\ras-commander` | HEC-RAS automation (sibling) |
+| hms-commander | `G:\GH\hms-commander` | HEC-HMS automation (this repo) |
+| ras-commander | `G:\GH\ras-commander` | HEC-RAS automation (sibling) |
 
 ## See Also
 

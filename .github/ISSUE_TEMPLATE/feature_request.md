@@ -9,6 +9,14 @@ labels: enhancement
 
 <!-- What problem does this solve? What workflow does it enable? -->
 
+## Source Workflow
+
+<!-- Which repo or workflow exposed this gap? Example: ras-agent Illinois integration -->
+
+## Why This Belongs In `hms-commander`
+
+<!-- Explain the generalizable hydrology/HMS/TauDEM/GIS value of landing this here -->
+
 ## Proposed Solution
 
 <!-- How should it work? Include API design if you have ideas -->
@@ -23,6 +31,10 @@ result = NewFeature.do_something(basin_file="model.basin", hms_object=hms)
 ## Alternatives Considered
 
 <!-- Other approaches you've thought about -->
+
+## Downstream Impact
+
+<!-- Which repos or workflows are blocked or enabled by this? Include issue links when relevant -->
 
 ## Additional Context
 
