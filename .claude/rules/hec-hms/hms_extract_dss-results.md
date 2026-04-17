@@ -1,1 +1,0 @@
-../../skills/hms_extract_dss-results/SKILL.md

@@ -1,1 +1,0 @@
-../../skills/hms_clone_components/SKILL.md

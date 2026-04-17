@@ -1,1 +1,0 @@
-../../skills/hms_query_docs/SKILL.md

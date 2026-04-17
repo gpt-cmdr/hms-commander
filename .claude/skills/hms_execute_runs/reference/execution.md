@@ -1,1 +1,0 @@
-../../../rules/hec-hms/execution.md
