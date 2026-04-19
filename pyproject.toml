@@ -76,8 +76,11 @@ docs = [
     "mkdocs-jupyter>=0.24.0",
     "mkdocs-git-revision-date-localized-plugin>=1.2.0",
 ]
+cng = [
+    "hms2cng>=0.1.1",
+]
 all = [
-    "hms-commander[dev,gis,dss,aorc,docs]",
+    "hms-commander[dev,gis,dss,aorc,docs,cng]",
 ]
 
 [project.urls]

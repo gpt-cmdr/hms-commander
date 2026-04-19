@@ -116,6 +116,7 @@ nav:
       - Results Analysis: user_guide/results_analysis.md
       - Clone Workflows: user_guide/clone_workflows.md
       - Atlas 14 Updates: user_guide/atlas14_updates.md
+      - Cloud-Native Export (hms2cng): user_guide/cloud_native_export.md
   - Example Notebooks:
       - Overview: notebooks/00_overview.ipynb
       - Beginner Track:
@@ -140,6 +141,9 @@ nav:
           - 14a - AORC Download: notebooks/14a_aorc_download.ipynb
           - 14b - AORC Grid Setup: notebooks/14b_aorc_grid_setup.ipynb
           - 14c - AORC HMS Execution: notebooks/14c_aorc_hms_execution.ipynb
+      - Cloud-Native Export:
+          - 19 - Cloud-Native Export: notebooks/19_cloud_native_export.ipynb
+          - 20 - PMTiles Web Map: notebooks/20_pmtiles_web_map.ipynb
   - API Reference:
       - Core Classes:
           - HmsPrj: api/hms_prj.md

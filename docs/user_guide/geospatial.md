@@ -104,11 +104,29 @@ Exported GeoJSON files are compatible with:
 - **Export GeoJSON** - `create_geojson_subbasins()`, `export_all_geojson()`
 - **Project info** - `get_project_centroid_latlon()`, `get_project_bounds()`
 
+## Cloud-Native Export
+
+For exporting HMS geometry to modern cloud-native formats (GeoParquet, PMTiles, DuckDB), see the companion tool **hms2cng**:
+
+```python
+from hms2cng import get_basin_layer_gdf, export_basin_geometry
+
+# Export subbasins to GeoParquet
+gdf = get_basin_layer_gdf("project.basin", layer="subbasins")
+export_basin_geometry("project.basin", "subbasins.parquet", layer="subbasins")
+```
+
+Install with: `pip install "hms2cng[all]"`
+
+See [Cloud-Native Export Guide](cloud_native_export.md) for full documentation.
+
 ## Related Topics
 
 - [API Reference: HmsGeo](../api/hms_geo.md) - Complete method documentation
 - [Atlas 14 Updates](atlas14_updates.md) - Using centroid for precipitation data
 - [Data Formats: Geo Files](../data_formats/geo_files.md) - HMS .geo and .map formats
+- [Cloud-Native Export](cloud_native_export.md) - GeoParquet, PMTiles, DuckDB via hms2cng
+- [hms2cng Documentation](https://hms2cng.readthedocs.io/) - Full hms2cng reference
 
 ---
 
