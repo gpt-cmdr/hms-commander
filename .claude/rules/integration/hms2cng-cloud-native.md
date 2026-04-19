@@ -233,5 +233,5 @@ hms2cng reads `RUN_*.results` XML files, not DSS. Ensure the HMS simulation has 
 
 ---
 
-**Status**: Stable (v0.1.1)
+**Status**: Stable (v0.1.2)
 **Created**: 2025-06-01
