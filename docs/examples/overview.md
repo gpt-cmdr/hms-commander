@@ -1,6 +1,6 @@
 # Example Notebooks
 
-HMS Commander provides 17 comprehensive Jupyter notebook examples demonstrating real-world workflows, organized by learning progression.
+HMS Commander provides a growing set of Jupyter notebook examples demonstrating real-world workflows, organized by learning progression.
 
 ## Running the Examples
 
@@ -69,6 +69,18 @@ projects = HmsExamples.list_projects()
 |----------|-------------|
 | [10 - Atlas 14 Hyetograph](../notebooks/10_atlas14_hyetograph.ipynb) | Generate design storms from NOAA Atlas 14 |
 | [11 - Frequency Storm](../notebooks/11_frequency_storm.ipynb) | Variable duration storms using TP-40/Hydro-35 patterns |
+
+### TauDEM to HMS Assembly (30-60 minutes)
+
+| Notebook | Description |
+|----------|-------------|
+| [21 - TauDEM to HMS Atlas 14 Bootstrap](../notebooks/21_taudem_to_hms_atlas14.ipynb) | Build a TauDEM-derived HMS basin, validate import, and run a Spring Creek Atlas 14 frequency storm |
+
+Status note:
+
+- the notebook is a live Spring Creek benchmark and now proves the path is import-valid and compute-valid
+- the resulting scaffold still carries modeling residuals that must be handled before production use: missing ET/canopy methods, Muskingum stability warnings, lag-vs-time-step warnings, and negative inflow clipping
+- future roadmap work adds the readiness gate, TauDEM parameter tuning/comparison support, and human-review QAQC bundle around this notebook-driven workflow
 
 ### Validation & Equivalence Proofs (20-30 minutes)
 

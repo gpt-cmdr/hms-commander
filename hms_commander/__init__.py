@@ -47,7 +47,7 @@ Usage:
     peaks = HmsResults.get_peak_flows("results.dss")
 """
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 __author__ = "CLB Engineering Corporation"
 
 # Core project management
@@ -74,6 +74,7 @@ from .HmsSqlite import HmsSqlite
 
 # File operations (Phase 2)
 from .HmsBasin import HmsBasin
+from .HmsBasinBuilder import HmsBasinBuilder
 from .HmsControl import HmsControl
 from .HmsMet import HmsMet
 from .HmsGage import HmsGage
@@ -102,6 +103,12 @@ from .HmsM3Model import HmsM3Model
 from .HmsHuc import HmsHuc
 from .HmsAorc import HmsAorc
 from .HmsGrid import HmsGrid
+from .HmsGaugeStudy import HmsGaugeStudy, HmsHydrologyContext
+from .HmsGaugeData import HmsGaugeData
+from .HmsTerrain import HmsTerrain
+from .HmsTauDEM import HmsTauDEM
+from .HmsWatershedVerification import HmsWatershedVerification
+from .HmsRoundTripValidator import HmsRoundTripValidator
 # Note: HmsDssGrid is imported from .dss above
 
 # Areal Reduction Factors
@@ -128,6 +135,7 @@ __all__ = [
 
     # File Operations
     "HmsBasin",
+    "HmsBasinBuilder",
     "HmsControl",
     "HmsMet",
     "HmsGage",
@@ -160,6 +168,13 @@ __all__ = [
     "HmsHuc",
     "HmsAorc",
     "HmsGrid",
+    "HmsGaugeStudy",
+    "HmsHydrologyContext",
+    "HmsGaugeData",
+    "HmsTerrain",
+    "HmsTauDEM",
+    "HmsWatershedVerification",
+    "HmsRoundTripValidator",
 
 
     # Areal Reduction Factors

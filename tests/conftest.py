@@ -17,6 +17,10 @@ TESTS_DIR = Path(__file__).parent
 PROJECTS_DIR = TESTS_DIR / "projects" / "2014.08_HMS"
 PROJECT_33 = PROJECTS_DIR / "A1000000_baseline_33"
 PROJECT_411 = PROJECTS_DIR / "A1000000_upgrade_411"
+TAUDEM_FIXTURES_DIR = TESTS_DIR / "fixtures"
+SPRING_CREEK_TAUDEM_FIXTURE = TAUDEM_FIXTURES_DIR / "taudem_spring_creek"
+EXAMPLE_PROJECTS_DIR = Path(__file__).resolve().parents[1] / "examples" / "hms_example_projects"
+RIVER_BEND_EXAMPLE = EXAMPLE_PROJECTS_DIR / "river_bend"
 
 
 def _require_path(p: Path, label: str) -> Path:
@@ -96,6 +100,18 @@ def basin_content(basin_path_33):
     return HmsFileParser.read_file(basin_path_33)
 
 
+@pytest.fixture(scope="session")
+def spring_creek_taudem_fixture_root():
+    """Spring Creek-derived TauDEM fixture workspace."""
+    return _require_path(SPRING_CREEK_TAUDEM_FIXTURE, "Spring Creek TauDEM fixture")
+
+
+@pytest.fixture(scope="session")
+def river_bend_example_dir():
+    """Checked-in HMS 4.13 example project used for round-trip testing."""
+    return _require_path(RIVER_BEND_EXAMPLE, "river_bend example project")
+
+
 # ---------------------------------------------------------------------------
 # Function-scoped writable fixtures (copies into tmp_path)
 # ---------------------------------------------------------------------------
@@ -137,4 +153,20 @@ def tmp_project(project_dir_33, tmp_path):
     """Full writable project directory copy (for clone tests)."""
     dest = tmp_path / project_dir_33.name
     shutil.copytree(project_dir_33, dest)
+    return dest
+
+
+@pytest.fixture
+def tmp_spring_creek_taudem_fixture(spring_creek_taudem_fixture_root, tmp_path):
+    """Writable copy of the Spring Creek TauDEM fixture workspace."""
+    dest = tmp_path / spring_creek_taudem_fixture_root.name
+    shutil.copytree(spring_creek_taudem_fixture_root, dest)
+    return dest
+
+
+@pytest.fixture
+def tmp_river_bend_example(river_bend_example_dir, tmp_path):
+    """Writable copy of the checked-in river_bend example project."""
+    dest = tmp_path / river_bend_example_dir.name
+    shutil.copytree(river_bend_example_dir, dest)
     return dest

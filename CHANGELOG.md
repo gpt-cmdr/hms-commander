@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-04-24
+
+### Added
+
+- Gauge-first study packaging, workspace reports, and TauDEM input-pack helpers.
+- Direct TauDEM execution wrappers with command manifests and run reports.
+- Watershed verification, boundary handoff outlet selection, figures, and CRS audit support.
+- TauDEM-to-HMS basin assembly, HMS scaffold writing, SQLite geometry writing, and parser-of-record round-trip validation.
+- Atlas 14 point-frequency storm bootstrap for TauDEM-derived HMS projects.
+- Spring Creek TauDEM-to-HMS Atlas 14 example notebook and committed test fixtures.
+
+### Fixed
+
+- Normalized Atlas 14 manual metric depth overrides before writing HMS frequency-storm depths.
+- Aligned `Atlas14Storm.generate_hyetograph_from_ari()` with the DataFrame return contract.
+- Tightened storm-generation tests so old ndarray-compatible behavior cannot silently return.
+
 ### ⚠️ BREAKING CHANGES
 
 #### Precipitation Methods Return DataFrame

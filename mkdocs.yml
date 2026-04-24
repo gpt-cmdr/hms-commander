@@ -134,6 +134,8 @@ nav:
       - Storm Generation:
           - 10 - Atlas 14 Hyetograph: notebooks/10_atlas14_hyetograph.ipynb
           - 11 - Frequency Storm: notebooks/11_frequency_storm.ipynb
+      - TauDEM to HMS:
+          - 21 - TauDEM to HMS Atlas 14 Bootstrap: notebooks/21_taudem_to_hms_atlas14.ipynb
       - Validation & Equivalence Proofs:
           - 12 - SCS Type Validation: notebooks/12_scs_type_validation.ipynb
           - 13 - Atlas 14 Multi-Duration: notebooks/13_atlas14_multiduration_validation.ipynb
@@ -160,6 +162,15 @@ nav:
           - HmsResults: api/hms_results.md
       - Geospatial:
           - HmsGeo: api/hms_geo.md
+          - HmsBasinBuilder: api/hms_basin_builder.md
+          - HmsGaugeStudy: api/hms_gauge_study.md
+          - HmsGaugeData: api/hms_gauge_data.md
+          - HmsTerrain: api/hms_terrain.md
+          - HmsTauDEM: api/hms_taudem.md
+          - HmsWatershedVerification: api/hms_watershed_verification.md
+          - HmsRoundTripValidator: api/hms_roundtrip_validator.md
+      - Storm Generation:
+          - Atlas14Storm: api/atlas14_storm.md
       - Utilities:
           - HmsUtils: api/hms_utils.md
           - HmsExamples: api/hms_examples.md

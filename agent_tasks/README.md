@@ -58,6 +58,16 @@ Recommended plan hygiene:
 - include the validating commit hash(es), notebook(s), or test file(s) that prove completion
 - if the implementation work moves to another repository, mark the local plan as archived/completed-for-learning and point to the successor repo/plan explicitly
 
+### Current Repo-Wide Priority Plan
+
+Use `agent_tasks/plans/feature-dev-notes-roadmap-refresh.md` as the current shared source of truth when the work is:
+- roadmap curation
+- backlog reprioritization
+- feature-note triage
+- deciding whether local prototype work should be promoted, documented, or archived
+
+That plan is intentionally repo-wide. It sits above any single feature folder and should be updated when major priorities shift.
+
 ### `.agent/` - Optional Local Scratch State
 
 Use `.agent/` only for transient local coordination:
@@ -128,6 +138,8 @@ Then create these files:
 
 Plans in `plans/` should use descriptive filenames that match their contents (for example `hmsgui-jab-gui-automation.md`). Keep names stable once referenced elsewhere, but prefer clarity over generated slugs.
 
+If older slug-style plan names already exist, treat them as historical artifacts. New shared plans should use descriptive names.
+
 ---
 
 ## Memory Files
@@ -190,10 +202,11 @@ Use for detailed reference on specific implementations.
 
 ### Session Start
 
-1. Read the relevant file in `plans/` for the active initiative
-2. Check recent commits and tests that landed after the plan was written
-3. Read `.agent/STATE.md` / `.agent/PROGRESS.md` only if local scratch context is needed
-4. Summarize: what is complete, what is still active, and what evidence proves each claim
+1. If the task is repo-wide planning or prioritization, read `plans/feature-dev-notes-roadmap-refresh.md` first
+2. Read the relevant file in `plans/` for the active initiative
+3. Check recent commits and tests that landed after the plan was written
+4. Read `.agent/STATE.md` / `.agent/PROGRESS.md` only if local scratch context is needed
+5. Summarize: what is complete, what is still active, and what evidence proves each claim
 
 ### Session End
 

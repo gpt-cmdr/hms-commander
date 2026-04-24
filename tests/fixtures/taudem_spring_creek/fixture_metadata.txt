@@ -1,0 +1,2 @@
+Spring Creek-derived full TauDEM fixture with recompressed watershed raster.
+Source workspace: G:/GH/ras-agent/workspace/Spring Creek Springfield IL

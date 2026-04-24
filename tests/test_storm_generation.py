@@ -1,10 +1,20 @@
 """Tests for FrequencyStorm — pure computation, no network needed."""
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
 
+from hms_commander.Atlas14Storm import Atlas14Storm
 from hms_commander.FrequencyStorm import FrequencyStorm
+
+ATLAS14_FIXTURE_PATH = (
+    Path(__file__).parent
+    / "fixtures"
+    / "atlas14"
+    / "spring_creek_pfds_depth_english_pds.txt"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -196,13 +206,145 @@ class TestValidateAgainstGroundTruth:
 
 
 # ---------------------------------------------------------------------------
+# Atlas14Storm point-frequency parsing (fixture-based, no network)
+# ---------------------------------------------------------------------------
+
+class TestAtlas14PointFrequency:
+    def test_parse_pfds_response_builds_duration_table(self):
+        response_text = ATLAS14_FIXTURE_PATH.read_text(encoding="utf-8")
+
+        parsed = Atlas14Storm.parse_pfds_response(response_text)
+        depth_table = Atlas14Storm.build_depth_duration_table(parsed)
+
+        assert parsed["reg"] == "orb"
+        assert parsed["region"] == "Ohio River Basin"
+        assert parsed["latitude"] == pytest.approx(39.8153)
+        assert parsed["longitude"] == pytest.approx(-89.6987)
+        assert len(depth_table) == 19
+        assert depth_table.loc[depth_table["duration_minutes"] == 1440, 100].iloc[0] == pytest.approx(6.15)
+
+    def test_build_frequency_storm_depths_returns_standard_hms_vector(self):
+        response_text = ATLAS14_FIXTURE_PATH.read_text(encoding="utf-8")
+        depth_table = Atlas14Storm.build_depth_duration_table(
+            Atlas14Storm.parse_pfds_response(response_text)
+        )
+
+        depths = Atlas14Storm.build_frequency_storm_depths(depth_table, ari_years=100)
+
+        assert depths == pytest.approx([0.861, 1.61, 2.32, 3.11, 3.78, 4.10, 4.81, 6.15])
+
+    def test_parse_temporal_csv_invalid_content_raises_clear_value_error(self):
+        with pytest.raises(ValueError, match="No Atlas 14 quartile tables"):
+            Atlas14Storm.parse_temporal_csv("not a valid atlas14 temporal csv")
+
+    def test_get_point_frequency_estimates_accepts_string_cache_dir(self, tmp_path):
+        cache_file = Atlas14Storm._pfds_cache_file(
+            latitude=39.815328,
+            longitude=-89.698713,
+            series="pds",
+            units="english",
+            cache_dir=tmp_path,
+        )
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+        cache_file.write_text(ATLAS14_FIXTURE_PATH.read_text(encoding="utf-8"), encoding="utf-8")
+
+        result = Atlas14Storm.get_point_frequency_estimates(
+            latitude=39.815328,
+            longitude=-89.698713,
+            series="pds",
+            units="english",
+            cache_dir=str(tmp_path),
+        )
+
+        assert result["cache_file"] == cache_file
+        assert len(result["depth_duration_table"]) == 19
+
+    def test_get_frequency_storm_depths_converts_metric_depths_to_inches(self, monkeypatch):
+        metric_depth_table = pd.DataFrame(
+            [
+                {"duration_label": "5-min", "duration_minutes": 5, 100: 0.861 * 25.4},
+                {"duration_label": "15-min", "duration_minutes": 15, 100: 1.61 * 25.4},
+                {"duration_label": "30-min", "duration_minutes": 30, 100: 2.32 * 25.4},
+                {"duration_label": "60-min", "duration_minutes": 60, 100: 3.11 * 25.4},
+                {"duration_label": "2-hr", "duration_minutes": 120, 100: 3.78 * 25.4},
+                {"duration_label": "3-hr", "duration_minutes": 180, 100: 4.10 * 25.4},
+                {"duration_label": "6-hr", "duration_minutes": 360, 100: 4.81 * 25.4},
+                {"duration_label": "24-hr", "duration_minutes": 1440, 100: 6.15 * 25.4},
+            ]
+        )
+
+        def fake_get_point_frequency_estimates(**kwargs):
+            return {
+                "depth_duration_table": metric_depth_table,
+                "units": "metric",
+            }
+
+        monkeypatch.setattr(
+            Atlas14Storm,
+            "get_point_frequency_estimates",
+            staticmethod(fake_get_point_frequency_estimates),
+        )
+
+        result = Atlas14Storm.get_frequency_storm_depths(
+            latitude=39.815328,
+            longitude=-89.698713,
+            ari_years=100,
+            units="metric",
+        )
+
+        assert result["native_units"] == "metric"
+        assert result["depths_native_units"] == pytest.approx(
+            [0.861 * 25.4, 1.61 * 25.4, 2.32 * 25.4, 3.11 * 25.4, 3.78 * 25.4, 4.10 * 25.4, 4.81 * 25.4, 6.15 * 25.4]
+        )
+        assert result["depths_inches"] == pytest.approx([0.861, 1.61, 2.32, 3.11, 3.78, 4.10, 4.81, 6.15])
+
+    def test_convert_depths_to_inches_rejects_unknown_units(self):
+        assert Atlas14Storm.convert_depths_to_inches([25.4], units="mm") == pytest.approx([1.0])
+        assert Atlas14Storm.convert_depths_to_inches([1.0], units="inches") == pytest.approx([1.0])
+
+        with pytest.raises(ValueError, match="Unsupported Atlas 14 units"):
+            Atlas14Storm.convert_depths_to_inches([1.0], units="cubits")
+
+    def test_generate_hyetograph_from_ari_returns_dataframe_contract(self, monkeypatch):
+        calls = {}
+        expected = pd.DataFrame(
+            {
+                "hour": [0.5, 1.0],
+                "incremental_depth": [0.4, 0.6],
+                "cumulative_depth": [0.4, 1.0],
+            }
+        )
+
+        def fake_generate_hyetograph(**kwargs):
+            calls.update(kwargs)
+            return expected
+
+        monkeypatch.setattr(
+            Atlas14Storm,
+            "generate_hyetograph",
+            staticmethod(fake_generate_hyetograph),
+        )
+
+        result = Atlas14Storm.generate_hyetograph_from_ari(
+            ari_years=100,
+            total_depth_inches=1.0,
+            state="tx",
+            region=3,
+        )
+
+        assert isinstance(result, pd.DataFrame)
+        assert result.columns.tolist() == ["hour", "incremental_depth", "cumulative_depth"]
+        assert result is expected
+        assert calls["aep_percent"] == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
 # Atlas14Storm (requires network — marked accordingly)
 # ---------------------------------------------------------------------------
 
 class TestAtlas14Storm:
     @pytest.mark.requires_network
     def test_basic_generation(self):
-        from hms_commander.Atlas14Storm import Atlas14Storm
         try:
             hyeto = Atlas14Storm.generate_hyetograph(
                 total_depth_inches=17.9,
@@ -213,16 +355,13 @@ class TestAtlas14Storm:
         except Exception:
             pytest.skip("Atlas14 data not available (network/cache)")
         assert len(hyeto) > 0
-        # hyeto may be DataFrame or ndarray — use .values if needed
-        if isinstance(hyeto, pd.DataFrame):
-            total_sum = hyeto.iloc[:, -1].max()  # cumulative max = total
-        else:
-            total_sum = float(np.sum(hyeto))
+        assert isinstance(hyeto, pd.DataFrame)
+        assert hyeto.columns.tolist() == ["hour", "incremental_depth", "cumulative_depth"]
+        total_sum = hyeto["cumulative_depth"].iloc[-1]
         assert abs(total_sum - 17.9) < 0.01
 
     @pytest.mark.requires_network
     def test_depth_conservation(self):
-        from hms_commander.Atlas14Storm import Atlas14Storm
         total = 10.5
         try:
             hyeto = Atlas14Storm.generate_hyetograph(
@@ -233,8 +372,7 @@ class TestAtlas14Storm:
             )
         except Exception:
             pytest.skip("Atlas14 data not available (network/cache)")
-        if isinstance(hyeto, pd.DataFrame):
-            total_sum = hyeto.iloc[:, -1].max()
-        else:
-            total_sum = float(np.sum(hyeto))
+        assert isinstance(hyeto, pd.DataFrame)
+        assert hyeto.columns.tolist() == ["hour", "incremental_depth", "cumulative_depth"]
+        total_sum = hyeto["cumulative_depth"].iloc[-1]
         assert abs(total_sum - total) < 0.01

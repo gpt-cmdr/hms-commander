@@ -91,6 +91,23 @@ See [CHANGELOG.md](CHANGELOG.md) for complete migration guide.
 - **GIS Extraction**: Export model elements to GeoJSON
 - **Clone Operations**: Non-destructive model cloning for QAQC workflows
 
+## Current TauDEM/HMS Status
+
+The repo now includes a full Spring Creek benchmark path for:
+
+- gauge-first study packaging and report/data-gap regeneration
+- direct TauDEM preprocessing and delineation manifests
+- watershed verification and boundary handoff selection
+- TauDEM-to-HMS basin/scaffold assembly with SQLite geometry
+- clone-first HEC-HMS parser-of-record round-trip validation
+- Atlas 14 storm bootstrap and a live compute demonstration
+
+That workflow is now import-valid and compute-valid, but it is not yet production-ready. The first live HMS run still surfaces residual modeling warnings that must be handled deliberately: missing ET/canopy methods, Muskingum stability warnings, lag-vs-time-step warnings, and negative inflow clipping. The current roadmap therefore adds three gating items before generated HMS projects should be promoted as defensible engineering setups:
+
+- a machine-readable pre-HMS readiness gate
+- TauDEM parameter sensitivity / optimization support for delineation controls
+- a human-review QAQC bundle and explicit signoff workflow
+
 ## Installation
 
 ### From PyPI (Recommended)

@@ -1,0 +1,47 @@
+{
+  "schema_version": "1.0",
+  "study_type": "taudem_boundary_outlet_selection",
+  "generated_at": "2026-04-23T10:17:41Z",
+  "status": "completed",
+  "study_name": "Spring Creek TauDEM boundary handoff outlet",
+  "site_id": "05577500",
+  "workspace_root": "G:\\GH\\ras-agent\\workspace\\Spring Creek Springfield IL",
+  "verification_crs": "EPSG:5070",
+  "inputs": {
+    "taudem_source_path": "G:\\GH\\ras-agent\\workspace\\Spring Creek Springfield IL\\04_terrain\\taudem_work\\w.tif",
+    "taudem_source_type": "watershed_raster",
+    "stream_network_path": "G:\\GH\\ras-agent\\workspace\\Spring Creek Springfield IL\\04_terrain\\taudem_work\\net.shp",
+    "seed_outlet_path": "G:\\GH\\ras-agent\\workspace\\Spring Creek Springfield IL\\04_terrain\\taudem_work\\outlet.shp"
+  },
+  "selection": {
+    "selection_method": "nearest_seed_outlet",
+    "stream_order_field": "strmOrder",
+    "selected_stream_order": 4,
+    "mainstem_feature_count": 5,
+    "boundary_crossing_count": 1,
+    "selected_outlet": {
+      "x": 531443.987,
+      "y": 1883487.629,
+      "distance_to_seed_m": 9405.725
+    },
+    "candidate_crossings": [
+      {
+        "candidate_index": 1,
+        "x": 531443.987,
+        "y": 1883487.629,
+        "distance_to_seed_m": 9405.725
+      }
+    ]
+  },
+  "builder": {
+    "package": "hms-commander",
+    "class": "HmsWatershedVerification",
+    "method": "derive_taudem_boundary_outlet",
+    "version": "0.2.1"
+  },
+  "artifact": {
+    "path": "G:\\GH\\ras-agent\\workspace\\Spring Creek Springfield IL\\09_taudem_verification\\taudem_boundary_handoff_outlet.geojson",
+    "status": "created",
+    "bytes": 381
+  }
+}

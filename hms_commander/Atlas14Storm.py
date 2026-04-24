@@ -1,21 +1,22 @@
 """
-Atlas14Storm - Atlas 14 Hyetograph Generation for HEC-HMS
+Atlas14Storm - Atlas 14 precipitation helpers for HEC-HMS.
 
-Generates precipitation hyetographs using NOAA Atlas 14 temporal distributions,
-matching the algorithm used by HEC-HMS internally.
+This module supports two NOAA Atlas 14 workflows:
 
-Algorithm:
-    1. Download/load Atlas 14 temporal distribution (cumulative % vs time)
-    2. Select appropriate quartile and probability
-    3. Apply to total storm depth (from DDF table)
-    4. Convert cumulative to incremental depths
+1. Temporal distribution download/parsing for HMS "Specified Pattern" storms
+2. Point depth-duration-frequency lookup for HMS "Frequency Based Hypothetical"
+   design storms
 
-This matches HEC-HMS "Hypothetical Storm" with "Specified Pattern" storm type.
+The temporal-distribution workflow matches the algorithm used by HEC-HMS
+internally for specified-pattern design storms.
 """
 
-from pathlib import Path
-from typing import Dict, Optional, Union, Tuple
+import ast
+import re
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+
 import pandas as pd
 import numpy as np
 import requests
@@ -29,19 +30,27 @@ logger = get_logger(__name__)
 @dataclass
 class Atlas14Config:
     """Configuration for Atlas 14 temporal distribution."""
+
     state: str  # Two-letter state code (lowercase)
-    region: int  # Atlas 14 region number
+    region: Union[int, str]  # Atlas 14 region number or named regional token
     duration: int  # Duration in hours
 
     @property
     def url(self) -> str:
         """Generate the NOAA temporal distribution URL."""
-        return f"https://hdsc.nws.noaa.gov/pub/hdsc/data/{self.state}/{self.state}_{self.region}_{self.duration}h_temporal.csv"
+        state = str(self.state).strip().lower()
+        region = str(self.region).strip().lower()
+        return (
+            "https://hdsc.nws.noaa.gov/pub/hdsc/data/"
+            f"{state}/{state}_{region}_{self.duration}h_temporal.csv"
+        )
 
     @property
     def region_code(self) -> str:
         """Generate region identifier (e.g., TX_R3)."""
-        return f"{self.state.upper()}_R{self.region}"
+        if isinstance(self.region, int):
+            return f"{self.state.upper()}_R{self.region}"
+        return f"{self.state.upper()}_{str(self.region).upper()}"
 
 
 class Atlas14Storm:
@@ -80,7 +89,7 @@ class Atlas14Storm:
         ...     quartile="All Cases"
         ... )
         >>> print(f"Generated {len(hyetograph)} time steps")
-        >>> print(f"Total depth: {hyetograph.sum():.3f} inches")
+        >>> print(f"Total depth: {hyetograph['cumulative_depth'].iloc[-1]:.3f} inches")
         >>>
         >>> # Generate 6-hour storm
         >>> hyeto_6h = Atlas14Storm.generate_hyetograph(
@@ -109,6 +118,65 @@ class Atlas14Storm:
 
     # Cache for temporal distributions (avoid re-downloading)
     _temporal_cache: Dict[str, Dict[str, pd.DataFrame]] = {}
+
+    # NOAA point-frequency endpoint (returns JS-style assignments)
+    PFDS_POINT_ENDPOINT = "https://hdsc.nws.noaa.gov/cgi-bin/hdsc/new/cgi_readH5.py"
+
+    # Standard Atlas 14 PFDS duration table ordering
+    PFDS_DURATION_LABELS = [
+        "5-min",
+        "10-min",
+        "15-min",
+        "30-min",
+        "60-min",
+        "2-hr",
+        "3-hr",
+        "6-hr",
+        "12-hr",
+        "24-hr",
+        "2-day",
+        "3-day",
+        "4-day",
+        "7-day",
+        "10-day",
+        "20-day",
+        "30-day",
+        "45-day",
+        "60-day",
+    ]
+    PFDS_DURATION_MINUTES = [
+        5,
+        10,
+        15,
+        30,
+        60,
+        120,
+        180,
+        360,
+        720,
+        1440,
+        2880,
+        4320,
+        5760,
+        10080,
+        14400,
+        28800,
+        43200,
+        64800,
+        86400,
+    ]
+    PFDS_RETURN_PERIOD_YEARS = [1, 2, 5, 10, 25, 50, 100, 200, 500, 1000]
+    FREQUENCY_STORM_DURATIONS_MIN = [5, 15, 30, 60, 120, 180, 360, 1440]
+    FREQUENCY_DURATION_LABEL_BY_MINUTES = {
+        5: "5-min",
+        15: "15-min",
+        30: "30-min",
+        60: "60-min",
+        120: "2-hr",
+        180: "3-hr",
+        360: "6-hr",
+        1440: "24-hr",
+    }
 
     @staticmethod
     def _validate_duration(duration_hours: int) -> None:
@@ -141,10 +209,41 @@ class Atlas14Storm:
             )
 
     @staticmethod
+    def _normalize_cache_dir(cache_dir: Optional[Union[str, Path]]) -> Path:
+        """Normalize an optional cache directory to a pathlib Path."""
+        if cache_dir is None:
+            return Atlas14Storm._default_cache_dir()
+        return Path(cache_dir)
+
+    @staticmethod
+    def normalize_depth_units(units: str) -> str:
+        """Normalize Atlas 14 depth units to the supported API labels."""
+        normalized_units = str(units).strip().lower()
+        if normalized_units in {"english", "in", "inch", "inches"}:
+            return "english"
+        if normalized_units in {"metric", "mm", "millimeter", "millimeters"}:
+            return "metric"
+        raise ValueError(f"Unsupported Atlas 14 units: {units!r}")
+
+    @staticmethod
+    def _normalize_depth_units(units: str) -> str:
+        """Backward-compatible internal alias for depth-unit normalization."""
+        return Atlas14Storm.normalize_depth_units(units)
+
+    @staticmethod
+    def convert_depths_to_inches(depths: Sequence[float], units: str = "english") -> List[float]:
+        """Convert Atlas 14 depth values from their native units to inches."""
+        native_depths = [float(depth) for depth in depths]
+        normalized_units = Atlas14Storm.normalize_depth_units(units)
+        if normalized_units == "metric":
+            return [depth / 25.4 for depth in native_depths]
+        return native_depths
+
+    @staticmethod
     @log_call
     def download_temporal_csv(
         config: Atlas14Config,
-        cache_dir: Optional[Path] = None
+        cache_dir: Optional[Union[str, Path]] = None
     ) -> str:
         """
         Download Atlas 14 temporal distribution CSV from NOAA.
@@ -157,7 +256,8 @@ class Atlas14Storm:
             CSV content as string
         """
         # Check cache first
-        if cache_dir:
+        if cache_dir is not None:
+            cache_dir = Atlas14Storm._normalize_cache_dir(cache_dir)
             cache_file = cache_dir / f"{config.state}_{config.region}_{config.duration}h_temporal.csv"
             if cache_file.exists():
                 logger.info(f"Using cached temporal distribution: {cache_file}")
@@ -172,7 +272,7 @@ class Atlas14Storm:
         logger.info(f"Downloaded {len(content)} bytes")
 
         # Cache if directory provided
-        if cache_dir:
+        if cache_dir is not None:
             cache_dir.mkdir(parents=True, exist_ok=True)
             cache_file.write_text(content)
             logger.info(f"Cached to: {cache_file}")
@@ -257,16 +357,20 @@ class Atlas14Storm:
             df.set_index('hours', inplace=True)
             result[name] = df
 
-        logger.info(f"Parsed {len(result)} quartile tables with {len(df)} time steps each")
+        if not result:
+            raise ValueError("No Atlas 14 quartile tables were parsed from the provided CSV content")
+
+        sample_table = next(iter(result.values()))
+        logger.info(f"Parsed {len(result)} quartile tables with {len(sample_table)} time steps each")
         return result
 
     @staticmethod
     @log_call
     def load_temporal_distribution(
         state: str,
-        region: int,
+        region: Union[int, str],
         duration_hours: int = 24,
-        cache_dir: Optional[Path] = None
+        cache_dir: Optional[Union[str, Path]] = None
     ) -> Dict[str, pd.DataFrame]:
         """
         Load Atlas 14 temporal distribution with caching.
@@ -296,8 +400,7 @@ class Atlas14Storm:
             return Atlas14Storm._temporal_cache[cache_key]
 
         # Default cache directory
-        if cache_dir is None:
-            cache_dir = Path.home() / ".hms-commander" / "atlas14"
+        cache_dir = Atlas14Storm._normalize_cache_dir(cache_dir)
 
         # Download and parse with 404 handling
         config = Atlas14Config(state=state, region=region, duration=duration_hours)
@@ -318,6 +421,256 @@ class Atlas14Storm:
         Atlas14Storm._temporal_cache[cache_key] = temporal_distributions
 
         return temporal_distributions
+
+    @staticmethod
+    def _default_cache_dir() -> Path:
+        """Return the default Atlas 14 cache directory."""
+        return Path.home() / ".hms-commander" / "atlas14"
+
+    @staticmethod
+    def _pfds_cache_file(
+        latitude: float,
+        longitude: float,
+        series: str,
+        units: str,
+        cache_dir: Path,
+    ) -> Path:
+        """Build a deterministic cache file path for PFDS point responses."""
+        lat_token = f"{latitude:.6f}".replace("-", "m").replace(".", "p")
+        lon_token = f"{longitude:.6f}".replace("-", "m").replace(".", "p")
+        return cache_dir / f"pfds_depth_{series}_{units}_{lat_token}_{lon_token}.txt"
+
+    @staticmethod
+    def _parse_pfds_assignment_value(raw_value: str) -> Any:
+        """Parse a JS-style PFDS assignment value into a Python object."""
+        value = raw_value.strip()
+        try:
+            return ast.literal_eval(value)
+        except (SyntaxError, ValueError):
+            return value.strip("'\"")
+
+    @staticmethod
+    @log_call
+    def parse_pfds_response(response_text: str) -> Dict[str, Any]:
+        """
+        Parse a NOAA PFDS point-frequency response.
+
+        The NOAA endpoint returns JavaScript-style assignments such as
+        ``quantiles = [['0.398', ...]];`` rather than JSON.
+        """
+        assignments: Dict[str, Any] = {}
+        pattern = re.compile(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?);\s*$", re.MULTILINE)
+        for match in pattern.finditer(response_text):
+            key = match.group(1)
+            raw_value = match.group(2)
+            assignments[key] = Atlas14Storm._parse_pfds_assignment_value(raw_value)
+
+        for table_name in ("quantiles", "upper", "lower"):
+            raw_table = assignments.get(table_name)
+            if raw_table is None:
+                continue
+            assignments[table_name] = [
+                [float(value) for value in row]
+                for row in raw_table
+            ]
+
+        latitude = assignments.get("lat")
+        longitude = assignments.get("lon")
+        assignments["latitude"] = float(latitude) if latitude is not None else None
+        assignments["longitude"] = float(longitude) if longitude is not None else None
+
+        quantiles = assignments.get("quantiles")
+        if quantiles is not None and len(quantiles) != len(Atlas14Storm.PFDS_DURATION_LABELS):
+            raise ValueError(
+                "Unexpected NOAA PFDS response shape: "
+                f"expected {len(Atlas14Storm.PFDS_DURATION_LABELS)} duration rows, "
+                f"received {len(quantiles)}"
+            )
+
+        return assignments
+
+    @staticmethod
+    def _normalize_return_period_column(
+        depth_table: pd.DataFrame,
+        ari_years: int,
+    ) -> Union[int, str]:
+        """Resolve a return-period column from a depth table."""
+        candidates: List[Union[int, str]] = [ari_years, str(ari_years)]
+        for candidate in candidates:
+            if candidate in depth_table.columns:
+                return candidate
+        raise ValueError(
+            f"Return period {ari_years} years not found in depth table columns: "
+            f"{list(depth_table.columns)}"
+        )
+
+    @staticmethod
+    @log_call
+    def build_depth_duration_table(parsed_response: Dict[str, Any]) -> pd.DataFrame:
+        """Convert parsed PFDS quantiles into a duration-indexed DataFrame."""
+        quantiles = parsed_response.get("quantiles")
+        if quantiles is None:
+            raise ValueError("Parsed PFDS response is missing 'quantiles'")
+
+        table = pd.DataFrame(
+            quantiles,
+            columns=Atlas14Storm.PFDS_RETURN_PERIOD_YEARS,
+        )
+        table.insert(0, "duration_label", Atlas14Storm.PFDS_DURATION_LABELS)
+        table.insert(1, "duration_minutes", Atlas14Storm.PFDS_DURATION_MINUTES)
+        return table
+
+    @staticmethod
+    @log_call
+    def get_point_frequency_estimates(
+        latitude: float,
+        longitude: float,
+        series: str = "pds",
+        units: str = "english",
+        cache_dir: Optional[Union[str, Path]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Fetch and parse a NOAA PFDS point frequency depth table.
+
+        Args:
+            latitude: Query latitude in decimal degrees
+            longitude: Query longitude in decimal degrees
+            series: NOAA series key, typically ``pds`` or ``ams``
+            units: NOAA units key, typically ``english`` or ``metric``
+            cache_dir: Optional raw-response cache directory
+
+        Returns:
+            Dictionary containing parsed NOAA metadata and a
+            ``depth_duration_table`` DataFrame.
+        """
+        units = Atlas14Storm.normalize_depth_units(units)
+        cache_dir = Atlas14Storm._normalize_cache_dir(cache_dir)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file = Atlas14Storm._pfds_cache_file(latitude, longitude, series, units, cache_dir)
+
+        if cache_file.exists():
+            response_text = cache_file.read_text(encoding="utf-8")
+        else:
+            response = requests.get(
+                Atlas14Storm.PFDS_POINT_ENDPOINT,
+                params={
+                    "lat": f"{latitude:.6f}",
+                    "lon": f"{longitude:.6f}",
+                    "type": "pf",
+                    "data": "depth",
+                    "units": units,
+                    "series": series,
+                },
+                timeout=60,
+            )
+            response.raise_for_status()
+            response_text = response.text
+            cache_file.write_text(response_text, encoding="utf-8")
+
+        parsed = Atlas14Storm.parse_pfds_response(response_text)
+        depth_duration_table = Atlas14Storm.build_depth_duration_table(parsed)
+        return {
+            **parsed,
+            "series": series,
+            "units": units,
+            "query_url": Atlas14Storm.PFDS_POINT_ENDPOINT,
+            "depth_duration_table": depth_duration_table,
+            "cache_file": cache_file,
+        }
+
+    @staticmethod
+    @log_call
+    def get_depth_duration_table(
+        latitude: float,
+        longitude: float,
+        series: str = "pds",
+        units: str = "english",
+        cache_dir: Optional[Union[str, Path]] = None,
+    ) -> pd.DataFrame:
+        """Fetch a duration-indexed NOAA PFDS depth table."""
+        result = Atlas14Storm.get_point_frequency_estimates(
+            latitude=latitude,
+            longitude=longitude,
+            series=series,
+            units=units,
+            cache_dir=cache_dir,
+        )
+        return result["depth_duration_table"].copy()
+
+    @staticmethod
+    @log_call
+    def build_frequency_storm_depths(
+        depth_table: pd.DataFrame,
+        ari_years: int = 100,
+        durations_min: Optional[List[int]] = None,
+    ) -> List[float]:
+        """
+        Build the standard HMS frequency-storm depth vector from a PFDS table.
+
+        Returns cumulative depth values in the canonical HMS/TP-40 ordering:
+        5, 15, 30, 60, 120, 180, 360, 1440 minutes by default.
+        """
+        if durations_min is None:
+            durations_min = list(Atlas14Storm.FREQUENCY_STORM_DURATIONS_MIN)
+
+        if "duration_minutes" not in depth_table.columns:
+            raise ValueError("Depth table must include a 'duration_minutes' column")
+
+        return_period_column = Atlas14Storm._normalize_return_period_column(depth_table, ari_years)
+        indexed = depth_table.set_index("duration_minutes")
+
+        missing_durations = [duration for duration in durations_min if duration not in indexed.index]
+        if missing_durations:
+            raise ValueError(
+                "Depth table is missing required durations for HMS frequency storms: "
+                f"{missing_durations}"
+            )
+
+        return [float(indexed.loc[duration, return_period_column]) for duration in durations_min]
+
+    @staticmethod
+    @log_call
+    def get_frequency_storm_depths(
+        latitude: float,
+        longitude: float,
+        ari_years: int = 100,
+        series: str = "pds",
+        units: str = "english",
+        durations_min: Optional[List[int]] = None,
+        cache_dir: Optional[Union[str, Path]] = None,
+    ) -> Dict[str, Any]:
+        """Fetch NOAA point depths and return the standard HMS frequency-storm vector."""
+        normalized_units = Atlas14Storm.normalize_depth_units(units)
+        point_frequency = Atlas14Storm.get_point_frequency_estimates(
+            latitude=latitude,
+            longitude=longitude,
+            series=series,
+            units=normalized_units,
+            cache_dir=cache_dir,
+        )
+        depth_table = point_frequency["depth_duration_table"]
+        if durations_min is None:
+            durations_min = list(Atlas14Storm.FREQUENCY_STORM_DURATIONS_MIN)
+        depths = Atlas14Storm.build_frequency_storm_depths(
+            depth_table=depth_table,
+            ari_years=ari_years,
+            durations_min=durations_min,
+        )
+        depths_inches = Atlas14Storm.convert_depths_to_inches(depths, normalized_units)
+
+        return {
+            "ari_years": int(ari_years),
+            "durations_min": list(durations_min),
+            "duration_labels": [
+                Atlas14Storm.FREQUENCY_DURATION_LABEL_BY_MINUTES.get(duration, f"{duration}-min")
+                for duration in durations_min
+            ],
+            "depths_inches": depths_inches,
+            "depths_native_units": list(depths),
+            "native_units": normalized_units,
+            "depth_duration_table": depth_table.copy(),
+            "point_frequency": point_frequency,
+        }
 
     @staticmethod
     def _aep_to_probability_column(aep_percent: float) -> str:
@@ -479,7 +832,7 @@ class Atlas14Storm:
         duration_hours: int = 24,
         quartile: str = "All Cases",
         cache_dir: Optional[Path] = None
-    ) -> np.ndarray:
+    ) -> pd.DataFrame:
         """
         Generate hyetograph using Average Recurrence Interval.
 
@@ -488,10 +841,15 @@ class Atlas14Storm:
         Args:
             ari_years: Average Recurrence Interval in years (e.g., 100 for 100-yr storm)
             total_depth_inches: Total storm depth
-            (other args same as generate_hyetograph)
+            state: Two-letter Atlas 14 state code
+            region: Atlas 14 region number or named region token
+            duration_hours: Storm duration in hours
+            quartile: Temporal-distribution quartile to use
+            cache_dir: Optional Atlas 14 temporal-distribution cache directory
 
         Returns:
-            numpy array of incremental precipitation depths
+            pd.DataFrame with columns: ``hour``, ``incremental_depth``, and
+            ``cumulative_depth``.
 
         Example:
             >>> # 100-year storm
@@ -501,6 +859,8 @@ class Atlas14Storm:
             ...     state="tx",
             ...     region=3
             ... )
+            >>> print(hyeto.columns.tolist())
+            ['hour', 'incremental_depth', 'cumulative_depth']
         """
         # Convert ARI to AEP: AEP = 1/ARI * 100
         aep_percent = (1.0 / ari_years) * 100.0

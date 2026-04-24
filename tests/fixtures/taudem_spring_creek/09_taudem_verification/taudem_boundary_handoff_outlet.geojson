@@ -1,0 +1,8 @@
+{
+"type": "FeatureCollection",
+"name": "taudem_boundary_handoff_outlet",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::5070" } },
+"features": [
+{ "type": "Feature", "properties": { "id": 1, "sel_method": "nearest_seed_outlet", "str_order": 4, "cand_count": 1 }, "geometry": { "type": "Point", "coordinates": [ 531443.98699999996461, 1883487.629 ] } }
+]
+}

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hms-commander"
-version = "0.2.1"
+version = "0.3.0"
 description = "HEC-HMS automation library for hydrologic modeling - Python API for project management, simulation execution, and results analysis"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -90,7 +90,7 @@ Repository = "https://github.com/gpt-cmdr/hms-commander"
 Issues = "https://github.com/gpt-cmdr/hms-commander/issues"
 
 [tool.setuptools]
-packages = ["hms_commander"]
+packages = ["hms_commander", "hms_commander.data", "hms_commander.dss"]
 
 [tool.setuptools.package-dir]
 hms_commander = "hms_commander"
@@ -106,6 +106,7 @@ python_classes = "Test*"
 python_functions = "test_*"
 markers = [
     "requires_hms: test needs HEC-HMS installation",
+    "local_hms: test executes a local HMS open-save-close round trip",
     "requires_java: test needs Java/pyjnius",
     "requires_gis: test needs geopandas/shapely",
     "requires_network: test needs internet access",
