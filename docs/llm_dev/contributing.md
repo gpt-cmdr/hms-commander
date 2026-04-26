@@ -27,7 +27,8 @@ pip install -e ".[all]"
 
 Before contributing, familiarize yourself with:
 
-- **[CLAUDE.md](https://github.com/gpt-cmdr/hms-commander/blob/main/CLAUDE.md)** - Complete project context for LLMs
+- **[AGENTS.md](https://github.com/gpt-cmdr/hms-commander/blob/main/AGENTS.md)** - Shared repository contract for coding agents
+- **[CLAUDE.md](https://github.com/gpt-cmdr/hms-commander/blob/main/CLAUDE.md)** - Claude Code loader that imports `AGENTS.md`
 - **[STYLE_GUIDE.md](https://github.com/gpt-cmdr/hms-commander/blob/main/STYLE_GUIDE.md)** - Coding standards and patterns
 - **[LLM Development Guide](overview.md)** - LLM Forward approach overview
 
@@ -35,9 +36,9 @@ Before contributing, familiarize yourself with:
 
 ### LLM Forward Development
 
-HMS Commander is built using the LLM Forward approach. When using Claude or other LLMs:
+HMS Commander is built using the LLM Forward approach. When using Claude, Codex, or other LLMs:
 
-1. **Provide CLAUDE.md**: Include the contents as context
+1. **Provide AGENTS.md**: Include the shared repository contract as context
 2. **Reference style guide**: Mention specific patterns to follow
 3. **Use examples**: Point to existing code as reference
 4. **Iterate**: Review AI-generated code carefully
@@ -196,7 +197,7 @@ except ImportError:
 - Includes working examples
 - Uses `@log_call` decorator
 - Handles errors appropriately
-- Updates CLAUDE.md
+- Updates `AGENTS.md` when shared agent rules change
 
 ❌ **Red flags:**
 - No documentation
@@ -213,7 +214,7 @@ Before submitting a PR:
 - [ ] All functions have docstrings with examples
 - [ ] Tests pass (`pytest tests/`)
 - [ ] Example notebook created (if applicable)
-- [ ] CLAUDE.md updated with new API
+- [ ] `AGENTS.md` updated if shared agent guidance changed
 - [ ] No breaking changes (or clearly documented)
 - [ ] Logging configured properly
 
@@ -252,7 +253,7 @@ docs/
 
 When working with Claude Code:
 
-1. **Set context**: Paste CLAUDE.md content
+1. **Set context**: Paste or reference `AGENTS.md`; Claude Code will load `CLAUDE.md` as its adapter
 2. **Specify patterns**: Reference style guide sections
 3. **Provide examples**: Point to similar existing code
 4. **Iterate**: Review and refine AI suggestions
@@ -293,7 +294,7 @@ Releases are managed by maintainers.
 - **Questions**: Open a GitHub Discussion
 - **Bugs**: Create an Issue
 - **Features**: Start with an Issue for discussion
-- **LLM Help**: Reference CLAUDE.md for context
+- **LLM Help**: Reference `AGENTS.md` for shared context and `CLAUDE.md` for Claude-specific loading
 
 ## Code of Conduct
 
@@ -309,7 +310,7 @@ Contributors are recognized in:
 ## Recognition
 
 Significant contributions may be acknowledged in:
-- CLAUDE.md acknowledgments section
+- Release notes or project documentation
 - Release announcements
 - Documentation
 

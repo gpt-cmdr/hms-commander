@@ -44,10 +44,14 @@ agent_tasks/.agent/
 agent_tasks/runs/
 agent_tasks/artifacts/
 
-# .claude user settings (track rules/skills, ignore local config)
+# .claude user settings (track hook adapter, ignore local config)
 .claude/settings.local.json
-.claude/settings.json
 .claude/outputs/
+
+# Codex skill bridge - generated from .claude/skills and
+# .agents/native-skills by scripts/agent_framework/sync_codex_skill_bridge.py.
+.agents/skills/*
+!.agents/skills/README.md
 
 # HMS output/binary artifacts
 *.dss

@@ -1,5 +1,9 @@
 ---
 name: hms_link_to-ras
+shared_corpus: true
+harness_scope: shared
+source_owner: gpt-cmdr
+security_review: internal
 description: |
   Links HEC-HMS watershed models to HEC-RAS river models by extracting HMS DSS results
   and preparing them for RAS boundary condition import. Handles flow hydrograph export,

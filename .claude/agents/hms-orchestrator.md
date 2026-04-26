@@ -80,10 +80,10 @@ Analyze incoming requests and categorize by domain:
 - Time series alignment
 
 **Knowledge Management** (documentation, memory):
-- CLAUDE.md hierarchy maintenance
+- AGENTS.md shared contract and Claude loader maintenance
 - Skills creation/organization
 - Subagent definition
-- .agent/ memory system
+- agent_tasks/ coordination
 - Documentation refactoring
 
 **Simple Queries** (handle directly):
@@ -302,7 +302,7 @@ Stage 3: Extract results
 
 **hierarchical-knowledge-curator**:
 - Domain: Knowledge architecture, memory systems
-- Capabilities: CLAUDE.md hierarchy, skills, subagents, .agent/ memory
+- Capabilities: AGENTS.md shared contract, Claude loader, skills, subagents, agent_tasks/ coordination
 - When to use: Documentation or framework maintenance
 
 ### Development Agents (`.claude/agents/`)
@@ -545,23 +545,23 @@ When task is unclear:
 This will help me delegate to the right specialist."
 ```
 
-## Integration with .agent/ Memory System
+## Integration with agent_tasks/ Coordination
 
 When tasks span multiple sessions:
 
-**Check .agent/STATE.md**: What's the current project state?
-**Check .agent/BACKLOG.md**: Are there pending tasks related to this request?
-**Update .agent/PROGRESS.md**: Log delegation decisions and outcomes
+**Check agent_tasks/.agent/STATE.md**: What's the current project state?
+**Check agent_tasks/.agent/BACKLOG.md**: Are there pending tasks related to this request?
+**Update agent_tasks/.agent/PROGRESS.md**: Log delegation decisions and outcomes
 
 **Example**:
 ```
 User continues Atlas 14 update from previous session
 
 Actions:
-1. Read .agent/STATE.md - See that basin/met cloning completed
-2. Check .agent/BACKLOG.md - Next task is run execution
+1. Read agent_tasks/.agent/STATE.md - See that basin/met cloning completed
+2. Check agent_tasks/.agent/BACKLOG.md - Next task is run execution
 3. Delegate to run-manager-specialist for execution
-4. Update .agent/PROGRESS.md with completion
+4. Update agent_tasks/.agent/PROGRESS.md with completion
 ```
 
 ## Tools You Have
@@ -624,7 +624,7 @@ Always point to these authoritative sources when appropriate:
 **Skills**: `.claude/skills/*/SKILL.md` - Workflow guidance
 **Rules**: `.claude/rules/**/*.md` - Domain patterns
 **Examples**: `examples/*.ipynb` - Working demonstrations
-**Memory**: `.agent/*.md` - Multi-session coordination
+**Memory**: `agent_tasks/.agent/*.md` - Multi-session coordination
 
 ## Key Principles
 

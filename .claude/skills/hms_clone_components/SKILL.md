@@ -1,5 +1,9 @@
 ---
 name: hms_clone_components
+shared_corpus: true
+harness_scope: shared
+source_owner: gpt-cmdr
+security_review: internal
 description: |
   Clones HEC-HMS components (basins, met models, control specs, runs) using the
   CLB Engineering LLM Forward approach. Creates non-destructive, traceable, GUI-verifiable

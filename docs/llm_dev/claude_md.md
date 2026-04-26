@@ -1,287 +1,81 @@
-# CLAUDE.md Guide
+# Agent Instructions Guide
 
-Understanding and using the CLAUDE.md documentation file for AI-assisted development.
+This page explains the repository instruction files used by AI-assisted development in HMS Commander.
 
-## What is CLAUDE.md?
+## Current Contract
 
-`CLAUDE.md` is a comprehensive reference document written specifically for AI assistants (like Claude) working with the HMS Commander codebase. It provides complete API documentation, architectural patterns, and usage examples.
+`AGENTS.md` is the shared source of truth for repository-local coding agents. It contains the durable project rules that both Claude Code and Codex must follow.
 
-## Purpose
+`CLAUDE.md` is now a thin Claude Code loader. It imports `AGENTS.md` and adds only Claude-specific adapter notes.
 
-CLAUDE.md serves multiple audiences:
+This split prevents drift between harnesses:
 
-1. **AI Assistants** - Primary audience, provides complete context
-2. **Developers** - Quick reference for all APIs
-3. **New Contributors** - Architectural overview and patterns
-4. **Documentation** - Source for auto-generating user docs
+- Codex naturally reads `AGENTS.md`.
+- Claude Code naturally reads `CLAUDE.md`, which immediately imports `AGENTS.md`.
+- Shared rules are not copied into `.codex/` or duplicated across `.claude/`.
 
-## Location
+## File Responsibilities
 
-```
+```text
 hms-commander/
-├── CLAUDE.md          ← Main AI assistant documentation
-├── STYLE_GUIDE.md     ← Coding standards
-├── README.md          ← User-facing overview
-└── docs/              ← Full documentation site
+├── AGENTS.md          <- canonical shared contract
+├── CLAUDE.md          <- Claude loader that imports AGENTS.md
+├── .claude/           <- Claude-native rules, agents, skills, commands
+├── .agents/           <- Codex skill bridge and Codex-native adapter skills
+├── .codex/            <- Codex hook/config adapters only
+└── scripts/
+    ├── agent_framework/
+    └── agent_hooks/
 ```
 
-## Structure
+## How Agents Should Load Context
 
-### 1. Project Overview
+### Codex
 
-```markdown
-# CLAUDE.md
+1. Read the nearest `AGENTS.md`.
+2. Inherit parent `AGENTS.md` files.
+3. Use generated `.agents/skills/` entries when the bridge has been generated.
+4. Treat `.codex/` as project config only, not an instruction tree.
 
-This file provides guidance to Claude Code...
+### Claude Code
 
-## Project Overview
-**hms-commander** is a Python library for automating HEC-HMS...
-```
+1. Read `CLAUDE.md`.
+2. Follow `@AGENTS.md`.
+3. Use `.claude/MANIFEST.md` and `.claude/INDEX.md` for Claude-native discovery.
+4. Treat `.claude/rules/` as preload helpers, not the shared source of truth.
 
-**Contains:**
-- Project description
-- Development environment setup
-- Architecture overview
+## Updating Instructions
 
-### 2. Development Environment
+Update `AGENTS.md` when:
 
-```markdown
-## Development Environment
+- a rule matters to both Claude Code and Codex
+- package, docs, tests, or examples need scoped shared guidance
+- harness boundaries or generated-file rules change
 
-### Build Commands
-- **Install locally**: `pip install -e .`
-- **Install with optional dependencies**: `pip install -e ".[all]"`
+Update `CLAUDE.md` only when:
 
-### Dependencies
-- **Python**: Requires 3.10+
-- **Core packages**: pandas, numpy, pathlib, tqdm, requests
-```
+- Claude Code needs a loader note
+- Claude-specific discovery behavior changes
 
-**Contains:**
-- Installation methods
-- Dependencies
-- Environment management
+Update `.claude/` when:
 
-### 3. Architecture Overview
+- adding Claude-native agents, commands, rules, or skills
+- adding Claude-specific workflow acceleration
 
-```markdown
-## Architecture Overview
+Update `.agents/` when:
 
-### Core Classes and Execution Model
+- adding Codex-native adapter skills
+- documenting the generated Codex skill bridge
 
-**Project Management**: `HmsPrj` class and global `hms` object
-**File Operations Classes**: HmsBasin, HmsMet, HmsControl, HmsGage, HmsGeo
-**Execution Classes**: HmsCmdr, HmsJython
-```
-
-**Contains:**
-- Class organization
-- Design patterns
-- Execution model
-
-### 4. Complete API Reference
-
-```markdown
-## Complete API Reference
-
-### HmsBasin - Basin Model Operations
-```python
-HmsBasin.get_subbasins(basin_path)              # DataFrame of subbasins
-HmsBasin.set_loss_parameters(basin_path, name, curve_number=80)
-HmsBasin.clone_basin(template, new_name, description=None)
-```
-```
-
-**Contains:**
-- Every public method
-- Parameter lists
-- Return types
-- Usage examples
-
-### 5. File Formats
-
-```markdown
-## HEC-HMS File Formats
-
-### Project File (.hms)
-```
-Project: ProjectName
-Version: 4.9
-BasinFile: ProjectName.basin
-```
-```
-
-**Contains:**
-- File format specifications
-- Example sections
-- Parsing notes
-
-### 6. Development Patterns
-
-```markdown
-## Key Development Patterns
-
-### Static Class Pattern
-- Most classes use static methods with `@log_call` decorators
-- No instantiation required
-```
-
-**Contains:**
-- Architectural patterns
-- Naming conventions
-- Error handling
-
-## Using CLAUDE.md
-
-### For AI Assistants
-
-When an AI assistant (like Claude Code) works with HMS Commander:
-
-1. **Loads CLAUDE.md** - Automatically read by Claude Code
-2. **Gets full context** - Complete API reference
-3. **Follows patterns** - Architectural guidelines
-4. **Uses examples** - Working code snippets
-
-**Example AI workflow:**
-```
-User: "Clone the basin and update curve numbers"
-
-AI: [Reads CLAUDE.md]
-    - Finds HmsBasin.clone_basin() method
-    - Sees example usage
-    - Follows static class pattern
-    - Generates code:
-
-HmsBasin.clone_basin(
-    template="Existing",
-    new_name="Updated"
-)
-HmsBasin.set_loss_parameters(
-    "Updated.basin",
-    "Sub1",
-    curve_number=85
-)
-```
-
-### For Developers
-
-Use CLAUDE.md as a quick reference:
+Do not edit generated `.agents/skills/*` entries directly. Regenerate them with:
 
 ```bash
-# Search for specific API
-grep -A 10 "HmsBasin.get_subbasins" CLAUDE.md
-
-# Find file format info
-grep -A 20 "Basin Model File" CLAUDE.md
-
-# Check development patterns
-grep -A 15 "Static Class Pattern" CLAUDE.md
+python scripts/agent_framework/sync_codex_skill_bridge.py
 ```
 
-### For Documentation Authors
+## Related Documentation
 
-Extract content from CLAUDE.md for user docs:
-
-```python
-# Data formats section → docs/data_formats/
-# API reference section → Auto-generated with mkdocstrings
-# Examples section → docs/user_guide/
-```
-
-## CLAUDE.md vs Other Docs
-
-| Document | Audience | Purpose | Format |
-|----------|----------|---------|--------|
-| **CLAUDE.md** | AI Assistants | Complete API reference | Markdown |
-| **README.md** | Users | Project overview | Markdown |
-| **docs/** | Users | Full documentation site | MkDocs |
-| **STYLE_GUIDE.md** | Contributors | Coding standards | Markdown |
-| **API docs** | Developers | Auto-generated API | HTML |
-
-## Keeping CLAUDE.md Updated
-
-### When to Update
-
-Update CLAUDE.md when:
-- ✅ New classes added
-- ✅ New public methods added
-- ✅ File formats change
-- ✅ Architectural patterns evolve
-- ✅ Major functionality added
-
-Don't update for:
-- ❌ Internal implementation changes
-- ❌ Private method changes
-- ❌ Bug fixes (unless API changes)
-
-### Update Process
-
-1. **Modify code** - Implement new functionality
-2. **Update CLAUDE.md** - Document new APIs
-3. **Update docstrings** - Ensure API docs auto-generate
-4. **Rebuild docs** - `mkdocs build`
-5. **Commit together** - Code + docs in same commit
-
-## Example: Adding New Method
-
-```python
-# 1. Add method to HmsBasin.py
-class HmsBasin:
-    @staticmethod
-    @log_call
-    def get_reach_parameters(basin_path: str, reach_name: str) -> Dict:
-        """
-        Get routing parameters for a reach.
-
-        Args:
-            basin_path (str): Path to .basin file
-            reach_name (str): Name of reach
-
-        Returns:
-            Dict: Routing parameters
-
-        Example:
-            >>> params = HmsBasin.get_reach_parameters("model.basin", "Reach1")
-        """
-        # Implementation
-```
-
-```markdown
-# 2. Add to CLAUDE.md
-
-### HmsBasin - Basin Model Operations
-```python
-HmsBasin.get_subbasins(basin_path)              # DataFrame of subbasins
-HmsBasin.get_junctions(basin_path)              # DataFrame of junctions
-HmsBasin.get_reaches(basin_path)                # DataFrame of reaches
-HmsBasin.get_reach_parameters(basin_path, name) # NEW: Reach routing params
-```
-```
-
-## Best Practices
-
-### ✅ Do
-
-- Keep CLAUDE.md synchronized with code
-- Use real working examples
-- Document all public APIs
-- Include file format specs
-- Show architectural patterns
-
-### ❌ Don't
-
-- Don't include internal implementation details
-- Don't let CLAUDE.md diverge from code
-- Don't duplicate what's in docstrings
-- Don't include outdated examples
-
-## Related Topics
-
-- [Contributing](contributing.md) - Development workflow
-- [Style Guide](style_guide.md) - Coding standards
-- [Architecture](architecture.md) - Technical details
-- [LLM Forward Overview](overview.md) - Development philosophy
-
----
-
-*CLAUDE.md is the single source of truth for AI assistants working with HMS Commander.*
+- [Multi-Harness Agent Contract](../development/multi-harness-agent-contract.md)
+- [Contributing](contributing.md)
+- [Cognitive Architecture](cognitive_architecture.md)
+- [Style Guide](style_guide.md)

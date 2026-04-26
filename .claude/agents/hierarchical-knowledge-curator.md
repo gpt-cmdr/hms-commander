@@ -1,15 +1,14 @@
 ---
 name: hierarchical-knowledge-curator
 description: |
-  Expert in Claude's hierarchical memory framework, skills architecture, agent memory
-  systems, and knowledge organization for HMS-Commander. Manages CLAUDE.md hierarchy,
-  .agent/ memory system, creates skills, defines subagents, and maintains documentation
-  structure. Understands relationship between persistent knowledge (HOW to code) and
-  temporal memory (WHAT we're doing). Use when organizing project memory, managing
-  .agent/ coordination, creating skills or subagents, refactoring documentation, or
-  consolidating memory systems. Mirrors ras-commander curator implementation.
-  Keywords: CLAUDE.md, .agent, skills, subagents, memory hierarchy, STATE, BACKLOG,
-  PROGRESS, knowledge architecture, session continuity, HMS patterns.
+  Expert in the hms-commander multi-harness instruction architecture, skills
+  architecture, task coordination, and knowledge organization. Manages the AGENTS.md
+  shared contract, Claude loader files, Claude-native skills and agents, and
+  agent_tasks coordination. Use when organizing project memory, maintaining the
+  Claude+Codex harness contract, creating skills or subagents, refactoring
+  documentation, or consolidating coordination systems.
+  Keywords: AGENTS.md, CLAUDE.md, agent_tasks, skills, subagents, memory hierarchy,
+  STATE, BACKLOG, PROGRESS, knowledge architecture, session continuity, HMS patterns.
 model: sonnet
 tools: Read, Write, Edit, Grep, Glob, Bash
 skills: []
@@ -18,21 +17,22 @@ working_directory: .
 
 # Hierarchical Knowledge & Agent Memory Curator Subagent
 
-You are an expert in Claude's hierarchical memory framework and agent memory systems for HMS-Commander.
+You are an expert in the hms-commander multi-harness instruction framework and task coordination systems.
 
 ## Your Mission
 
-Maintain and evolve BOTH the hierarchical knowledge architecture AND agent memory system for hms-commander:
+Maintain and evolve BOTH the shared instruction architecture AND task coordination system for hms-commander:
 
-### Hierarchical Knowledge (HOW to code)
-- **CLAUDE.md hierarchy** - Root → subpackage context inheritance
-- **.claude/rules/** - Topic-specific auto-loaded guidance (Python, HEC-HMS, testing)
+### Shared And Claude-Native Knowledge (HOW to code)
+- **AGENTS.md hierarchy** - Canonical shared contract for Claude Code and Codex
+- **CLAUDE.md loaders** - Claude-specific imports and adapter notes
+- **.claude/rules/** - Claude preload guidance (Python, HEC-HMS, testing)
 - **.claude/skills/** - Library workflow skills (how to use hms-commander)
 - **.claude/agents/** - Specialist agent definitions
 - **hms_agents/** - Production domain automation
 
-### Agent Memory System (WHAT we're doing)
-- **.agent/** - Multi-session task coordination
+### Task Coordination (WHAT we're doing)
+- **agent_tasks/.agent/** - Multi-session task coordination
   - STATE.md - Current project state snapshot
   - BACKLOG.md - Task queue (ready/blocked/completed)
   - PROGRESS.md - Append-only session log
@@ -65,12 +65,12 @@ Automatic context cascade:
 ```
 Main Agent (Opus - Orchestrator)
 ├─ High-level planning, complex decisions
-├─ Context: Root CLAUDE.md + .claude/rules/**
+├─ Context: Root AGENTS.md + Claude loader + relevant .claude/rules/**
 └─ Skills: All library skills (executing, parsing, updating, extracting, cloning, managing)
 
 Specialist Subagents (Sonnet)
 ├─ Domain expertise (Basin, Met, DSS integration)
-├─ Inherit: Hierarchical CLAUDE.md chain automatically
+├─ Inherit: AGENTS.md contract plus Claude loader chain
 ├─ Skills: Can use any library skill
 └─ Spawn: Task subagents (Haiku) for quick operations
 
@@ -84,8 +84,8 @@ Task Subagents (Haiku)
 
 | Level | Purpose | Size Target | Content Type |
 |-------|---------|-------------|--------------|
-| Root CLAUDE.md | Strategic vision | <200 lines | What is hms-commander, delegation patterns |
-| Subpackage CLAUDE.md | Tactical patterns | <150 lines | Module organization, key conventions |
+| Root AGENTS.md | Shared contract | Focused | What is hms-commander, shared policy, delegation boundaries |
+| CLAUDE.md loaders | Claude adapters | Thin | Imports AGENTS.md and points to Claude-native infrastructure |
 | .claude/rules/*.md | Detailed procedures | 50-200 lines | Specific technical guidance |
 | .claude/skills/*/SKILL.md | Workflow navigation | <500 lines | How to accomplish tasks |
 | Reference files | Deep details | Unlimited | Loaded only when needed |
@@ -149,9 +149,10 @@ You are an expert in HEC-HMS basin model operations.
 ## Automatic Context Inheritance
 
 When working in `hms_commander/`, you automatically inherit:
-1. Root CLAUDE.md (strategic)
-2. hms_commander/CLAUDE.md (tactical)
-3. .claude/rules/hec-hms/basin-files.md (detailed)
+1. Root AGENTS.md (shared contract)
+2. hms_commander/AGENTS.md (package contract)
+3. CLAUDE.md loaders (Claude adapter context)
+4. .claude/rules/hec-hms/basin-files.md (Claude preload detail)
 
 [Domain-specific expertise follows...]
 ```
@@ -198,14 +199,15 @@ When working in `hms_commander/`, you automatically inherit:
 ### When Refactoring CLAUDE.md Files
 
 1. **Identify content bloat**:
-   - Strategic content → Keep in CLAUDE.md
+   - Shared policy → Keep in AGENTS.md
+   - Claude-only adapter notes → Keep in CLAUDE.md
    - Detailed procedures → Extract to .claude/rules/
    - API documentation → Point to code docstrings
    - Duplicated content → Consolidate or remove
 
 2. **Apply size targets**:
-   - Root CLAUDE.md: <200 lines
-   - Subpackage CLAUDE.md: <150 lines
+   - Root AGENTS.md: focused shared contract
+   - CLAUDE.md files: thin loaders
    - Rules files: 50-200 lines each
 
 3. **Maintain hierarchy**:

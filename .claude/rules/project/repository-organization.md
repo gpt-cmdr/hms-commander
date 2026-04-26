@@ -3,8 +3,10 @@
 **Purpose**: Maintain clean, organized repository structure with well-defined locations for different types of files.
 
 **Primary sources**:
+- Root `AGENTS.md` shared contract
 - Repository root structure
 - `.claude/` framework organization
+- `.agents/` and `.codex/` harness adapters
 - `feature_dev_notes/` development documentation (gitignored - local only)
 
 ---
@@ -46,8 +48,9 @@
 - `QUICK_REFERENCE.md` - Command/API reference
 - `STYLE_GUIDE.md` - Code style and contribution guidelines
 
-**Primary instructions for Claude**:
-- `CLAUDE.md` - Main instruction file (hierarchical knowledge entry point)
+**Agent instruction entry points**:
+- `AGENTS.md` - Canonical shared contract for Claude Code, Codex, and future repository-local agents
+- `CLAUDE.md` - Thin Claude loader that imports `AGENTS.md` and points to Claude-native infrastructure
 
 **Standard repository files**:
 - `LICENSE`, `setup.py`, `pyproject.toml`, `.gitignore`, etc.
@@ -96,7 +99,7 @@ mv *.backup .old/
 mv *_old.md .old/
 
 # Verify only essential files remain
-ls *.md  # Should show: CLAUDE.md, README.md, GETTING_STARTED.md, QUICK_REFERENCE.md, STYLE_GUIDE.md
+ls *.md  # Should show: AGENTS.md, CLAUDE.md, README.md, GETTING_STARTED.md, QUICK_REFERENCE.md, STYLE_GUIDE.md
 ```
 
 **Add cleanup reminder to session workflow**:
@@ -111,14 +114,16 @@ ls *.md  # Should show: CLAUDE.md, README.md, GETTING_STARTED.md, QUICK_REFERENC
 
 ```
 hms-commander/
-├── CLAUDE.md                    # Primary instructions (root only)
+├── AGENTS.md                    # Canonical shared agent contract (root only)
+├── CLAUDE.md                    # Claude loader and Claude-only notes (root only)
 ├── README.md                    # User overview (root only)
 ├── GETTING_STARTED.md           # Quick start (root only)
 ├── QUICK_REFERENCE.md           # API reference (root only)
 ├── STYLE_GUIDE.md               # Code style (root only)
 │
-├── .claude/                     # Hierarchical knowledge framework
+├── .claude/                     # Claude-native knowledge framework
 │   ├── CLAUDE.md                # Framework aggregation (@imports)
+│   ├── MANIFEST.md              # Claude component registry
 │   ├── rules/                   # Patterns, workflows, decisions
 │   │   ├── python/              # Python development patterns
 │   │   ├── hec-hms/             # HMS domain knowledge
@@ -126,7 +131,18 @@ hms-commander/
 │   │   ├── integration/         # Cross-repo workflows
 │   │   └── project/             # Repository organization (this file)
 │   ├── skills/                  # Task-specific workflows
-│   └── subagents/               # Specialist agents
+│   ├── agents/                  # Specialist and development agents
+│   └── commands/                # Claude slash commands
+│
+├── .agents/                     # Codex skill adapter layer
+│   ├── native-skills/           # Codex-only source skills
+│   └── skills/                  # Generated bridge links; do not edit directly
+│
+├── .codex/                      # Codex hook/config adapters
+│
+├── scripts/
+│   ├── agent_framework/         # Skill bridge maintenance scripts
+│   └── agent_hooks/             # Shared hook implementation
 │
 ├── feature_dev_notes/           # Development documentation
 │   ├── *_COMPLETE.md            # Phase completion reports
@@ -171,9 +187,9 @@ hms-commander/
 
 ## Quick Reference
 
-**Essential root files**: CLAUDE.md, README.md, GETTING_STARTED.md, QUICK_REFERENCE.md, STYLE_GUIDE.md
+**Essential root files**: AGENTS.md, CLAUDE.md, README.md, GETTING_STARTED.md, QUICK_REFERENCE.md, STYLE_GUIDE.md
 
 **Move to feature_dev_notes**: Completion reports, session notes, planning docs
 **Move to .old**: Backups, deprecated files
 
-**Cleanup command**: `ls *.md` → move extras → verify only 5 essential files remain
+**Cleanup command**: `ls *.md` → move extras → verify essential root files remain

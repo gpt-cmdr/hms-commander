@@ -1,5 +1,5 @@
 # Agent Instructions
 
-**Non-Claude agents**: Import `../CLAUDE.md` for full context.
+This directory contains Claude Code slash commands.
 
-This directory contains Claude Code slash commands (`.md` files).
+**Non-Claude agents**: Use root `AGENTS.md` for shared repository behavior. Read command files here only when maintaining Claude-native command definitions.

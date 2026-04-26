@@ -1,176 +1,129 @@
 # HMS-Commander Documentation Index
 
-Complete guide to all documentation in the hms-commander repository.
+Guide to the main documentation surfaces in the `hms-commander` repository.
 
-## Quick Start (New Users)
+## Quick Start For Users
 
-1. **README.md** (root) - Project overview and installation
-2. **GETTING_STARTED.md** (root) - First steps and basic usage
-3. **QUICK_REFERENCE.md** (root) - API quick reference with examples
+1. `README.md` - Project overview and installation
+2. `GETTING_STARTED.md` - First steps and basic usage
+3. `QUICK_REFERENCE.md` - API quick reference with examples
+4. `docs/user_guide/` - User-facing workflow documentation
+5. `docs/api/` - Generated API reference pages
 
 ## Developer Documentation
 
-### Core Development Guide
-- **CLAUDE.md** (root) - Comprehensive development guidelines for Claude Code and human developers
-  - Project overview and architecture
-  - Complete API reference for all 14 core classes
-  - HMS file format specifications
-  - Development patterns and naming conventions
-  - HMS version support (3.x vs 4.x differences)
-  - Common pitfalls to avoid
+### Shared Agent Contract
 
-### Current Plans
-- **REORGANIZATION_PLAN.md** (root) - Active reorganization plan
-  - Phase 1: Code Consolidation
-  - Phase 2: Agent Infrastructure
-  - Phase 3: Testing & Documentation
-  - Implementation timeline and acceptance criteria
+- `AGENTS.md` - Canonical shared repository contract for Claude Code, Codex, and future repository-local agents
+- `CLAUDE.md` - Thin Claude loader that imports `AGENTS.md` and adds Claude-only notes
+- `docs/development/multi-harness-agent-contract.md` - Architecture record for the shared Claude+Codex harness setup
 
-## Agent Workflows
+Shared rules that both Claude and Codex need belong in the `AGENTS.md` hierarchy. Do not treat `CLAUDE.md` or `.claude/rules/` as the canonical shared policy tree.
 
-### Agent System
-- **agents/README.md** - Agent framework guide (formerly AGENTS.md)
-  - GIS data extraction patterns
-  - Agent workflow structure
-  - Quality verdict system
+### Package, Examples, Docs, And Tests
 
-- **.agent/** - Agent memory and coordination system
-  - **STATE.md** - Current project state (READ FIRST)
-  - **CONSTITUTION.md** - Project principles and constraints
-  - **BACKLOG.md** - Task queue with dependencies
-  - **PROGRESS.md** - Session-by-session log
-  - **LEARNINGS.md** - Patterns and anti-patterns
-  - **README.md** - Memory system guide
+- `hms_commander/AGENTS.md` - Package/API rules before changing library code
+- `examples/AGENTS.md` - Notebook and example workflow rules
+- `docs/AGENTS.md` - MkDocs and documentation rules
+- `tests/AGENTS.md` - Real-project test expectations
 
-### Existing Agent Workflows
-- **agents/Update_3_to_4/** - HMS 3.x → 4.x version upgrade workflow
-  - Complete workflow with 0.00% result deviation
-  - Decompilation-based problem solving
-  - Comprehensive change tracking
+### LLM Forward Documentation
 
-## Archived Documentation
+- `docs/llm_dev/claude_md.md` - How the current `AGENTS.md` + `CLAUDE.md` loading model works
+- `docs/llm_dev/cognitive_architecture.md` - Repository agent architecture and harness layers
+- `docs/llm_dev/contributing.md` - Contributor workflow for LLM-forward documentation
 
-Located in `.old/` directory (not tracked by git):
+## Agent Infrastructure
 
-### Planning Documents (.old/planning/)
-- **PLAN_HmsPrj_Enhancement.md** - HmsPrj enhancement planning (superseded)
-- **PLAN_HMS_Version_Fix.md** - HMS version fix planning (superseded)
-- **DEVELOPMENT_PLAN.md** - Original development roadmap (superseded by REORGANIZATION_PLAN.md)
+### Claude-Native Infrastructure
 
-### Research Documents (.old/research/)
-- **decompile_findings.md** - HMS JAR decompilation results
-  - Index Parameter Type discovery
-  - Zero-depth bug analysis
-- **HMS_LOG_ANALYSIS_INDEX.md** - HMS log message analysis
+- `.claude/MANIFEST.md` - Concise registry of Claude-native components
+- `.claude/INDEX.md` - Longer navigation index for Claude agents, skills, commands, and rules
+- `.claude/agents/` - Claude-native delegation roles
+- `.claude/skills/` - Claude-native skill sources, including HMS shared-domain skill sources
+- `.claude/commands/` - Claude slash command definitions
+- `.claude/rules/` - Claude preload accelerators; shared policy still belongs in `AGENTS.md`
 
-### Old API Documentation (.old/docs_old/)
-- **API_Reference.md** - Generated API reference (67 KB)
-- **API_Gap_Analysis.md** - API gap analysis (44 KB)
-- **Feature_Implementation_Specs.md** - Feature specs (60 KB)
+### Codex-Native Infrastructure
 
-*Note: These were comprehensive but became outdated. CLAUDE.md now serves as the canonical API reference.*
+- `.agents/README.md` - Codex skill bridge overview
+- `.agents/native-skills/` - Codex-only adapter skill sources
+- `.agents/skills/README.md` - Warning and notes for the generated skill bridge
+- `.agents/skills/*` - Generated links only; do not edit directly
+- `.codex/config.toml` - Codex feature toggles
+- `.codex/hooks.json` - Codex hook adapter
+
+### Shared Hook And Bridge Scripts
+
+- `scripts/agent_framework/sync_codex_skill_bridge.py` - Generates the Codex skill bridge from approved source skills
+- `scripts/agent_hooks/hook_dispatch.py` - Shared hook dispatcher used by Claude Code and Codex
+- `scripts/agent_hooks/README.md` - Hook behavior and smoke checks
 
 ## Documentation Structure
 
-```
+```text
 hms-commander/
+├── AGENTS.md                    # Canonical shared agent contract
+├── CLAUDE.md                    # Claude loader
 ├── README.md                    # Project overview
 ├── GETTING_STARTED.md           # Quick start guide
 ├── QUICK_REFERENCE.md           # API quick reference
-├── CLAUDE.md                    # Complete dev guide
-├── REORGANIZATION_PLAN.md       # Current active plan
-├── docs/
-│   └── DOCUMENTATION_INDEX.md   # This file
-├── agents/
-│   ├── README.md                # Agent framework
-│   ├── Update_3_to_4/           # Version upgrade workflow
-│   └── (future agents)
-├── .agent/                      # Memory system (multi-session work)
-│   ├── STATE.md
-│   ├── CONSTITUTION.md
-│   ├── BACKLOG.md
-│   ├── PROGRESS.md
-│   ├── LEARNINGS.md
-│   └── README.md
-└── .old/                        # Archived/deprecated docs
-    ├── planning/
-    ├── research/
-    └── docs_old/
+├── STYLE_GUIDE.md               # Code style and contribution guidance
+├── .claude/                     # Claude-native infrastructure
+├── .agents/                     # Codex skill adapter layer
+├── .codex/                      # Codex hook/config adapters
+├── scripts/
+│   ├── agent_framework/         # Skill bridge scripts
+│   └── agent_hooks/             # Shared hook implementation
+├── hms_commander/               # Library source
+├── examples/                    # Notebooks and workflows
+├── tests/                       # Test suite and HMS fixtures
+└── docs/                        # MkDocs source
 ```
 
 ## Documentation Maintenance
 
-### When to Update
+| Document | Update Trigger |
+|----------|----------------|
+| `README.md` | Major feature additions or installation changes |
+| `GETTING_STARTED.md` | Basic workflow changes |
+| `QUICK_REFERENCE.md` | Public API additions or signature changes |
+| `AGENTS.md` | Shared agent policy or repository workflow changes |
+| `CLAUDE.md` | Claude-only loader or adapter changes |
+| `docs/development/multi-harness-agent-contract.md` | Instruction architecture changes |
+| `.claude/MANIFEST.md` | Claude component additions, removals, or renamed paths |
 
-| Document | Update Frequency | Trigger |
-|----------|-----------------|---------|
-| README.md | Rarely | Major feature additions, installation changes |
-| GETTING_STARTED.md | Occasionally | API changes affecting basic usage |
-| QUICK_REFERENCE.md | Frequently | New methods added, signature changes |
-| CLAUDE.md | Frequently | New patterns, architecture changes |
-| .agent/STATE.md | Every session | Session end (current state) |
-| .agent/PROGRESS.md | Every session | Session end (append log) |
-| .agent/BACKLOG.md | Every session | Task completion, new tasks discovered |
-| .agent/LEARNINGS.md | After tasks | New patterns discovered |
+## Documentation Principles
 
-### Documentation Principles
-
-1. **Single Source of Truth**: CLAUDE.md is canonical for development patterns
-2. **User-Facing vs Internal**: Root docs are user-facing, .agent/ is for multi-session development
-3. **Archive Don't Delete**: Move superseded docs to .old/ rather than deleting
-4. **Git-Friendly**: Use markdown, avoid binary formats
-5. **Examples Required**: Every major feature needs usage examples
+1. `AGENTS.md` is the shared source of truth for agent behavior.
+2. `CLAUDE.md` is a loader, not the complete development guide.
+3. `.claude/` accelerates Claude Code but does not own shared policy.
+4. `.agents/skills/` is generated and must not be edited directly.
+5. Public documentation should point to current paths, not archived `agents/` or `.agent/` layouts.
+6. Superseded internal notes should move to `.old/` or `feature_dev_notes/` when appropriate.
 
 ## Finding What You Need
 
-### I want to...
+**Get started with hms-commander**:
+Read `README.md`, then `GETTING_STARTED.md`.
 
-**...get started with hms-commander**
-→ README.md → GETTING_STARTED.md
+**Find a specific API method**:
+Use `QUICK_REFERENCE.md` for quick lookup or `docs/api/` for generated reference.
 
-**...find a specific API method**
-→ QUICK_REFERENCE.md (quick lookup) or CLAUDE.md (complete details)
+**Understand the agent contract**:
+Read `AGENTS.md`, then `docs/development/multi-harness-agent-contract.md`.
 
-**...understand the architecture**
-→ CLAUDE.md "Architecture Overview" section
+**Maintain Claude-native components**:
+Use `.claude/MANIFEST.md` first, then `.claude/INDEX.md` for navigation.
 
-**...create an agent workflow**
-→ agents/README.md → .agent/README.md
+**Maintain Codex skill exposure**:
+Edit source skills only, then run `python scripts/agent_framework/sync_codex_skill_bridge.py`.
 
-**...continue multi-session work**
-→ .agent/STATE.md (read first every session)
-
-**...understand HMS file formats**
-→ CLAUDE.md "HEC-HMS File Formats" section
-
-**...see version differences (HMS 3.x vs 4.x)**
-→ CLAUDE.md "HMS Version Support" section
-
-**...find decompilation results**
-→ .old/research/decompile_findings.md
-
-**...understand project principles**
-→ .agent/CONSTITUTION.md
-
-## Contributing to Documentation
-
-When adding new features:
-
-1. **Update QUICK_REFERENCE.md** with method signature and example
-2. **Update CLAUDE.md** with detailed explanation and patterns
-3. **Add docstring** to the code itself (Google style)
-4. **Update .agent/LEARNINGS.md** if new pattern discovered
-5. **Consider**: Does README.md or GETTING_STARTED.md need updating?
-
-When changing architecture:
-
-1. **Update .agent/CONSTITUTION.md** if principles change
-2. **Update CLAUDE.md** with new patterns
-3. **Update REORGANIZATION_PLAN.md** if affects planned work
-4. **Document in .agent/PROGRESS.md** with rationale
+**Continue multi-session work**:
+Use `agent_tasks/` and the task-specific handoff files owned by the active work.
 
 ## Version
 
-**Index Version**: 1.0
+**Index Version**: 2.0
 **Created**: 2025-12-10
-**Last Updated**: 2025-12-10
+**Last Updated**: 2026-04-26

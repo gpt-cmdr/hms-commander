@@ -1,5 +1,9 @@
 ---
 name: hms_parse_basin-models
+shared_corpus: true
+harness_scope: shared
+source_owner: gpt-cmdr
+security_review: internal
 description: |
   Parses HEC-HMS basin model files (.basin) to extract and modify subbasins, junctions,
   reaches, loss parameters, transform parameters, baseflow, and routing. Use when reading

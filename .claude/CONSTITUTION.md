@@ -63,7 +63,7 @@ HMS files are plain text with complex structure:
 
 ### "Done" Means
 1. **Tests Pass**: All existing tests continue to pass (no regression)
-2. **Documentation Complete**: CLAUDE.md updated, examples provided
+2. **Documentation Complete**: AGENTS.md updated for shared rules, Claude-only notes updated only when needed, examples provided
 3. **Agent-Ready**: Workflow can be resumed across sessions
 4. **Zero Deviation**: Results match baseline (for upgrade/migration tasks)
 5. **Change Log**: Every modification documented with justification
@@ -116,7 +116,7 @@ class MyWorkflow(AgentWorkflow):
 When facing implementation choices:
 
 1. **Check ras-commander first** - Does it have a pattern we should follow?
-2. **Check CLAUDE.md** - Is there existing guidance?
+2. **Check AGENTS.md** - Is there existing shared guidance?
 3. **Check HMS decompilation** - What does HMS actually do?
 4. **Check test results** - Does it produce correct results?
 5. **Document decision** - Add to LEARNINGS.md

@@ -66,7 +66,9 @@ Additional in `.claude/rules/testing/` and `.claude/rules/documentation/`:
 - Create/activate environments before testing code changes
 
 **Keep root clean**:
-- Only 5 essential .md files: CLAUDE.md, README.md, GETTING_STARTED.md, QUICK_REFERENCE.md, STYLE_GUIDE.md
+- Essential root .md files: AGENTS.md, CLAUDE.md, README.md, GETTING_STARTED.md, QUICK_REFERENCE.md, STYLE_GUIDE.md
+- `AGENTS.md` is the canonical shared contract and must remain in the repository root
+- `CLAUDE.md` is the Claude loader and must not duplicate shared policy
 - Move completion reports → `feature_dev_notes/`
 - Move old/backup files → `.old/`
 - Run cleanup after each major feature or session

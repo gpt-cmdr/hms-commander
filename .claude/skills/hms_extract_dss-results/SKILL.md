@@ -1,5 +1,9 @@
 ---
 name: hms_extract_dss-results
+shared_corpus: true
+harness_scope: shared
+source_owner: gpt-cmdr
+security_review: internal
 description: |
   Extracts and analyzes HEC-HMS simulation results from DSS files using HmsDss and
   HmsResults classes. Handles peak flows, hydrographs, volume summaries, and time series

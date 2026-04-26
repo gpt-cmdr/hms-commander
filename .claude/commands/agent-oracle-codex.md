@@ -1,34 +1,19 @@
-Invoke the Code Oracle Codex subagent for deep code analysis using OpenAI's gpt-5.2-codex model.
+Invoke the Claude-native Codex oracle for explicit cross-harness QAQC or implementation delegation.
 
-Use this oracle for tasks requiring extended thinking (20-30 minutes):
-- Architecture planning and design decisions
-- Security audits and vulnerability analysis
-- Complex refactoring strategies
-- Multi-file impact analysis
-- Pattern consistency analysis
+Use when the user specifically asks for Codex, Codex CLI, OpenAI Codex, or a Codex second-model review.
 
-The oracle uses HEREDOC syntax with codex-wrapper CLI. Always specify working directory as "C:/GH/hms-commander" for @file references.
+Default behavior:
+- Use `.claude/skills/dev_invoke_codex-cli/SKILL.md`.
+- Create a handoff under `agent_tasks/handoffs/codex/`.
+- Run `codex exec` from the repository root.
+- Use read-only sandboxing for QAQC and reviews.
+- Allow edits only when the user explicitly requests Codex implementation or refactoring.
 
-Prerequisites: codex-cli plugin installed, OPENAI_API_KEY set or `codex login` completed.
+Do not use legacy `codex-wrapper` commands, personal plugin cache paths, or hardcoded local repository paths.
 
-Output location: `feature_dev_notes/Code_Oracle_Multi_LLM/reviews/` or `plans/`
-
-Example invocation:
-```bash
-codex-wrapper - "C:/GH/hms-commander" <<'EOF'
-Design basin model validation framework.
-
-Context files:
-@hms_commander/HmsBasin.py
-@.claude/rules/hec-hms/basin-files.md
-
-Requirements:
-- Validate subbasin parameters
-- Check connectivity
-- Integration with static class pattern
-
-Provide class structure and implementation plan.
-EOF
-```
-
-See `.claude/agents/code-oracle-codex.md` for full documentation.
+Expected output to the user:
+- Summary of Codex's result
+- Severity-ranked findings for reviews
+- Files inspected or modified
+- Validation performed
+- Path to the handoff folder

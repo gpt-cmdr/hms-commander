@@ -14,89 +14,77 @@ HMS Commander uses a sophisticated cognitive architecture that organizes knowled
 
 ```mermaid
 graph TB
-    subgraph "Root Level - Entry Point"
-        A[CLAUDE.md<br/>Primary Instructions]
+    subgraph "Shared Contract"
+        A[AGENTS.md<br/>Shared Source of Truth]
     end
 
-    subgraph "Framework Level - Organization"
-        B[.claude/CLAUDE.md<br/>Hierarchical Hub]
-        C[.claude/INDEX.md<br/>Framework Index]
+    subgraph "Harness Adapters"
+        B[CLAUDE.md<br/>Claude Loader]
+        C[.agents/skills/<br/>Generated Codex Bridge]
+        D[.codex/<br/>Codex Config]
     end
 
-    subgraph "Pattern Level - Knowledge"
-        D[.claude/rules/python/]
-        E[.claude/rules/hec-hms/]
-        F[.claude/rules/testing/]
-        G[.claude/rules/documentation/]
-        H[.claude/rules/project/]
-        I[.claude/rules/integration/]
-    end
-
-    subgraph "Execution Level - Workflows"
-        J[.claude/skills/<br/>Task Workflows]
-        K[.claude/agents/<br/>Domain Specialists]
-        L[.claude/commands/<br/>Slash Commands]
+    subgraph "Claude-Native Framework"
+        E[.claude/MANIFEST.md<br/>Component Registry]
+        F[.claude/INDEX.md<br/>Navigation Index]
+        G[.claude/rules/]
+        H[.claude/skills/]
+        I[.claude/agents/]
+        J[.claude/commands/]
     end
 
     subgraph "Production Level - Automation"
-        M[hms_agents/<br/>Production Agents]
-        N[agent_tasks/<br/>Task Templates]
+        K[hms_agents/<br/>Production Agents]
+        L[agent_tasks/<br/>Task Templates]
     end
 
     A --> B
     A --> C
-    B --> D
+    A --> D
     B --> E
     B --> F
-    B --> G
-    B --> H
-    B --> I
-
-    D --> J
+    E --> G
+    E --> H
+    E --> I
     E --> J
-    F --> J
-    D --> K
-    E --> K
-
+    H --> K
+    I --> K
     J --> L
-    K --> L
-
-    L --> M
-    L --> N
 
     style A fill:#ffcccc
     style B fill:#ffe6cc
     style C fill:#ffe6cc
-    style D fill:#e1f5ff
-    style E fill:#e1f5ff
-    style F fill:#e1f5ff
-    style J fill:#fff4e1
-    style K fill:#fff4e1
-    style M fill:#e7f5e7
+    style D fill:#ffe6cc
+    style G fill:#e1f5ff
+    style H fill:#fff4e1
+    style I fill:#fff4e1
+    style K fill:#e7f5e7
 ```
 
 ---
 
 ## Progressive Disclosure Pattern
 
-The framework uses **@imports** to progressively disclose context:
+Claude uses **@imports** to enter the shared contract and progressively disclose Claude-native context:
 
 ```mermaid
 flowchart LR
     A[User asks:<br/>'How do clone workflows work?'] --> B{Claude reads<br/>CLAUDE.md}
 
-    B --> C[@import .claude/CLAUDE.md]
-    C --> D[@import .claude/rules/hec-hms/clone-workflows.md]
+    B --> C[@import AGENTS.md]
+    C --> D[Use .claude/MANIFEST.md<br/>for Claude-native discovery]
+    D --> E[Read .claude/rules/hec-hms/clone-workflows.md]
 
-    D --> E[Detailed Pattern:<br/>- Non-destructive clones<br/>- GUI verification<br/>- QAQC workflows]
+    E --> F[Detailed Pattern:<br/>- Non-destructive clones<br/>- GUI verification<br/>- QAQC workflows]
 
-    E --> F[Related Context:<br/>@import execution.md<br/>@import basin-files.md]
+    F --> G[Related Context:<br/>execution.md<br/>basin-files.md]
 
-    F --> G[Claude has full context<br/>to answer question]
+    G --> H[Claude has full context<br/>to answer question]
 
     style A fill:#e1f5ff
-    style D fill:#fff4e1
-    style G fill:#e7f5e7
+    style C fill:#ffcccc
+    style E fill:#fff4e1
+    style H fill:#e7f5e7
 ```
 
 **Key Principle**: Context is loaded **on-demand** based on user's question, not all at once.
@@ -117,7 +105,7 @@ sequenceDiagram
 
     User->>Claude: "Run HMS simulation with updated precipitation"
 
-    Claude->>Claude: Read CLAUDE.md<br/>Identify workflow type
+    Claude->>Claude: Read CLAUDE.md and AGENTS.md<br/>Identify workflow type
 
     Claude->>Command: /hms-run
     Note over Command: Slash command expands prompt
@@ -319,25 +307,25 @@ graph TB
 
 ## Progressive Disclosure Example
 
-### Level 1: Root Entry (CLAUDE.md)
+### Level 1: Shared Contract (`AGENTS.md`)
 ```
 User: "How do I execute HMS simulations?"
 
-Claude reads: CLAUDE.md
-├── Quick Start section
-├── @import .claude/CLAUDE.md
-└── Navigation to detailed docs
+Agent reads: AGENTS.md
+├── Shared harness contract
+├── HMS working rules
+└── Navigation to scoped AGENTS.md files
 ```
 
-### Level 2: Framework Hub (.claude/CLAUDE.md)
+### Level 2: Claude Loader (`CLAUDE.md`)
 ```
-Claude loads: .claude/CLAUDE.md
-├── @import .claude/rules/hec-hms/execution.md
-├── @import .claude/rules/testing/example-projects.md
-└── Links to API reference
+Claude loads: CLAUDE.md
+├── @AGENTS.md
+├── Claude adapter notes
+└── Pointer to .claude/MANIFEST.md
 ```
 
-### Level 3: Pattern Details (execution.md)
+### Level 3: Claude-Native Pattern Details
 ```
 Claude reads: .claude/rules/hec-hms/execution.md
 ├── HmsCmdr patterns
@@ -361,9 +349,9 @@ Claude has full context:
 ## Knowledge Organization Principles
 
 ### 1. **Single Source of Truth**
-- Each concept documented **once**
-- Other documents **reference** via @imports
-- No duplication = no drift
+- Shared rules live in `AGENTS.md`
+- Claude-specific files reference shared rules instead of copying them
+- Generated Codex bridge entries are links, not duplicate skill source
 
 ### 2. **Hierarchical Loading**
 - Start general → progress to specific
@@ -387,12 +375,13 @@ Claude has full context:
 
 | Layer | Location | Purpose | Loaded When |
 |-------|----------|---------|-------------|
-| **Entry** | `CLAUDE.md` | User-facing overview | Always |
-| **Framework** | `.claude/CLAUDE.md` | Knowledge hub with @imports | When detailed context needed |
-| **Patterns** | `.claude/rules/*/` | Architectural decisions | When specific pattern needed |
-| **Workflows** | `.claude/skills/` | Task execution patterns | When performing task |
-| **Specialists** | `.claude/agents/` | Domain expertise | When domain knowledge needed |
-| **Commands** | `.claude/commands/` | User entry points | When user uses /command |
+| **Shared Contract** | `AGENTS.md` | Cross-harness source of truth | Always |
+| **Claude Loader** | `CLAUDE.md` | Imports `AGENTS.md` and adds Claude notes | Claude sessions |
+| **Codex Bridge** | `.agents/skills/` | Generated skill links | Codex skill discovery |
+| **Patterns** | `.claude/rules/*/` | Claude preload helpers and detailed notes | When specific pattern needed |
+| **Workflows** | `.claude/skills/` | Skill source corpus | When performing task |
+| **Specialists** | `.claude/agents/` | Claude-native domain expertise | When domain knowledge needed |
+| **Commands** | `.claude/commands/` | Claude slash-command entry points | When user uses /command |
 | **Templates** | `agent_tasks/tasks/` | Reusable workflows | When executing structured task |
 | **Production** | `hms_agents/` | Complete automation | When running standalone agent |
 
@@ -423,7 +412,7 @@ Claude has full context:
 ## Related Documentation
 
 - [Architecture](architecture.md) - Technical architecture and design decisions
-- [CLAUDE.md Guide](claude_md.md) - Primary instructions for AI assistants
+- [Agent Instructions Guide](claude_md.md) - Shared AGENTS/CLAUDE loading model
 - [Contributing](contributing.md) - How to contribute to the project
 - [Style Guide](style_guide.md) - Coding standards and patterns
 
@@ -431,14 +420,14 @@ Claude has full context:
 
 ## Next Steps
 
-**For Claude**: Follow the hierarchical loading pattern:
-1. Read CLAUDE.md (entry point)
-2. Follow @imports to .claude/CLAUDE.md
-3. Load specific rules as needed
-4. Reference skills and subagents for execution
+**For Claude**: Follow the shared loading pattern:
+1. Read `CLAUDE.md`
+2. Follow `@AGENTS.md`
+3. Use `.claude/MANIFEST.md` for Claude-native discovery
+4. Load specific rules, skills, and subagents as needed
 
 **For Developers**: Maintain the architecture:
-1. Document patterns in `.claude/rules/`
-2. Create skills for common workflows
-3. Build subagents for domain expertise
-4. Update INDEX.md when adding components
+1. Put shared rules in `AGENTS.md`
+2. Keep `CLAUDE.md` as a loader
+3. Create skills for common workflows
+4. Update `.claude/MANIFEST.md` and `.claude/INDEX.md` when adding Claude components

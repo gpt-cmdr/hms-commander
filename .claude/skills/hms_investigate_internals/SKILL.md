@@ -1,5 +1,9 @@
 ---
 name: hms_investigate_internals
+shared_corpus: true
+harness_scope: shared
+source_owner: gpt-cmdr
+security_review: internal
 description: |
   Investigates HEC-HMS internals through decompiled Java classes. Provides JythonHms
   API reference, CLI options, version-specific differences (3.x vs 4.x), and guides

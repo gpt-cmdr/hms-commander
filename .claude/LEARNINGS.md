@@ -232,7 +232,7 @@ If parameter needed → Search for file format first → Decompile if format unc
 
 **Key patterns discovered**:
 - **Development agents** go in `.claude/agents/` (with optional `reference/` folders)
-- **Domain subagents** stay in `.claude/subagents/` (single .md files)
+- **Domain subagents** also stay in `.claude/agents/` as single `.md` Claude-native agent definitions
 - **Production agents** stay in `hms_agents/` (full folder structure)
 - **HMS adaptations**: RasExamples→HmsExamples, rascmdr→hmscmdr, ras_commander→hms_commander
 

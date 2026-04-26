@@ -1,5 +1,9 @@
 ---
 name: hms_execute_runs
+shared_corpus: true
+harness_scope: shared
+source_owner: gpt-cmdr
+security_review: internal
 description: |
   Executes HEC-HMS simulations using HmsCmdr.compute_run(), handles parallel
   execution across multiple runs, and manages Jython script generation. Use when

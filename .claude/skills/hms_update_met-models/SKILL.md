@@ -1,5 +1,9 @@
 ---
 name: hms_update_met-models
+shared_corpus: true
+harness_scope: shared
+source_owner: gpt-cmdr
+security_review: internal
 description: |
   Updates HEC-HMS meteorologic model files (.met) including precipitation methods,
   gage assignments, evapotranspiration, and Atlas 14 frequency storms. Use when

@@ -1,5 +1,9 @@
 ---
 name: hms_manage_versions
+shared_corpus: true
+harness_scope: shared
+source_owner: gpt-cmdr
+security_review: internal
 description: |
   Manages HEC-HMS version differences (3.x vs 4.x), handles Python 2/3 compatibility,
   detects HMS installations, and generates version-appropriate Jython scripts. Use when

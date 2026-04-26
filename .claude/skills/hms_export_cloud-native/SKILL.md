@@ -1,5 +1,9 @@
 ---
 name: hms_export_cloud-native
+shared_corpus: true
+harness_scope: shared
+source_owner: gpt-cmdr
+security_review: internal
 description: |
   Exports HEC-HMS basin geometry and simulation results to cloud-native geospatial
   formats (GeoParquet, PMTiles) using the hms2cng package (HMS to Cloud Native GIS).

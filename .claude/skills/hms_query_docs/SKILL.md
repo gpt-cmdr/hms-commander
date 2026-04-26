@@ -1,5 +1,9 @@
 ---
 name: hms_query_docs
+shared_corpus: true
+harness_scope: shared
+source_owner: gpt-cmdr
+security_review: internal
 description: |
   Queries official HEC-HMS documentation to answer technical questions. Provides access to
   User's Manual, Technical Reference Manual, Release Notes, and community resources.

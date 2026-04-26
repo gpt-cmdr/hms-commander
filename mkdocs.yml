@@ -194,6 +194,7 @@ nav:
       - Style Guide: llm_dev/style_guide.md
       - Architecture: llm_dev/architecture.md
       - Cognitive Architecture: llm_dev/cognitive_architecture.md
+      - Multi-Harness Agent Contract: development/multi-harness-agent-contract.md
       - Release Notes: llm_dev/release_notes.md
   - About:
       - CLB Engineering: about/clb-engineering.md

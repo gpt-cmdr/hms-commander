@@ -2,18 +2,18 @@
 
 **Last Refreshed**: 2026-04-12
 
-**Purpose**: Navigation index for the hms-commander cognitive infrastructure including subagents, skills, commands, and architectural patterns.
+**Purpose**: Navigation index for the hms-commander Claude-native infrastructure including subagents, skills, commands, and architectural patterns. Shared repository policy lives in root `AGENTS.md`.
 
 ---
 
 ## Framework Overview
 
-The `.claude/` directory contains the hierarchical knowledge framework for hms-commander:
+The `.claude/` directory contains the Claude-native hierarchical knowledge framework for hms-commander. It accelerates Claude Code sessions, but shared rules belong in the `AGENTS.md` hierarchy.
 
 ```
 .claude/
 ├── INDEX.md                 # This file - Navigation index
-├── MANIFEST.md              # Quick-load registry for Codex / fresh Claude sessions
+├── MANIFEST.md              # Claude component registry
 ├── CLAUDE.md                # Framework aggregation (@imports)
 │
 ├── agents/                  # Specialist domain experts + development agents
@@ -89,6 +89,7 @@ The `.claude/` directory contains the hierarchical knowledge framework for hms-c
 | **conversation-insights-orchestrator.md** | Conversation analysis | Pattern detection, slash command candidates, project activity |
 | **conversation-deep-researcher.md** (Opus) | Strategic analysis | Cross-conversation synthesis, trend identification, recommendations |
 | **best-practice-extractor.md** | Best practices | Successful patterns, lessons learned, HMS-specific practices |
+| **code-oracle-codex.md** (Opus) | Cross-harness Codex review | Explicit Codex QAQC, architecture review, or implementation handoff |
 
 ### Agent Types
 
@@ -118,9 +119,16 @@ The `.claude/` directory contains the hierarchical knowledge framework for hms-c
 | **hms_extract_dss-results/** | Extract results from DSS files | DSS results, peak flow, hydrograph, time series, volume |
 | **hms_clone_components/** | Non-destructive component duplication | clone basin, clone met, clone run, QAQC, scenario comparison |
 | **hms_link_to-ras/** | HMS hydrograph extraction for RAS | HMS to RAS, boundary condition, watershed to river, integrated model |
+| **hms_export_cloud-native/** | Export HMS geometry and results to GeoParquet and PMTiles | GeoParquet, PMTiles, cloud native, web map |
 | **hms_investigate_internals/** | HMS source code analysis and decompilation | HMS internals, decompilation, class files, HEC-HMS source |
 | **hms_query_docs/** | Query official HMS documentation | HMS documentation, User's Manual, Technical Reference, release notes |
 | **hms_manage_versions/** | Multi-version HMS support (3.x vs 4.x) | HMS version, HMS 3.x, HMS 4.x, Python 2 compatibility |
+
+### Cross-Harness Adapter Skills
+
+| Skill | Purpose | Scope |
+|-------|---------|-------|
+| **dev_invoke_codex-cli/** | Invoke Codex CLI from Claude Code with markdown handoff files | Claude-only |
 
 ### How to Use Skills
 
@@ -145,8 +153,9 @@ The `.claude/` directory contains the hierarchical knowledge framework for hms-c
 | **agent-cleanfiles.md** | Clean up root directory | Move completion reports, session notes, backups |
 | **agent-crossrepo.md** | Cross-repository coordination | Coordinate HMS + RAS workflows |
 | **agent-engagesubagents.md** | Engage specialist subagents | Delegate to domain experts |
-| **agent-taskclose.md** | Close tasks in memory system | Update .agent/ when tasks complete |
-| **agent-taskupdate.md** | Update task progress | Log progress in .agent/ memory |
+| **agent-oracle-codex.md** | Invoke Codex CLI explicitly | Cross-harness Codex QAQC or implementation handoff |
+| **agent-taskclose.md** | Close tasks in coordination files | Update `agent_tasks/` when tasks complete |
+| **agent-taskupdate.md** | Update task progress | Log progress in `agent_tasks/` |
 
 ### HMS Operation Commands
 
@@ -359,10 +368,10 @@ The `.claude/` directory contains the hierarchical knowledge framework for hms-c
 
 ## Cross-References
 
-### Memory System
-**Location**: `.agent/`
-**Purpose**: Multi-session task coordination
-**See**: `.agent/README.md` for memory system overview
+### Task Coordination
+**Location**: `agent_tasks/`
+**Purpose**: Multi-session task coordination and handoff tracking
+**See**: `agent_tasks/README.md` for task coordination guidance
 
 ### Production Agents
 **Location**: `hms_agents/`

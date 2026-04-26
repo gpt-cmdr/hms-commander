@@ -1,5 +1,7 @@
 # Agent Instructions
 
-**Non-Claude agents**: Import `../CLAUDE.md` for full context, or specific `SKILL.md` files here.
+This directory contains Claude-native skill sources. Some skills are also shared-domain skill sources for the generated Codex bridge.
 
-Each skill folder contains a `SKILL.md` defining the workflow.
+**Non-Claude agents**: Use root `AGENTS.md` for shared repository behavior. Read specific `SKILL.md` files here only when the task requires that workflow.
+
+Shared skills must declare bridge metadata before Codex exposes them through `.agents/skills/`.
