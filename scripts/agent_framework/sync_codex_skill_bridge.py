@@ -179,6 +179,19 @@ def existing_bridge_is_valid(link_path: Path, target_path: Path) -> bool:
         return False
 
 
+def is_managed_bridge(link_path: Path) -> bool:
+    """Return True when a path is an existing bridge to an approved source root."""
+    if not os.path.lexists(link_path):
+        return False
+    if link_path.is_symlink() and not link_path.exists():
+        return True
+    if not (link_path.is_symlink() or link_path.is_dir()):
+        return False
+    return resolves_inside(link_path, CLAUDE_SKILLS) or resolves_inside(
+        link_path, CODEX_NATIVE_SKILLS
+    )
+
+
 def remove_bridge(link_path: Path) -> None:
     if link_path.is_symlink():
         link_path.unlink()
@@ -264,6 +277,10 @@ def sync(check_only: bool = False) -> int:
         if os.path.lexists(link_path):
             if link_path.is_symlink() and not link_path.exists():
                 actions.append(f"remove broken bridge {name}")
+                if not check_only:
+                    remove_bridge(link_path)
+            elif is_managed_bridge(link_path):
+                actions.append(f"replace stale bridge {name}")
                 if not check_only:
                     remove_bridge(link_path)
             else:
