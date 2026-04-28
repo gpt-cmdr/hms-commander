@@ -34,8 +34,11 @@ import re
 import zipfile
 import shutil
 import logging
+import json
+from datetime import datetime, timezone
+from importlib import metadata as importlib_metadata
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 import pandas as pd
 
 from .LoggingConfig import get_logger, log_call
@@ -75,6 +78,14 @@ class HmsExamples:
     # Output directories
     base_dir = Path.cwd()
     projects_dir = base_dir / 'hms_example_projects'
+    ebfe_projects_dir = base_dir / 'example_projects'
+
+    # eBFE deliveries currently validated with HMS project content in
+    # ras-commander's delivery matrix.
+    EBFE_HMS_PROJECTS = {
+        "lake-maurepas",
+        "north-galveston-bay",
+    }
 
     # Cache
     _installed_versions: Optional[Dict[str, Path]] = None
@@ -233,11 +244,78 @@ class HmsExamples:
 
     @classmethod
     @log_call
+    def list_ebfe_projects(cls, hms_only: bool = True) -> pd.DataFrame:
+        """
+        List eBFE model sources available through ras-commander.
+
+        This is a lightweight catalog call. It does not download or organize
+        any model data. By default it returns only eBFE deliveries currently
+        known to include validated HMS project content.
+
+        Args:
+            hms_only: If True, return only HMS-validated eBFE deliveries.
+                If False, return the full ras-commander eBFE catalog.
+
+        Returns:
+            DataFrame with eBFE model metadata and HMS validation status.
+
+        Raises:
+            ImportError: If ras-commander is not installed or is too old to
+                expose RasEbfeModels.
+
+        Example:
+            sources = HmsExamples.list_ebfe_projects()
+            print(sources[["key", "study_area", "hms_validated"]])
+        """
+        RasEbfeModels = cls._import_ras_ebfe_models()
+
+        columns = [
+            "key",
+            "study_area",
+            "huc8",
+            "ras_version",
+            "hms_validated",
+            "notes",
+        ]
+        records = []
+        for key, metadata in RasEbfeModels.available_models().items():
+            hms_validated = key in cls.EBFE_HMS_PROJECTS
+            if hms_only and not hms_validated:
+                continue
+
+            records.append({
+                "key": key,
+                "study_area": metadata.get("study_area"),
+                "huc8": metadata.get("huc8"),
+                "ras_version": metadata.get("ras_version"),
+                "hms_validated": hms_validated,
+                "notes": metadata.get("notes"),
+            })
+
+        return pd.DataFrame.from_records(records, columns=columns)
+
+    @classmethod
+    @log_call
+    def available_ebfe_projects(cls, hms_only: bool = True) -> pd.DataFrame:
+        """
+        Compatibility alias for list_ebfe_projects().
+
+        Args:
+            hms_only: If True, return only HMS-validated eBFE deliveries.
+
+        Returns:
+            DataFrame with eBFE model metadata.
+        """
+        return cls.list_ebfe_projects(hms_only=hms_only)
+
+    @classmethod
+    @log_call
     def extract_project(
         cls,
         project_name: str,
         version: Optional[str] = None,
         output_path: Optional[Union[str, Path]] = None,
+        suffix: Optional[str] = None,
         overwrite: bool = True
     ) -> Path:
         """
@@ -247,6 +325,8 @@ class HmsExamples:
             project_name: Name of the project (e.g., "castro", "tenk")
             version: HMS version to extract from. If None, uses latest installed.
             output_path: Where to extract. Default: ./hms_example_projects/
+            suffix: Optional suffix appended to the extracted folder name using
+                "{project_name}_{suffix}". Useful for notebook-number isolation.
             overwrite: If True, delete existing project folder first
 
         Returns:
@@ -264,6 +344,13 @@ class HmsExamples:
 
             # Custom output location
             path = HmsExamples.extract_project("castro", output_path="my_tests/")
+
+            # Notebook-specific isolated extraction
+            path = HmsExamples.extract_project(
+                "castro",
+                output_path="example_projects/",
+                suffix="015",
+            )
 
             # Use with hms-commander
             from hms_commander import init_hms_project
@@ -303,7 +390,8 @@ class HmsExamples:
         # Create output directory
         base_output.mkdir(parents=True, exist_ok=True)
 
-        project_dest = base_output / project_name
+        folder_name = cls._get_folder_name(project_name, suffix)
+        project_dest = base_output / folder_name
 
         # Handle existing directory
         if project_dest.exists():
@@ -318,7 +406,10 @@ class HmsExamples:
         install_path = cls._installed_versions[version]
         samples_zip = install_path / "samples.zip"
 
-        logger.info(f"Extracting '{project_name}' from HMS {version}")
+        logger.info(
+            f"Extracting '{project_name}' from HMS {version}"
+            + (f" as '{folder_name}'" if suffix else "")
+        )
         logger.info(f"Source: {samples_zip}")
         logger.info(f"Destination: {project_dest}")
 
@@ -330,10 +421,168 @@ class HmsExamples:
 
     @classmethod
     @log_call
+    def extract_ebfe_project(
+        cls,
+        model_key: str = "lake-maurepas",
+        project_name: Optional[str] = None,
+        output_path: Optional[Union[str, Path]] = None,
+        suffix: Optional[str] = None,
+        overwrite: bool = True,
+        download_root: Optional[Union[str, Path]] = None,
+        organized_root: Optional[Union[str, Path]] = None,
+        **organize_kwargs: Any,
+    ) -> Path:
+        """
+        Extract the HMS portion of an eBFE delivery organized by ras-commander.
+
+        ras-commander remains the source of truth for eBFE download and delivery
+        normalization. This HMS wrapper calls RasEbfeModels lazily, then copies
+        only the selected project from the organized ``HMS Model/`` folder into
+        a notebook-safe example workspace.
+
+        Args:
+            model_key: eBFE model slug, alias, or HUC8. The default
+                ``"lake-maurepas"`` is the preferred lightweight HMS example.
+            project_name: Optional HMS project folder name or .hms stem to
+                select when a delivery contains more than one HMS project.
+            output_path: Base output folder. Default: ``./example_projects/``.
+            suffix: Optional suffix appended to the eBFE workspace folder using
+                ``"{model_key}_{suffix}"``.
+            overwrite: If True, replace the copied HMS-only folder. Download
+                and organized-cache folders are preserved.
+            download_root: Optional ras-commander download cache root. Default:
+                ``<workspace>/downloads``.
+            organized_root: Optional ras-commander organized delivery root.
+                Default: ``<workspace>/organized``.
+            **organize_kwargs: Additional keyword arguments forwarded to
+                ``RasEbfeModels.organize_model()``.
+
+        Returns:
+            Path to the copied HMS project folder containing the ``.hms`` file.
+
+        Raises:
+            ImportError: If ras-commander is unavailable.
+            FileNotFoundError: If the organized eBFE delivery has no HMS Model
+                folder or no .hms project file.
+            ValueError: If multiple HMS projects are present and project_name
+                was not specified.
+
+        Example:
+            project_dir = HmsExamples.extract_ebfe_project(
+                "lake-maurepas",
+                output_path=Path.cwd() / "example_projects",
+                suffix="015",
+                overwrite=False,
+            )
+        """
+        RasEbfeModels = cls._import_ras_ebfe_models()
+        canonical_key = RasEbfeModels.normalize_model_key(model_key)
+
+        if output_path is None:
+            base_output = Path.cwd() / "example_projects"
+        else:
+            base_output = cls._resolve_path(output_path)
+
+        workspace = base_output / cls._get_folder_name(canonical_key, suffix)
+        workspace.mkdir(parents=True, exist_ok=True)
+
+        if download_root is None:
+            download_root_path = workspace / "downloads"
+        else:
+            download_root_path = cls._resolve_path(download_root)
+
+        if organized_root is None:
+            organized_root_path = workspace / "organized"
+        else:
+            organized_root_path = cls._resolve_path(organized_root)
+
+        hms_output_root = workspace / "hms"
+        if hms_output_root.exists() and not overwrite:
+            existing_projects = cls._discover_hms_project_roots(hms_output_root)
+            if existing_projects:
+                selected_root, _ = cls._select_hms_project(
+                    existing_projects,
+                    project_name=project_name,
+                )
+                logger.info(f"Using existing eBFE HMS project: {selected_root}")
+                return selected_root
+
+        logger.info(f"Organizing eBFE model '{canonical_key}' through ras-commander")
+        organized_delivery = Path(RasEbfeModels.organize_model(
+            canonical_key,
+            download_root=download_root_path,
+            output_root=organized_root_path,
+            **organize_kwargs,
+        ))
+
+        hms_source_root = organized_delivery / "HMS Model"
+        if not hms_source_root.exists():
+            raise FileNotFoundError(
+                f"No HMS Model folder found in organized eBFE delivery: "
+                f"{organized_delivery}"
+            )
+
+        source_projects = cls._discover_hms_project_roots(hms_source_root)
+        if not source_projects:
+            raise FileNotFoundError(
+                f"No .hms project files found in eBFE HMS Model folder: "
+                f"{hms_source_root}"
+            )
+
+        selected_source_root, selected_hms_file = cls._select_hms_project(
+            source_projects,
+            project_name=project_name,
+        )
+
+        if hms_output_root.exists():
+            if overwrite:
+                logger.info(f"Removing existing HMS-only eBFE folder: {hms_output_root}")
+                shutil.rmtree(hms_output_root)
+            else:
+                raise FileExistsError(
+                    f"HMS output folder already exists: {hms_output_root}"
+                )
+
+        destination_name = (
+            selected_source_root.name
+            if selected_source_root != hms_source_root
+            else selected_hms_file.stem
+        )
+        destination = hms_output_root / destination_name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"Copying HMS project from {selected_source_root} to {destination}")
+        shutil.copytree(selected_source_root, destination)
+
+        metadata = RasEbfeModels.available_models().get(canonical_key, {})
+        provenance = {
+            "source": "eBFE",
+            "model_key": canonical_key,
+            "requested_model_key": model_key,
+            "study_area": metadata.get("study_area"),
+            "huc8": metadata.get("huc8"),
+            "ras_version": metadata.get("ras_version"),
+            "hms_project": destination.name,
+            "hms_file": selected_hms_file.name,
+            "organized_delivery": str(organized_delivery),
+            "source_hms_project": str(selected_source_root),
+            "ras_commander_version": cls._get_package_version("ras-commander"),
+            "extracted_utc": datetime.now(timezone.utc)
+                .isoformat()
+                .replace("+00:00", "Z"),
+        }
+        cls._write_ebfe_provenance(destination, provenance)
+
+        logger.info(f"Successfully extracted eBFE HMS project to {destination}")
+        return destination
+
+    @classmethod
+    @log_call
     def extract_all(
         cls,
         version: Optional[str] = None,
-        output_path: Optional[Union[str, Path]] = None
+        output_path: Optional[Union[str, Path]] = None,
+        suffix: Optional[str] = None
     ) -> Dict[str, Path]:
         """
         Extract all example projects for a given version.
@@ -341,6 +590,7 @@ class HmsExamples:
         Args:
             version: HMS version. If None, uses latest installed.
             output_path: Base output directory
+            suffix: Optional suffix appended to each extracted project folder.
 
         Returns:
             Dict mapping project names to extracted paths
@@ -361,7 +611,8 @@ class HmsExamples:
                 path = cls.extract_project(
                     project_name,
                     version=version,
-                    output_path=output_path
+                    output_path=output_path,
+                    suffix=suffix,
                 )
                 extracted[project_name] = path
             except Exception as e:
@@ -449,7 +700,8 @@ class HmsExamples:
     def is_project_extracted(
         cls,
         project_name: str,
-        output_path: Optional[Union[str, Path]] = None
+        output_path: Optional[Union[str, Path]] = None,
+        suffix: Optional[str] = None
     ) -> bool:
         """
         Check if a project has already been extracted.
@@ -457,6 +709,7 @@ class HmsExamples:
         Args:
             project_name: Name of the project
             output_path: Base output directory (default: ./hms_example_projects/)
+            suffix: Optional suffix used when extracting the project.
 
         Returns:
             True if project directory exists
@@ -470,7 +723,7 @@ class HmsExamples:
         else:
             base_output = Path(output_path)
 
-        project_path = base_output / project_name
+        project_path = base_output / cls._get_folder_name(project_name, suffix)
         exists = project_path.exists() and project_path.is_dir()
 
         logger.debug(f"Project '{project_name}' extracted: {exists}")
@@ -583,6 +836,131 @@ class HmsExamples:
     # -------------------------------------------------------------------------
     # Private Methods
     # -------------------------------------------------------------------------
+
+    @classmethod
+    def _import_ras_ebfe_models(cls):
+        """Import ras-commander's eBFE catalog lazily."""
+        try:
+            from ras_commander.sources.federal import RasEbfeModels
+            return RasEbfeModels
+        except ImportError as primary_error:
+            try:
+                from ras_commander.ebfe_models import RasEbfeModels
+                return RasEbfeModels
+            except ImportError:
+                raise ImportError(
+                    "eBFE example extraction requires ras-commander with "
+                    "RasEbfeModels. Install hms-commander[dss] or install a "
+                    "recent ras-commander build."
+                ) from primary_error
+
+    @classmethod
+    def _make_safe_folder_name(cls, name: str) -> str:
+        """Convert a string to a filesystem-safe folder name."""
+        return re.sub(r'[^a-zA-Z0-9_\-]', '_', str(name))
+
+    @classmethod
+    def _get_folder_name(cls, project_name: str, suffix: Optional[str] = None) -> str:
+        """Compute an extraction folder name with an optional safe suffix."""
+        if suffix is None or str(suffix) == "":
+            return project_name
+
+        safe_suffix = cls._make_safe_folder_name(str(suffix))
+        return f"{project_name}_{safe_suffix}"
+
+    @classmethod
+    def _resolve_path(cls, path: Union[str, Path]) -> Path:
+        """Resolve relative user paths against the current working directory."""
+        resolved = Path(path)
+        if not resolved.is_absolute():
+            resolved = Path.cwd() / resolved
+        return resolved
+
+    @classmethod
+    def _discover_hms_project_roots(cls, hms_root: Path) -> List[Tuple[Path, Path]]:
+        """Find HMS project roots under a folder."""
+        hms_root = Path(hms_root)
+        if not hms_root.exists():
+            return []
+
+        projects = []
+        seen_roots = set()
+        for hms_file in sorted(hms_root.rglob("*.hms")):
+            if not hms_file.is_file():
+                continue
+            project_root = hms_file.parent
+            if project_root in seen_roots:
+                continue
+            projects.append((project_root, hms_file))
+            seen_roots.add(project_root)
+
+        return projects
+
+    @classmethod
+    def _select_hms_project(
+        cls,
+        projects: List[Tuple[Path, Path]],
+        project_name: Optional[str] = None,
+    ) -> Tuple[Path, Path]:
+        """Select one HMS project from discovered project roots."""
+        if not projects:
+            raise FileNotFoundError("No HMS projects were discovered")
+
+        if project_name is None:
+            if len(projects) == 1:
+                return projects[0]
+
+            available = ", ".join(
+                f"{root.name} ({hms_file.name})" for root, hms_file in projects
+            )
+            raise ValueError(
+                "Multiple HMS projects found; specify project_name. "
+                f"Available projects: {available}"
+            )
+
+        requested = str(project_name).lower()
+        matches = [
+            (root, hms_file)
+            for root, hms_file in projects
+            if root.name.lower() == requested or hms_file.stem.lower() == requested
+        ]
+
+        if not matches:
+            available = ", ".join(
+                f"{root.name} ({hms_file.stem})" for root, hms_file in projects
+            )
+            raise ValueError(
+                f"HMS project '{project_name}' not found. "
+                f"Available projects: {available}"
+            )
+
+        if len(matches) > 1:
+            available = ", ".join(
+                f"{root.name} ({hms_file.name})" for root, hms_file in matches
+            )
+            raise ValueError(
+                f"HMS project name '{project_name}' is ambiguous: {available}"
+            )
+
+        return matches[0]
+
+    @classmethod
+    def _write_ebfe_provenance(cls, project_dir: Path, provenance: Dict[str, Any]) -> None:
+        """Write eBFE source metadata into the copied HMS project folder."""
+        project_dir = Path(project_dir)
+        project_dir.mkdir(parents=True, exist_ok=True)
+        (project_dir / "SOURCE_EBFE.json").write_text(
+            json.dumps(provenance, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+
+    @classmethod
+    def _get_package_version(cls, package_name: str) -> Optional[str]:
+        """Return an installed package version when available."""
+        try:
+            return importlib_metadata.version(package_name)
+        except importlib_metadata.PackageNotFoundError:
+            return None
 
     @classmethod
     def _ensure_catalog_loaded(cls) -> None:
