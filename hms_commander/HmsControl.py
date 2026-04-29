@@ -262,23 +262,39 @@ class HmsControl:
         """
         Clone a control specification file with a new name.
 
+        This clone workflow is non-destructive: it creates a new .control file
+        and raises FileExistsError if the destination already exists. When an
+        initialized HmsPrj is supplied, or the global hms object is initialized,
+        the cloned control is registered in the .hms project file and the
+        project object is reinitialized so the clone is immediately visible in
+        project dataframes and the HEC-HMS GUI.
+
         Args:
             template_control: Name or path of the template control file
             new_name: Name for the new control specification
-            hms_object: Optional HmsPrj instance
+            hms_object: Optional HmsPrj instance. If omitted, uses the global
+                hms object when it is initialized.
 
         Returns:
             Path to the new control file
 
+        Raises:
+            FileNotFoundError: If template_control cannot be resolved
+            FileExistsError: If the destination .control file already exists
+
         Example:
             >>> new_path = HmsControl.clone_control("existing.control", "new_control")
         """
+        from .HmsPrj import hms
+        from .HmsUtils import HmsUtils
+
+        hms_obj = hms_object or hms
         template_path = Path(template_control)
 
-        if not template_path.exists() and hms_object is not None:
+        if not template_path.exists() and hms_obj is not None and hms_obj.initialized:
             # Try to find it in the project
-            matching = hms_object.control_df[
-                hms_object.control_df['name'] == template_control
+            matching = hms_obj.control_df[
+                hms_obj.control_df['name'] == template_control
             ]
             if not matching.empty:
                 template_path = Path(matching.iloc[0]['full_path'])
@@ -286,21 +302,32 @@ class HmsControl:
         if not template_path.exists():
             raise FileNotFoundError(f"Template control not found: {template_control}")
 
-        content = HmsControl._read_control_file(template_path)
-
-        # Update the control name in the content
-        content = re.sub(
-            r'^Control:\s*.*$',
-            f'Control: {new_name}',
-            content,
-            flags=re.MULTILINE
-        )
-
         # Create new file path
         new_path = template_path.parent / f"{new_name}.control"
 
-        with open(new_path, 'w', encoding='utf-8') as f:
-            f.write(content)
+        def update_control_metadata(lines):
+            """Update control name in cloned file."""
+            modified_lines = []
+            for line in lines:
+                if re.match(r'^Control:\s*', line):
+                    modified_lines.append(f"Control: {new_name}\n")
+                else:
+                    modified_lines.append(line)
+            return modified_lines
+
+        HmsUtils.clone_file(template_path, new_path, update_control_metadata)
+
+        if hms_obj is not None and hms_obj.initialized:
+            try:
+                HmsUtils.update_project_file(
+                    hms_obj.project_file,
+                    'Control',
+                    new_name
+                )
+                hms_obj.initialize(hms_obj.project_folder, hms_obj.hms_exe_path)
+                logger.info(f"Re-initialized project to register new control '{new_name}'")
+            except Exception as e:
+                logger.warning(f"Could not update project file: {e}")
 
         logger.info(f"Cloned control to: {new_path}")
         return new_path

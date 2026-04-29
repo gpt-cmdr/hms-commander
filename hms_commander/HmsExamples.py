@@ -86,6 +86,43 @@ class HmsExamples:
         "lake-maurepas",
         "north-galveston-bay",
     }
+    EBFE_MODEL_METADATA = {
+        "north-galveston-bay": {
+            "study_area": "NorthGalvestonBay_12040203",
+            "huc8": "12040203",
+            "ras_version": "5.0.7",
+            "notes": "Compound eBFE delivery with HMS and RAS model content.",
+            "organizer": "organize_north_galveston_bay",
+        },
+        "spring-creek": {
+            "study_area": "SpringCreek_12040102",
+            "huc8": "12040102",
+            "ras_version": "5.0.7",
+            "notes": "RAS-only Pattern 3a eBFE delivery; no HMS basin content.",
+            "organizer": "organize_spring_creek",
+        },
+        "upper-guadalupe": {
+            "study_area": "UpperGuadalupe",
+            "huc8": None,
+            "ras_version": "5.0.7",
+            "notes": "RAS-only cascaded eBFE delivery; no HMS basin content.",
+            "organizer": "organize_upper_guadalupe",
+        },
+    }
+    EBFE_MODEL_ALIASES = {
+        "north-galveston": "north-galveston-bay",
+        "north_galveston_bay": "north-galveston-bay",
+        "northgalvestonbay": "north-galveston-bay",
+        "12040203": "north-galveston-bay",
+        "spring": "spring-creek",
+        "spring-creek": "spring-creek",
+        "spring_creek": "spring-creek",
+        "springcreek": "spring-creek",
+        "12040102": "spring-creek",
+        "upper-guadalupe": "upper-guadalupe",
+        "upper_guadalupe": "upper-guadalupe",
+        "upperguadalupe": "upper-guadalupe",
+    }
 
     # Cache
     _installed_versions: Optional[Dict[str, Path]] = None
@@ -278,7 +315,7 @@ class HmsExamples:
             "notes",
         ]
         records = []
-        for key, metadata in RasEbfeModels.available_models().items():
+        for key, metadata in cls._ebfe_available_models(RasEbfeModels).items():
             hms_validated = key in cls.EBFE_HMS_PROJECTS
             if hms_only and not hms_validated:
                 continue
@@ -476,7 +513,7 @@ class HmsExamples:
             )
         """
         RasEbfeModels = cls._import_ras_ebfe_models()
-        canonical_key = RasEbfeModels.normalize_model_key(model_key)
+        canonical_key = cls._normalize_ebfe_model_key(RasEbfeModels, model_key)
 
         if output_path is None:
             base_output = Path.cwd() / "example_projects"
@@ -508,12 +545,13 @@ class HmsExamples:
                 return selected_root
 
         logger.info(f"Organizing eBFE model '{canonical_key}' through ras-commander")
-        organized_delivery = Path(RasEbfeModels.organize_model(
-            canonical_key,
+        organized_delivery = cls._organize_ebfe_model(
+            RasEbfeModels=RasEbfeModels,
+            model_key=canonical_key,
             download_root=download_root_path,
             output_root=organized_root_path,
-            **organize_kwargs,
-        ))
+            organize_kwargs=organize_kwargs,
+        )
 
         hms_source_root = organized_delivery / "HMS Model"
         if not hms_source_root.exists():
@@ -554,7 +592,7 @@ class HmsExamples:
         logger.info(f"Copying HMS project from {selected_source_root} to {destination}")
         shutil.copytree(selected_source_root, destination)
 
-        metadata = RasEbfeModels.available_models().get(canonical_key, {})
+        metadata = cls._ebfe_available_models(RasEbfeModels).get(canonical_key, {})
         provenance = {
             "source": "eBFE",
             "model_key": canonical_key,
@@ -836,6 +874,74 @@ class HmsExamples:
     # -------------------------------------------------------------------------
     # Private Methods
     # -------------------------------------------------------------------------
+
+    @classmethod
+    def _ebfe_available_models(cls, RasEbfeModels) -> Dict[str, Dict[str, Any]]:
+        """Return eBFE model metadata across ras-commander API versions."""
+        if hasattr(RasEbfeModels, "available_models"):
+            return RasEbfeModels.available_models()
+
+        available = {}
+        for key, metadata in cls.EBFE_MODEL_METADATA.items():
+            organizer = metadata.get("organizer")
+            if organizer and not hasattr(RasEbfeModels, organizer):
+                continue
+            available[key] = {
+                field: value
+                for field, value in metadata.items()
+                if field != "organizer"
+            }
+        return available
+
+    @classmethod
+    def _normalize_ebfe_model_key(cls, RasEbfeModels, model_key: str) -> str:
+        """Normalize eBFE model aliases across ras-commander API versions."""
+        if hasattr(RasEbfeModels, "normalize_model_key"):
+            return RasEbfeModels.normalize_model_key(model_key)
+
+        normalized = cls._make_safe_folder_name(str(model_key).strip().lower())
+        normalized = normalized.replace("_", "-")
+        return cls.EBFE_MODEL_ALIASES.get(normalized, normalized)
+
+    @classmethod
+    def _organize_ebfe_model(
+        cls,
+        RasEbfeModels,
+        model_key: str,
+        download_root: Path,
+        output_root: Path,
+        organize_kwargs: Dict[str, Any],
+    ) -> Path:
+        """Call the appropriate ras-commander eBFE organizer."""
+        if hasattr(RasEbfeModels, "organize_model"):
+            return Path(RasEbfeModels.organize_model(
+                model_key,
+                download_root=download_root,
+                output_root=output_root,
+                **organize_kwargs,
+            ))
+
+        metadata = cls.EBFE_MODEL_METADATA.get(model_key)
+        if not metadata:
+            available = ", ".join(sorted(cls._ebfe_available_models(RasEbfeModels)))
+            raise ValueError(
+                f"Unknown eBFE model '{model_key}'. Available models: {available}"
+            )
+
+        organizer_name = metadata.get("organizer")
+        if not organizer_name or not hasattr(RasEbfeModels, organizer_name):
+            raise ValueError(
+                f"ras-commander does not expose an organizer for eBFE model "
+                f"'{model_key}'"
+            )
+
+        organizer = getattr(RasEbfeModels, organizer_name)
+        study_area = metadata.get("study_area") or model_key
+        return Path(organizer(
+            downloaded_folder=download_root,
+            output_folder=output_root / str(study_area),
+            **organize_kwargs,
+        ))
 
     @classmethod
     def _import_ras_ebfe_models(cls):

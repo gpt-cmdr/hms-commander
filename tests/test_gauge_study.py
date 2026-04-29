@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from hms_commander import HmsGaugeData, HmsGaugeStudy, HmsHydrologyContext, HmsTerrain
+from hms_commander.HmsHuc import HmsHuc
 
 
 class FakeResponse:
@@ -298,7 +299,13 @@ def test_build_from_usgs_site_creates_workspace_and_artifacts(tmp_path):
     assert result["data_gap_analysis"]["gap_count"] == 0
 
 
-def test_build_from_usgs_site_records_structured_data_gaps(tmp_path):
+def test_build_from_usgs_site_records_structured_data_gaps(tmp_path, monkeypatch):
+    def unavailable_huc_context(*args, **kwargs):
+        raise RuntimeError("HUC context intentionally unavailable for this test")
+
+    monkeypatch.setattr(HmsHuc, "get_huc8_for_bounds", unavailable_huc_context)
+    monkeypatch.setattr(HmsHuc, "get_huc12_for_bounds", unavailable_huc_context)
+
     session = MockSession(
         [
             (

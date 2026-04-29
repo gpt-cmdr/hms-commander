@@ -65,6 +65,17 @@ class TestFrequencyStormGenerate:
         expected = (1440 // 5) + 1  # 289
         assert len(result) == expected
 
+    def test_time_axis_and_zero_sentinel_contract(self):
+        result = FrequencyStorm.generate_hyetograph(
+            total_depth_inches=13.20,
+            total_duration_min=1440,
+            time_interval_min=5,
+        )
+
+        assert result["incremental_depth"].iloc[0] == 0.0
+        assert result["hour"].iloc[0] == pytest.approx(5 / 60)
+        assert result["hour"].iloc[-1] == pytest.approx(((1440 // 5) + 1) * 5 / 60)
+
     def test_has_required_columns(self):
         result = FrequencyStorm.generate_hyetograph(total_depth_inches=13.20)
         assert "hour" in result.columns
@@ -336,6 +347,32 @@ class TestAtlas14PointFrequency:
         assert result.columns.tolist() == ["hour", "incremental_depth", "cumulative_depth"]
         assert result is expected
         assert calls["aep_percent"] == pytest.approx(1.0)
+
+    def test_generate_hyetograph_time_axis_contract(self, monkeypatch):
+        temporal = pd.DataFrame(
+            {"50%": [0.0, 50.0, 100.0]},
+            index=pd.Index([0.0, 0.5, 1.0], name="hours"),
+        )
+
+        monkeypatch.setattr(
+            Atlas14Storm,
+            "load_temporal_distribution",
+            staticmethod(lambda *args, **kwargs: {"All Cases": temporal}),
+        )
+
+        result = Atlas14Storm.generate_hyetograph(
+            total_depth_inches=2.0,
+            state="tx",
+            region=3,
+            duration_hours=6,
+            aep_percent=50.0,
+            interval_minutes=30,
+        )
+
+        assert result.columns.tolist() == ["hour", "incremental_depth", "cumulative_depth"]
+        assert result["hour"].tolist() == pytest.approx([0.5, 1.0, 1.5])
+        assert result["incremental_depth"].iloc[0] == 0.0
+        assert result["cumulative_depth"].iloc[-1] == pytest.approx(2.0)
 
 
 # ---------------------------------------------------------------------------

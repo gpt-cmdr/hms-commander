@@ -215,6 +215,38 @@ HmsUtils.update_project_file(
 )
 ```
 
+For Basin, Met/Meteorology/Precipitation, and Control registrations, HMS
+Commander writes canonical HMS component blocks rather than the older flat
+`* File:` lines. The canonical blocks preserve GUI visibility for cloned
+components and make project dataframes refresh consistently after an initialized
+project is reloaded.
+
+```text
+Basin: Proposed Conditions
+     Filename: Proposed Conditions.basin
+     Description:
+     Last Modified Date: 28 April 2026
+     Last Modified Time: 14:30
+End:
+
+Precipitation: Atlas14 Conditions
+     Filename: Atlas14 Conditions.met
+     Description:
+     Last Modified Date: 28 April 2026
+     Last Modified Time: 14:30
+End:
+
+Control: QAQC Window
+     FileName: QAQC Window.control
+     Description:
+End:
+```
+
+The registration update is idempotent. If a project already contains the
+canonical block for the component, or contains a legacy flat line such as
+`Basin File: Proposed Conditions.basin`, HMS Commander treats the component as
+registered and does not append a duplicate block.
+
 ## Version Compatibility
 
 ### HMS 4.x Projects

@@ -152,3 +152,82 @@ def test_list_ebfe_projects_uses_hms_validated_filter(monkeypatch):
 
     assert hms_sources["key"].tolist() == ["lake-maurepas"]
     assert set(all_sources["key"]) == {"lake-maurepas", "spring-creek"}
+
+
+def test_list_ebfe_projects_supports_legacy_ras_organizers(monkeypatch):
+    class FakeLegacyRasEbfeModels:
+        @staticmethod
+        def organize_north_galveston_bay(*args, **kwargs):
+            raise AssertionError("listing must not organize or download")
+
+        @staticmethod
+        def organize_spring_creek(*args, **kwargs):
+            raise AssertionError("listing must not organize or download")
+
+    monkeypatch.setattr(
+        HmsExamples,
+        "_import_ras_ebfe_models",
+        classmethod(lambda cls: FakeLegacyRasEbfeModels),
+    )
+
+    hms_sources = HmsExamples.list_ebfe_projects()
+    all_sources = HmsExamples.list_ebfe_projects(hms_only=False)
+
+    assert hms_sources["key"].tolist() == ["north-galveston-bay"]
+    assert set(all_sources["key"]) == {"north-galveston-bay", "spring-creek"}
+
+
+def test_extract_ebfe_project_supports_legacy_ras_organizer(tmp_path, monkeypatch):
+    class FakeLegacyRasEbfeModels:
+        @staticmethod
+        def organize_north_galveston_bay(
+            downloaded_folder,
+            output_folder=None,
+            extract_ras_nested=False,
+            validate_dss=True,
+        ):
+            assert Path(downloaded_folder).name == "downloads"
+            assert Path(output_folder).name == "NorthGalvestonBay_12040203"
+            assert extract_ras_nested is False
+            assert validate_dss is False
+
+            organized = Path(output_folder)
+            hms_project = organized / "HMS Model" / "NorthGalvestonBay"
+            hms_project.mkdir(parents=True)
+            (hms_project / "NorthGalvestonBay.hms").write_text(
+                "Project: NorthGalvestonBay\n",
+                encoding="utf-8",
+            )
+            (hms_project / "NorthGalvestonBay.basin").write_text(
+                "Basin: NorthGalvestonBay\n",
+                encoding="utf-8",
+            )
+            return organized
+
+    monkeypatch.setattr(
+        HmsExamples,
+        "_import_ras_ebfe_models",
+        classmethod(lambda cls: FakeLegacyRasEbfeModels),
+    )
+    monkeypatch.setattr(
+        HmsExamples,
+        "_get_package_version",
+        classmethod(lambda cls, package_name: "legacy-version"),
+    )
+
+    extracted = HmsExamples.extract_ebfe_project(
+        "12040203",
+        output_path=tmp_path / "example_projects",
+        suffix="015",
+        extract_ras_nested=False,
+        validate_dss=False,
+    )
+
+    workspace = tmp_path / "example_projects" / "north-galveston-bay_015"
+    assert extracted == workspace / "hms" / "NorthGalvestonBay"
+    assert (extracted / "NorthGalvestonBay.hms").exists()
+
+    provenance = json.loads((extracted / "SOURCE_EBFE.json").read_text())
+    assert provenance["model_key"] == "north-galveston-bay"
+    assert provenance["huc8"] == "12040203"
+    assert provenance["ras_commander_version"] == "legacy-version"

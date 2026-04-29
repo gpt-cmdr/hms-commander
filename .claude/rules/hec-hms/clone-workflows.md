@@ -40,7 +40,11 @@ Original model preserved - can always revert if issues found.
 
 ### Control Specifications
 
-**API**: `HmsControl.clone_control(template, new_name)`
+**API**: `HmsControl.clone_control(template, new_name, hms_object=None)`
+
+Control clones follow the same non-destructive contract as basin and
+meteorologic clones. The destination `.control` file must not already exist;
+an existing destination raises `FileExistsError` instead of being overwritten.
 
 ### Runs
 
@@ -55,21 +59,48 @@ All clone methods follow same pattern:
 1. **Read template** file
 2. **Modify content** (name, description)
 3. **Write new file**
-4. **Update .hms project file** (new entry added)
+4. **Update .hms project file** (new component block added when a project is initialized)
 5. **Return** (new component appears in GUI)
 
 **Source**: `hms_commander/HmsUtils.py` - `clone_file()` and `update_project_file()`
 
 ## Project File Integration
 
-Clone operations update `.hms` project file:
+Clone operations update the `.hms` project file when an initialized `HmsPrj`
+object is supplied, or when the global `hms` object is initialized. After
+registration, the project object is reinitialized so dataframes and GUI-visible
+component lists include the clone immediately.
+
+New Basin, Meteorology, and Control registrations are written as canonical HMS
+component blocks:
 
 ```
-Basin File: Baseline.basin
-Basin File: Updated_Basin.basin    # Added by clone
+Basin: Updated_Basin
+     Filename: Updated_Basin.basin
+     Description: Cloned from Baseline
+     Last Modified Date: 15 January 2024
+     Last Modified Time: 14:30:00
+End:
+
+Precipitation: Updated_Met
+     Filename: Updated_Met.met
+     Description: Cloned from Baseline
+     Last Modified Date: 15 January 2024
+     Last Modified Time: 14:30:00
+End:
+
+Control: Updated_Control
+     FileName: Updated_Control.control
+     Description:
+End:
 ```
 
-**Why**: Ensures cloned component appears in HEC-HMS GUI
+Legacy flat entries such as `Basin File:` and `Met File:` are still recognized
+as already registered so compatibility projects are not duplicated during
+idempotent updates.
+
+**Why**: Ensures cloned components appear in HEC-HMS GUI without mutating the
+original model component files.
 
 ## Typical Workflow
 

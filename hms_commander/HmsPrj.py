@@ -25,6 +25,7 @@ from datetime import datetime
 import pandas as pd
 
 from .LoggingConfig import get_logger, log_call
+from ._project_registry import parse_project_components
 
 logger = get_logger(__name__)
 
@@ -442,33 +443,16 @@ class HmsPrj:
 
         content = self._read_file(self.project_file)
 
-        # Split into blocks (separated by "End:" followed by newlines)
-        block_pattern = r'([A-Za-z][A-Za-z0-9 ]*:.*?End:)'
-        blocks = re.findall(block_pattern, content, re.DOTALL)
+        self._project_blocks = parse_project_components(content)
+        project_blocks = self._project_blocks.get('Project', [])
+        if project_blocks:
+            self._project_data = project_blocks[0]
+            self.hms_version = self._project_data.get('Version', 'Unknown')
+        else:
+            self._project_data = {}
 
-        self._project_blocks = {}
-        self._project_data = {}
-
-        for block in blocks:
-            block_type, block_name, attrs = self._parse_block(block)
-            if not block_type:
-                continue
-
-            # Store in categorized dict
-            if block_type not in self._project_blocks:
-                self._project_blocks[block_type] = []
-
-            self._project_blocks[block_type].append({
-                'name': block_name,
-                **attrs
-            })
-
-            # Extract project-level data
-            if block_type == 'Project':
-                self._project_data = {'name': block_name, **attrs}
-                self.hms_version = attrs.get('Version', 'Unknown')
-
-        logger.debug(f"Parsed {len(blocks)} blocks from project file")
+        block_count = sum(len(blocks) for blocks in self._project_blocks.values())
+        logger.debug(f"Parsed {block_count} blocks from project file")
 
     def _build_hms_dataframe(self) -> None:
         """Build the hms_df DataFrame with project-level attributes."""

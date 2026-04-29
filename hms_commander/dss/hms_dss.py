@@ -19,13 +19,18 @@ All methods are static and designed to be used without instantiation.
 """
 
 import gc
-import re
 from pathlib import Path
 from typing import Dict, List, Optional, Union, Any
 import pandas as pd
 
 from ..LoggingConfig import get_logger
 from ..Decorators import log_call
+from .catalog import (
+    create_pathname,
+    filter_catalog,
+    parse_pathname,
+    select_result_paths,
+)
 
 logger = get_logger(__name__)
 
@@ -220,7 +225,8 @@ class HmsDss:
     def extract_hms_results(
         dss_file: Union[str, Path],
         element_names: Optional[List[str]] = None,
-        result_type: str = "flow"
+        result_type: str = "flow",
+        run_name: Optional[str] = None,
     ) -> Dict[str, pd.DataFrame]:
         """
         Extract HMS simulation results from a DSS file.
@@ -232,6 +238,7 @@ class HmsDss:
             dss_file: Path to the DSS file
             element_names: List of element names to extract (all if None)
             result_type: Type of result ("flow", "precipitation", "stage", etc.)
+            run_name: Optional F-part run name filter
 
         Returns:
             Dictionary mapping element names to result DataFrames
@@ -250,38 +257,26 @@ class HmsDss:
         if not DSS_AVAILABLE:
             raise ImportError("DSS functionality requires pyjnius.")
 
-        # Get catalog
         catalog = HmsDss.get_catalog(dss_file)
-
-        # Filter by result type
-        pattern = HmsDss.HMS_RESULT_PATTERNS.get(result_type.lower())
-        if pattern:
-            matching_paths = [p for p in catalog if re.search(pattern, p, re.IGNORECASE)]
-        else:
-            matching_paths = catalog
-
-        # Filter by element names if specified
-        if element_names:
-            filtered_paths = []
-            for path in matching_paths:
-                parts = path.split('/')
-                if len(parts) >= 3:
-                    element = parts[2]  # B part is typically the element name
-                    if element in element_names:
-                        filtered_paths.append(path)
-            matching_paths = filtered_paths
+        matching_paths = select_result_paths(
+            catalog,
+            result_type=result_type,
+            element_names=element_names,
+            run_name=run_name,
+            exclude_tables=True,
+            result_patterns=HmsDss.HMS_RESULT_PATTERNS,
+        )
 
         # Read matching time series
         results = {}
         for path in matching_paths:
-            parts = path.split('/')
-            if len(parts) >= 3:
-                element_name = parts[2]
-                try:
-                    df = HmsDss.read_timeseries(dss_file, path)
-                    results[element_name] = df
-                except Exception as e:
-                    logger.warning(f"Could not read {path}: {e}")
+            parts = parse_pathname(path)
+            element_name = parts["element_name"]
+            try:
+                df = HmsDss.read_timeseries(dss_file, path)
+                results[element_name] = df
+            except Exception as e:
+                logger.warning(f"Could not read {path}: {e}")
 
         logger.info(f"Extracted {len(results)} result time series")
         return results
@@ -357,8 +352,12 @@ class HmsDss:
             ...     print(f"{parts['element_name']}: {path}")
         """
         catalog = HmsDss.get_catalog(dss_file)
-        pattern = HmsDss.HMS_RESULT_PATTERNS['flow']
-        return [p for p in catalog if re.search(pattern, p, re.IGNORECASE)]
+        return select_result_paths(
+            catalog,
+            result_type="flow",
+            exclude_tables=False,
+            result_patterns=HmsDss.HMS_RESULT_PATTERNS,
+        )
 
     @staticmethod
     @log_call
@@ -375,12 +374,12 @@ class HmsDss:
             List of precipitation pathnames
         """
         catalog = HmsDss.get_catalog(dss_file)
-        # Match both PRECIP and PRECIP-INC/PRECIP-CUM
-        results = []
-        for p in catalog:
-            if re.search(r'/[^/]+/[^/]+/PRECIP', p, re.IGNORECASE):
-                results.append(p)
-        return results
+        return select_result_paths(
+            catalog,
+            result_type="precipitation",
+            exclude_tables=False,
+            result_patterns=HmsDss.HMS_RESULT_PATTERNS,
+        )
 
     @staticmethod
     @log_call
@@ -397,8 +396,12 @@ class HmsDss:
             List of stage result pathnames
         """
         catalog = HmsDss.get_catalog(dss_file)
-        pattern = HmsDss.HMS_RESULT_PATTERNS['stage']
-        return [p for p in catalog if re.search(pattern, p, re.IGNORECASE)]
+        return select_result_paths(
+            catalog,
+            result_type="stage",
+            exclude_tables=False,
+            result_patterns=HmsDss.HMS_RESULT_PATTERNS,
+        )
 
     @staticmethod
     @log_call
@@ -415,8 +418,12 @@ class HmsDss:
             List of storage result pathnames
         """
         catalog = HmsDss.get_catalog(dss_file)
-        pattern = HmsDss.HMS_RESULT_PATTERNS['storage']
-        return [p for p in catalog if re.search(pattern, p, re.IGNORECASE)]
+        return select_result_paths(
+            catalog,
+            result_type="storage",
+            exclude_tables=False,
+            result_patterns=HmsDss.HMS_RESULT_PATTERNS,
+        )
 
     @staticmethod
     @log_call
@@ -444,39 +451,7 @@ class HmsDss:
             >>> print(parts['data_type'])     # 'FLOW'
             >>> print(parts['run_name'])      # 'RUN1'
         """
-        if DSS_AVAILABLE:
-            return DssCore.parse_pathname(pathname)
-
-        # Fallback implementation if DSS core not available
-        # Don't strip - empty parts are significant (e.g., //B/C/D/E/F/ has empty A-part)
-        parts = pathname.split('/')
-
-        # Remove only the first and last empty strings (from leading/trailing slashes)
-        if parts and parts[0] == '':
-            parts = parts[1:]
-        if parts and parts[-1] == '':
-            parts = parts[:-1]
-
-        result = {
-            'A': parts[0] if len(parts) > 0 else '',
-            'B': parts[1] if len(parts) > 1 else '',
-            'C': parts[2] if len(parts) > 2 else '',
-            'D': parts[3] if len(parts) > 3 else '',
-            'E': parts[4] if len(parts) > 4 else '',
-            'F': parts[5] if len(parts) > 5 else '',
-            'full_path': pathname
-        }
-
-        result['element_name'] = result['B']
-        result['data_type'] = result['C']
-        result['time_interval'] = result['E']
-
-        if result['F'].startswith('RUN:'):
-            result['run_name'] = result['F'][4:]
-        else:
-            result['run_name'] = result['F']
-
-        return result
+        return parse_pathname(pathname)
 
     @staticmethod
     @log_call
@@ -508,12 +483,7 @@ class HmsDss:
             ... )
             >>> print(path)  # '/MYBASIN/OUTLET/FLOW//15MIN/RUN:RUN1/'
         """
-        if DSS_AVAILABLE:
-            return DssCore.create_pathname(basin, element, data_type, interval, run_name, date_block)
-
-        # Fallback
-        f_part = f"RUN:{run_name}" if run_name else ""
-        return f"/{basin}/{element}/{data_type}/{date_block}/{interval}/{f_part}/"
+        return create_pathname(basin, element, data_type, interval, run_name, date_block)
 
     @staticmethod
     @log_call
@@ -540,29 +510,7 @@ class HmsDss:
             >>> flow_paths = HmsDss.filter_catalog(paths, data_type="FLOW")
             >>> outlet_flows = HmsDss.filter_catalog(flow_paths, element="OUTLET")
         """
-        if DSS_AVAILABLE:
-            return DssCore.filter_catalog(catalog, pattern, data_type, element)
-
-        # Fallback implementation
-        filtered = catalog
-
-        if pattern:
-            regex = re.compile(pattern, re.IGNORECASE)
-            filtered = [p for p in filtered if regex.search(p)]
-
-        if data_type:
-            filtered = [
-                p for p in filtered
-                if len(p.split('/')) >= 4 and data_type.upper() in p.split('/')[3].upper()
-            ]
-
-        if element:
-            filtered = [
-                p for p in filtered
-                if len(p.split('/')) >= 3 and element.upper() in p.split('/')[2].upper()
-            ]
-
-        return filtered
+        return filter_catalog(catalog, pattern, data_type, element)
 
     @staticmethod
     @log_call
@@ -659,26 +607,15 @@ class HmsDss:
                 "Also requires Java 8+ (JRE or JDK)"
             )
 
-        # Get all flow paths - use 'flow-total' pattern for /FLOW/ only (not FLOW-DIRECT, etc.)
         catalog = HmsDss.get_catalog(dss_file)
-        flow_total_pattern = HmsDss.HMS_RESULT_PATTERNS['flow-total']
-        flow_paths = [p for p in catalog if re.search(flow_total_pattern, p, re.IGNORECASE)]
-
-        # Exclude TABLE data (paired data, not time series)
-        flow_paths = [p for p in flow_paths if '/TABLE/' not in p.upper()]
-
-        # Filter by run_name if provided (F-part)
-        if run_name:
-            flow_paths = [p for p in flow_paths if run_name.upper() in p.upper()]
-
-        # Filter by element_names if provided
-        if element_names:
-            filtered_paths = []
-            for path in flow_paths:
-                parts = HmsDss.parse_dss_pathname(path)
-                if parts['element_name'] in element_names:
-                    filtered_paths.append(path)
-            flow_paths = filtered_paths
+        flow_paths = select_result_paths(
+            catalog,
+            result_type="flow-total",
+            element_names=element_names,
+            run_name=run_name,
+            exclude_tables=True,
+            result_patterns=HmsDss.HMS_RESULT_PATTERNS,
+        )
 
         total_paths = len(flow_paths)
         if total_paths == 0:

@@ -216,6 +216,25 @@ HmsUtils.update_project_file(
 )
 ```
 
+### Non-Destructive Project Registration
+
+Clone workflows preserve existing model files. If the destination clone file
+already exists, `HmsUtils.clone_file()` raises `FileExistsError` instead of
+overwriting it. Use a new scenario name, or intentionally remove the old clone
+outside the clone workflow before running the operation again.
+
+When a clone method is called with an initialized `HmsPrj` object, or when the
+global `hms` project object is initialized and no explicit project is supplied,
+the new component is registered in the `.hms` project file after the clone is
+created. HMS Commander writes canonical HMS registry blocks for Basin,
+Precipitation, and Control entries so the cloned component is visible in the
+HEC-HMS GUI and in refreshed project dataframes.
+
+For compatibility with older project files, existing flat registry lines such
+as `Basin File:`, `Met File:`, and `Control File:` are treated as already
+registered. HMS Commander will not append a duplicate canonical block for the
+same clone name.
+
 ## Common Clone Patterns
 
 ### 1. Parameter Sensitivity Study

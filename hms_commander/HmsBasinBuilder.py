@@ -22,6 +22,20 @@ import pandas as pd
 from .Decorators import log_call
 from .HmsWatershedVerification import HmsWatershedVerification
 from .LoggingConfig import get_logger
+from ._parsing import HmsFileParser
+from ._project_registry import (
+    build_project_registry_block,
+    register_project_block,
+    rewrite_project_block,
+)
+from ._spatial import (
+    load_vector,
+    polygonize_zone_raster,
+    resolve_crs,
+    single_geometry,
+    write_json,
+    write_vector,
+)
 
 logger = get_logger(__name__)
 
@@ -98,39 +112,12 @@ class HmsBasinBuilder:
     @staticmethod
     def _write_json(path: Path, payload: Mapping[str, Any]) -> Dict[str, Any]:
         """Write JSON with stable formatting."""
-        existed = path.exists()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(payload, indent=2, default=HmsBasinBuilder._json_default) + "\n",
-            encoding="utf-8",
-        )
-        return {"status": "updated" if existed else "created", "bytes": path.stat().st_size}
+        return write_json(path, payload)
 
     @staticmethod
     def _write_vector(path: Path, gdf) -> Dict[str, Any]:
         """Write a vector dataset with stable overwrite behavior."""
-        suffix = path.suffix.lower()
-        driver_by_suffix = {
-            ".geojson": "GeoJSON",
-            ".json": "GeoJSON",
-            ".shp": "ESRI Shapefile",
-            ".gpkg": "GPKG",
-        }
-        if suffix not in driver_by_suffix:
-            raise ValueError(f"Unsupported vector output format for {path}")
-
-        existed = path.exists()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if suffix == ".shp":
-            for sidecar_suffix in (".shp", ".shx", ".dbf", ".prj", ".cpg", ".qpj"):
-                sidecar = path.with_suffix(sidecar_suffix)
-                if sidecar.exists():
-                    sidecar.unlink()
-        elif path.exists():
-            path.unlink()
-
-        gdf.to_file(path, driver=driver_by_suffix[suffix])
-        return {"status": "updated" if existed else "created", "bytes": path.stat().st_size}
+        return write_vector(path, gdf)
 
     @staticmethod
     def _write_csv(path: Path, frame: pd.DataFrame) -> Dict[str, Any]:
@@ -268,7 +255,7 @@ class HmsBasinBuilder:
         gpd = deps["gpd"]
 
         candidates = []
-        primary_resolved = HmsWatershedVerification._resolve_crs(primary_crs)
+        primary_resolved = resolve_crs(primary_crs)
         if primary_resolved is not None:
             candidates.append(primary_resolved)
 
@@ -284,7 +271,7 @@ class HmsBasinBuilder:
                 raw_gdf = gpd.read_file(candidate_path)
             except Exception:
                 continue
-            candidate_crs = HmsWatershedVerification._resolve_crs(raw_gdf.crs)
+            candidate_crs = resolve_crs(raw_gdf.crs)
             if candidate_crs is not None:
                 candidates.append(candidate_crs)
 
@@ -355,50 +342,12 @@ class HmsBasinBuilder:
     @staticmethod
     def _polygonize_wsno_raster(raster_path: Union[str, Path]):
         """Polygonize TauDEM subbasin zones from a watershed grid."""
-        deps = HmsBasinBuilder._check_dependencies()
-        gpd = deps["gpd"]
-        np = deps["np"]
-        rasterio = deps["rasterio"]
-        shapes = deps["shapes"]
-        shape = deps["shape"]
-
-        raster_path = Path(raster_path)
-        with rasterio.open(raster_path) as src:
-            array = src.read(1)
-            nodata = src.nodata
-            mask = np.ones(array.shape, dtype=bool)
-            if nodata is not None:
-                mask &= array != nodata
-            if not mask.any():
-                raise ValueError(f"No watershed zones were found in {raster_path}")
-
-            records: List[Dict[str, Any]] = []
-            for geom, value in shapes(array.astype("int32"), mask=mask, transform=src.transform):
-                records.append({"wsno": int(value), "geometry": shape(geom)})
-
-            resolved_crs = HmsWatershedVerification._resolve_crs(src.crs)
-            if resolved_crs is None:
-                raise ValueError(f"Could not determine CRS for raster dataset: {raster_path}")
-
-        zones = gpd.GeoDataFrame(records, crs=resolved_crs)
-        zones = zones.dissolve(by="wsno", as_index=False)
-        zones["geometry"] = zones.geometry.buffer(0)
-        zones["wsno"] = zones["wsno"].astype(int)
-        zones = zones.sort_values("wsno").reset_index(drop=True)
-        return zones
+        return polygonize_zone_raster(raster_path, zone_column="wsno")
 
     @staticmethod
     def _boundary_geometry_from_zones(zones_gdf):
         """Return the dissolved TauDEM basin geometry for all zones."""
-        deps = HmsBasinBuilder._check_dependencies()
-        unary_union = deps["unary_union"]
-
-        geometry = unary_union([geom for geom in zones_gdf.geometry if geom is not None and not geom.is_empty])
-        if geometry.is_empty:
-            raise ValueError("TauDEM zone geometry is empty")
-        if not geometry.is_valid:
-            geometry = geometry.buffer(0)
-        return geometry
+        return single_geometry(zones_gdf)
 
     @staticmethod
     def _build_outlet_item(
@@ -426,7 +375,7 @@ class HmsBasinBuilder:
         if outlet_mode == "boundary_handoff":
             outlet_path = source_paths["boundary_handoff_outlet_path"]
             if outlet_path.exists():
-                outlet_gdf = HmsWatershedVerification._load_vector(outlet_path, fallback_crs=verification_crs)
+                outlet_gdf = load_vector(outlet_path, fallback_crs=verification_crs)
                 outlet_source = "artifact"
             else:
                 seed_outlet_path = source_paths["snapped_outlet_path"]
@@ -443,7 +392,7 @@ class HmsBasinBuilder:
                     workspace_root=source_paths["workspace_root"],
                     study_name=Path(source_paths["workspace_root"]).name,
                 )
-                selection_crs = HmsWatershedVerification._resolve_crs(
+                selection_crs = resolve_crs(
                     selection_payload["verification_crs"],
                     verification_crs,
                 )
@@ -462,13 +411,13 @@ class HmsBasinBuilder:
             outlet_path = source_paths["snapped_outlet_path"]
             if not outlet_path.exists():
                 raise FileNotFoundError(f"Snapped outlet dataset not found: {outlet_path}")
-            outlet_gdf = HmsWatershedVerification._load_vector(outlet_path, fallback_crs=verification_crs)
+            outlet_gdf = load_vector(outlet_path, fallback_crs=verification_crs)
             outlet_source = "snapped_outlet"
         else:
             outlet_path = source_paths["original_outlet_path"]
             if not outlet_path.exists():
                 raise FileNotFoundError(f"Original outlet dataset not found: {outlet_path}")
-            outlet_gdf = HmsWatershedVerification._load_vector(outlet_path, fallback_crs=verification_crs)
+            outlet_gdf = load_vector(outlet_path, fallback_crs=verification_crs)
             outlet_source = "original_outlet"
 
         outlet_projected = outlet_gdf.to_crs(verification_crs)
@@ -565,7 +514,7 @@ class HmsBasinBuilder:
             )
 
         unit_to_meters = crs_info["linear_unit_to_meters"]
-        net_gdf = HmsWatershedVerification._load_vector(
+        net_gdf = load_vector(
             source_paths["net_path"],
             fallback_crs=verification_crs,
         ).to_crs(verification_crs)
@@ -1001,18 +950,13 @@ class HmsBasinBuilder:
     @staticmethod
     def _read_text_with_fallback(path: Path) -> str:
         """Read a text file using the common HMS encodings."""
-        for encoding in ("utf-8", "latin-1", "cp1252"):
-            try:
-                return path.read_text(encoding=encoding)
-            except UnicodeDecodeError:
-                continue
-        raise UnicodeDecodeError("utf-8", b"", 0, 1, f"Could not decode {path}")
+        return HmsFileParser.read_file(path)
 
     @staticmethod
     def _write_text(path: Path, content: str) -> Path:
         """Write UTF-8 text content with parent creation."""
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
+        HmsFileParser.write_file(path, content)
         return path
 
     @staticmethod
@@ -1116,22 +1060,12 @@ class HmsBasinBuilder:
         description: str = "",
     ) -> str:
         """Build a real HMS registry block for the .hms project file."""
-        timestamp = HmsBasinBuilder._local_hms_timestamp()
-        filename_key = "FileName" if block_type == "Control" else "Filename"
-        lines = [
-            f"{block_type}: {logical_name}",
-            f"     {filename_key}: {filename}",
-            f"     Description: {description}",
-        ]
-        if block_type != "Control":
-            lines.extend(
-                [
-                    f"     Last Modified Date: {timestamp['date']}",
-                    f"     Last Modified Time: {timestamp['time']}",
-                ]
-            )
-        lines.extend(["End:", ""])
-        return "\n".join(lines)
+        return build_project_registry_block(
+            block_type=block_type,
+            logical_name=logical_name,
+            filename=filename,
+            description=description,
+        )
 
     @staticmethod
     def _register_project_block(
@@ -1142,50 +1076,14 @@ class HmsBasinBuilder:
         description: str = "",
     ) -> Path:
         """Register a Basin/Precipitation/Control block in a real HMS project file."""
-        hms_path = Path(hms_path)
-        content = HmsBasinBuilder._read_text_with_fallback(hms_path)
-
-        existing_pattern = rf"^{re.escape(block_type)}:\s*{re.escape(logical_name)}\s*$"
-        if re.search(existing_pattern, content, flags=re.MULTILINE):
-            raise ValueError(
-                f"{block_type} '{logical_name}' is already registered in {hms_path.name}"
-            )
-
-        block_text = HmsBasinBuilder._build_project_registry_block(
-            block_type=block_type,
+        return register_project_block(
+            hms_path,
+            entry_type=block_type,
             logical_name=logical_name,
             filename=filename,
             description=description,
+            allow_existing=False,
         )
-
-        block_pattern = r"([A-Za-z][A-Za-z0-9 ]*:.*?End:\s*)"
-        matches = list(re.finditer(block_pattern, content, flags=re.DOTALL))
-        insert_pos = len(content)
-        same_type_matches = []
-        for match in matches:
-            block_text_existing = match.group(1)
-            first_line = block_text_existing.splitlines()[0].strip()
-            existing_block_type = first_line.split(":", 1)[0].strip()
-            if existing_block_type == block_type:
-                same_type_matches.append(match)
-
-        if same_type_matches:
-            insert_pos = same_type_matches[-1].end()
-        else:
-            project_match = re.search(r"(Project:.*?End:\s*)", content, flags=re.DOTALL)
-            if project_match:
-                insert_pos = project_match.end()
-
-        prefix = content[:insert_pos].rstrip()
-        suffix = content[insert_pos:].lstrip("\n")
-        new_content = prefix + "\n\n" + block_text
-        if suffix:
-            new_content += "\n" + suffix
-        else:
-            new_content += "\n"
-
-        HmsBasinBuilder._write_text(hms_path, new_content)
-        return hms_path
 
     @staticmethod
     def _rewrite_project_block(
@@ -1196,25 +1094,13 @@ class HmsBasinBuilder:
         description: str = "",
     ) -> Path:
         """Rewrite an existing Basin/Precipitation/Control block in a .hms file."""
-        hms_path = Path(hms_path)
-        content = HmsBasinBuilder._read_text_with_fallback(hms_path)
-        block_text = HmsBasinBuilder._build_project_registry_block(
-            block_type=block_type,
+        return rewrite_project_block(
+            hms_path,
+            entry_type=block_type,
             logical_name=logical_name,
             filename=filename,
             description=description,
         )
-        pattern = re.compile(
-            rf"^{re.escape(block_type)}:\s*{re.escape(logical_name)}\s*$.*?^End:\s*$",
-            flags=re.MULTILINE | re.DOTALL,
-        )
-        if not pattern.search(content):
-            raise ValueError(f"{block_type} '{logical_name}' is not registered in {hms_path.name}")
-        new_content = pattern.sub(block_text.rstrip(), content, count=1)
-        if not new_content.endswith("\n"):
-            new_content += "\n"
-        HmsBasinBuilder._write_text(hms_path, new_content)
-        return hms_path
 
     @staticmethod
     def _clone_placeholder_met(

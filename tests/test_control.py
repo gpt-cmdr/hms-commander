@@ -1,11 +1,13 @@
 """Tests for HmsControl — time window, intervals, control info."""
 
 from datetime import datetime
+import importlib
 from pathlib import Path
 
 import pytest
 
 from hms_commander.HmsControl import HmsControl
+from hms_commander.HmsPrj import HmsPrj
 
 
 # ---------------------------------------------------------------------------
@@ -110,6 +112,61 @@ class TestCloneControl:
         tw_clone = HmsControl.get_time_window(dest)
         assert tw_orig["start_date"] == tw_clone["start_date"]
         assert tw_orig["end_date"] == tw_clone["end_date"]
+
+    def test_clone_registers_control_in_initialized_project(self, tmp_project):
+        hms_project = HmsPrj().initialize(tmp_project)
+
+        clone_path = HmsControl.clone_control(
+            "Control 5",
+            "Control_CLONE_REGISTERED",
+            hms_object=hms_project,
+        )
+
+        assert clone_path.exists()
+        assert "Control_CLONE_REGISTERED" in hms_project.control_df["name"].tolist()
+        project_text = (tmp_project / "A1000000.hms").read_text(encoding="utf-8")
+        assert "Control: Control_CLONE_REGISTERED" in project_text
+        assert "FileName: Control_CLONE_REGISTERED.control" in project_text
+
+    def test_clone_without_project_context_is_file_only(self, tmp_control, monkeypatch):
+        prj_module = importlib.import_module("hms_commander.HmsPrj")
+        monkeypatch.setattr(prj_module, "hms", None)
+
+        clone_path = HmsControl.clone_control(
+            str(tmp_control),
+            "Control_STANDALONE",
+        )
+
+        assert clone_path.exists()
+        assert clone_path.parent == tmp_control.parent
+        assert not (clone_path.parent / "A1000000.hms").exists()
+
+    def test_clone_raises_when_destination_exists(self, tmp_control, monkeypatch):
+        prj_module = importlib.import_module("hms_commander.HmsPrj")
+        monkeypatch.setattr(prj_module, "hms", None)
+        existing_clone = tmp_control.parent / "Control_EXISTS.control"
+        existing_clone.write_text("already here", encoding="utf-8")
+
+        with pytest.raises(FileExistsError):
+            HmsControl.clone_control(
+                str(tmp_control),
+                "Control_EXISTS",
+            )
+
+    def test_clone_uses_initialized_global_project_when_no_object_supplied(self, tmp_project, monkeypatch):
+        prj_module = importlib.import_module("hms_commander.HmsPrj")
+        global_project = HmsPrj().initialize(tmp_project)
+        monkeypatch.setattr(prj_module, "hms", global_project)
+
+        clone_path = HmsControl.clone_control(
+            "Control 5",
+            "Control_GLOBAL_REGISTERED",
+        )
+
+        assert clone_path.exists()
+        assert "Control_GLOBAL_REGISTERED" in global_project.control_df["name"].tolist()
+        project_text = (tmp_project / "A1000000.hms").read_text(encoding="utf-8")
+        assert "Control: Control_GLOBAL_REGISTERED" in project_text
 
 
 # ---------------------------------------------------------------------------

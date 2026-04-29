@@ -7,16 +7,16 @@ simulation results from DSS files.
 All methods are static and designed to be used without instantiation.
 """
 
-import re
 from pathlib import Path
-from typing import Dict, List, Optional, Union, Any, Tuple
-from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Union, Any
+from datetime import datetime
 import pandas as pd
 import numpy as np
 
 from .LoggingConfig import get_logger
 from .Decorators import log_call
 from .dss import HmsDss
+from .dss.catalog import parse_pathname, select_result_paths
 
 logger = get_logger(__name__)
 
@@ -64,13 +64,14 @@ class HmsResults:
         # Get catalog and find matching flow path
         catalog = HmsDss.get_catalog(dss_file)
 
-        matching_paths = []
-        for path in catalog:
-            parts = HmsDss.parse_dss_pathname(path)
-            if parts['element_name'].upper() == element_name.upper():
-                if 'FLOW' in parts['data_type'].upper():
-                    if run_name is None or parts['run_name'].upper() == run_name.upper():
-                        matching_paths.append(path)
+        matching_paths = select_result_paths(
+            catalog,
+            result_type="flow",
+            element_names=[element_name],
+            run_name=run_name,
+            exclude_tables=True,
+            result_patterns=HmsDss.HMS_RESULT_PATTERNS,
+        )
 
         if not matching_paths:
             raise ValueError(f"No flow data found for element '{element_name}'")
@@ -104,13 +105,14 @@ class HmsResults:
         dss_file = Path(dss_file)
         catalog = HmsDss.get_catalog(dss_file)
 
-        matching_paths = []
-        for path in catalog:
-            parts = HmsDss.parse_dss_pathname(path)
-            if parts['element_name'].upper() == element_name.upper():
-                if 'PRECIP' in parts['data_type'].upper():
-                    if run_name is None or parts['run_name'].upper() == run_name.upper():
-                        matching_paths.append(path)
+        matching_paths = select_result_paths(
+            catalog,
+            result_type="precipitation",
+            element_names=[element_name],
+            run_name=run_name,
+            exclude_tables=True,
+            result_patterns=HmsDss.HMS_RESULT_PATTERNS,
+        )
 
         if not matching_paths:
             raise ValueError(f"No precipitation data found for element '{element_name}'")
@@ -161,29 +163,10 @@ class HmsResults:
         """
         dss_file = Path(dss_file)
 
-        # If run_name filter specified, get paths and filter element names
-        if run_name:
-            flow_paths = HmsDss.list_flow_results(dss_file)
-            matching_elements = set()
-            for path in flow_paths:
-                parts = HmsDss.parse_dss_pathname(path)
-                if parts['run_name'].upper() == run_name.upper():
-                    matching_elements.add(parts['element_name'])
-
-            # Combine with any user-specified element_names filter
-            if element_names:
-                element_names = [e for e in element_names if e in matching_elements]
-            else:
-                element_names = list(matching_elements)
-
-            if not element_names:
-                logger.info(f"No elements found for run_name '{run_name}'")
-                return pd.DataFrame(columns=['element', 'peak_flow', 'peak_time', 'units', 'dss_path'])
-
-        # Delegate to batched implementation
         return HmsDss.get_peak_flows_batched(
             dss_file,
             element_names=element_names,
+            run_name=run_name,
             batch_size=batch_size,
             progress=True
         )
@@ -215,16 +198,18 @@ class HmsResults:
         dss_file = Path(dss_file)
         flow_paths = HmsDss.list_flow_results(dss_file)
 
-        if run_name:
-            flow_paths = [
-                p for p in flow_paths
-                if HmsDss.parse_dss_pathname(p)['run_name'].upper() == run_name.upper()
-            ]
+        flow_paths = select_result_paths(
+            flow_paths,
+            result_type="flow",
+            run_name=run_name,
+            exclude_tables=True,
+            result_patterns=HmsDss.HMS_RESULT_PATTERNS,
+        )
 
         records = []
         for path in flow_paths:
             try:
-                parts = HmsDss.parse_dss_pathname(path)
+                parts = parse_pathname(path)
                 df = HmsDss.read_timeseries(dss_file, path)
 
                 if df.empty:
@@ -375,13 +360,16 @@ class HmsResults:
 
             try:
                 # Get flow paths for this file
-                flow_paths = HmsDss.list_flow_results(dss_file)
+                flow_paths = select_result_paths(
+                    HmsDss.list_flow_results(dss_file),
+                    result_type="flow",
+                    element_names=[element_name],
+                    exclude_tables=True,
+                    result_patterns=HmsDss.HMS_RESULT_PATTERNS,
+                )
 
                 for path in flow_paths:
-                    parts = HmsDss.parse_dss_pathname(path)
-
-                    if parts['element_name'].upper() != element_name.upper():
-                        continue
+                    parts = parse_pathname(path)
 
                     if run_names and parts['run_name'] not in run_names:
                         continue
@@ -424,16 +412,18 @@ class HmsResults:
         dss_file = Path(dss_file)
         precip_paths = HmsDss.list_precipitation_data(dss_file)
 
-        if run_name:
-            precip_paths = [
-                p for p in precip_paths
-                if HmsDss.parse_dss_pathname(p)['run_name'].upper() == run_name.upper()
-            ]
+        precip_paths = select_result_paths(
+            precip_paths,
+            result_type="precipitation",
+            run_name=run_name,
+            exclude_tables=True,
+            result_patterns=HmsDss.HMS_RESULT_PATTERNS,
+        )
 
         records = []
         for path in precip_paths:
             try:
-                parts = HmsDss.parse_dss_pathname(path)
+                parts = parse_pathname(path)
                 df = HmsDss.read_timeseries(dss_file, path)
 
                 if df.empty:
@@ -492,7 +482,8 @@ class HmsResults:
             results = HmsDss.extract_hms_results(
                 dss_file,
                 element_names=element_names,
-                result_type="flow"
+                result_type="flow",
+                run_name=run_name,
             )
 
             for element, df in results.items():

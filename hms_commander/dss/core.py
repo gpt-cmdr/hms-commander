@@ -29,6 +29,8 @@ import re
 import pandas as pd
 import numpy as np
 
+from .catalog import create_pathname, filter_catalog, parse_pathname
+
 logger = logging.getLogger(__name__)
 
 
@@ -609,43 +611,7 @@ class DssCore:
             print(parts['B'])  # 'OUTLET'
             print(parts['C'])  # 'FLOW'
         """
-        # Don't strip leading/trailing slashes - empty parts are significant!
-        # DSS pathnames: /A/B/C/D/E/F/ or //B/C/D/E/F/ (empty A-part)
-        parts = pathname.split('/')
-
-        # Remove only the first and last empty strings from split (the slashes at start/end)
-        # But keep internal empty strings (which represent empty pathname parts)
-        if parts and parts[0] == '':
-            parts = parts[1:]  # Remove leading empty string from first /
-        if parts and parts[-1] == '':
-            parts = parts[:-1]  # Remove trailing empty string from last /
-
-        result = {
-            'A': parts[0] if len(parts) > 0 else '',
-            'B': parts[1] if len(parts) > 1 else '',
-            'C': parts[2] if len(parts) > 2 else '',
-            'D': parts[3] if len(parts) > 3 else '',
-            'E': parts[4] if len(parts) > 4 else '',
-            'F': parts[5] if len(parts) > 5 else '',
-            'full_path': pathname
-        }
-
-        # Extract element name (B part)
-        result['element_name'] = result['B']
-
-        # Extract data type (C part)
-        result['data_type'] = result['C']
-
-        # Extract time interval (E part)
-        result['time_interval'] = result['E']
-
-        # Extract run name from F part if present
-        if result['F'].startswith('RUN:'):
-            result['run_name'] = result['F'][4:]
-        else:
-            result['run_name'] = result['F']
-
-        return result
+        return parse_pathname(pathname)
 
     @staticmethod
     def create_pathname(
@@ -676,8 +642,7 @@ class DssCore:
             )
             print(path)  # '/MYBASIN/OUTLET/FLOW//15MIN/RUN:RUN1/'
         """
-        f_part = f"RUN:{run_name}" if run_name else ""
-        return f"/{basin}/{element}/{data_type}/{date_block}/{interval}/{f_part}/"
+        return create_pathname(basin, element, data_type, interval, run_name, date_block)
 
     @staticmethod
     def filter_catalog(
@@ -702,25 +667,7 @@ class DssCore:
             paths = DssCore.get_catalog("file.dss")
             flow_paths = DssCore.filter_catalog(paths, data_type="FLOW")
         """
-        filtered = catalog
-
-        if pattern:
-            regex = re.compile(pattern, re.IGNORECASE)
-            filtered = [p for p in filtered if regex.search(p)]
-
-        if data_type:
-            filtered = [
-                p for p in filtered
-                if len(p.split('/')) >= 4 and data_type.upper() in p.split('/')[3].upper()
-            ]
-
-        if element:
-            filtered = [
-                p for p in filtered
-                if len(p.split('/')) >= 3 and element.upper() in p.split('/')[2].upper()
-            ]
-
-        return filtered
+        return filter_catalog(catalog, pattern, data_type, element)
 
     @staticmethod
     def write_paired_data(

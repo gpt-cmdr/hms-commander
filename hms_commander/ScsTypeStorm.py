@@ -50,6 +50,10 @@ import pandas as pd
 
 from .LoggingConfig import get_logger
 from .Decorators import log_call
+from ._hyetograph import (
+    build_hyetograph_frame,
+    incremental_depths_from_cumulative_pattern,
+)
 
 logger = get_logger(__name__)
 
@@ -221,19 +225,12 @@ class ScsTypeStorm:
         # Load cumulative pattern (1441 values at 1-minute intervals)
         cumulative_1min = ScsTypeStorm._load_pattern(scs_type)
 
-        # Resample to requested interval
-        num_output_steps = ScsTypeStorm.DURATION_MINUTES // time_interval_min + 1
-        output_times = np.linspace(0, 1440, num_output_steps)
-        source_times = np.linspace(0, 1440, 1441)
-
-        cumulative_resampled = np.interp(output_times, source_times, cumulative_1min)
-
-        # Scale to total depth
-        cumulative_depth = cumulative_resampled * total_depth_inches
-
-        # Convert to incremental (prepend 0 at t=0)
-        # HMS: dArray[0] = 0.0
-        incremental = np.diff(cumulative_depth, prepend=0.0)
+        incremental = incremental_depths_from_cumulative_pattern(
+            cumulative_1min,
+            total_depth_inches=total_depth_inches,
+            source_duration_min=ScsTypeStorm.DURATION_MINUTES,
+            time_interval_min=time_interval_min,
+        )
 
         # Verify depth conservation
         total_check = incremental.sum()
@@ -252,17 +249,7 @@ class ScsTypeStorm:
             f"peak {incremental.max():.3f} inches"
         )
 
-        # Calculate time axis
-        num_intervals = len(incremental)
-        interval_hours = time_interval_min / 60.0
-        hours = np.arange(1, num_intervals + 1) * interval_hours
-
-        # Return DataFrame with standard columns
-        return pd.DataFrame({
-            'hour': hours,
-            'incremental_depth': incremental,
-            'cumulative_depth': np.cumsum(incremental)
-        })
+        return build_hyetograph_frame(incremental, time_interval_min)
 
     @staticmethod
     @log_call
