@@ -46,6 +46,11 @@ from typing import Optional, Union, List, Tuple
 
 from .LoggingConfig import get_logger
 from .Decorators import log_call
+from ._hyetograph import (
+    build_hyetograph_frame,
+    resample_incremental_pattern,
+    shift_incremental_peak,
+)
 
 logger = get_logger(__name__)
 
@@ -174,9 +179,7 @@ class FrequencyStorm:
 
         # Resample pattern if needed
         if len(pattern) != num_intervals:
-            pattern = FrequencyStorm._resample_pattern(
-                pattern, len(pattern), num_intervals
-            )
+            pattern = FrequencyStorm._resample_pattern(pattern, len(pattern), num_intervals)
 
         # Handle peak position shift if different from 67%
         if abs(peak_position_pct - 67.0) > 0.5:
@@ -191,17 +194,7 @@ class FrequencyStorm:
         # HMS: dArray[0] = 0.0 (aY.java:143)
         hyetograph = np.insert(incremental, 0, 0.0)
 
-        # Calculate time axis
-        num_intervals = len(hyetograph)
-        interval_hours = time_interval_min / 60.0
-        hours = np.arange(1, num_intervals + 1) * interval_hours
-
-        # Return DataFrame with standard columns
-        return pd.DataFrame({
-            'hour': hours,
-            'incremental_depth': hyetograph,
-            'cumulative_depth': np.cumsum(hyetograph)
-        })
+        return build_hyetograph_frame(hyetograph, time_interval_min)
 
     @staticmethod
     def _resample_pattern(
@@ -210,24 +203,7 @@ class FrequencyStorm:
         target_intervals: int
     ) -> np.ndarray:
         """Resample pattern to different number of intervals."""
-        # Convert to cumulative for interpolation
-        cumulative = np.cumsum(pattern)
-        cumulative = np.insert(cumulative, 0, 0)  # Add zero at start
-
-        # Source and target time fractions
-        source_t = np.linspace(0, 1, source_intervals + 1)
-        target_t = np.linspace(0, 1, target_intervals + 1)
-
-        # Interpolate cumulative
-        target_cumulative = np.interp(target_t, source_t, cumulative)
-
-        # Convert back to incremental
-        resampled = np.diff(target_cumulative)
-
-        # Normalize to sum to 1
-        resampled = resampled / resampled.sum()
-
-        return resampled
+        return resample_incremental_pattern(pattern, target_intervals, source_intervals)
 
     @staticmethod
     def _shift_peak(
@@ -236,28 +212,7 @@ class FrequencyStorm:
         target_peak_pct: float
     ) -> np.ndarray:
         """Shift the peak position of the pattern."""
-        n = len(pattern)
-        current_peak_idx = int(current_peak_pct / 100 * n)
-        target_peak_idx = int(target_peak_pct / 100 * n)
-
-        shift = target_peak_idx - current_peak_idx
-
-        if shift == 0:
-            return pattern
-
-        # Roll the array
-        shifted = np.roll(pattern, shift)
-
-        # Zero out wrapped values
-        if shift > 0:
-            shifted[:shift] = shifted[shift]  # Extend first value
-        else:
-            shifted[shift:] = shifted[shift - 1]  # Extend last value
-
-        # Renormalize
-        shifted = shifted / shifted.sum()
-
-        return shifted
+        return shift_incremental_peak(pattern, current_peak_pct, target_peak_pct)
 
     @staticmethod
     @log_call

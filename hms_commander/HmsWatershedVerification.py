@@ -8,7 +8,6 @@ review figures suitable for downstream workflows such as `ras-agent`.
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -16,6 +15,15 @@ from typing import Any, Dict, Mapping, Optional, Union
 
 from .Decorators import log_call
 from .LoggingConfig import get_logger
+from ._spatial import (
+    json_default,
+    load_vector,
+    polygonize_watershed_raster,
+    resolve_crs,
+    single_geometry,
+    write_json,
+    write_vector,
+)
 
 logger = get_logger(__name__)
 
@@ -36,46 +44,17 @@ class HmsWatershedVerification:
     @staticmethod
     def _json_default(value: Any) -> Any:
         """Serialize pathlib and CRS-like values inside JSON payloads."""
-        if isinstance(value, Path):
-            return str(value)
-        return str(value)
+        return json_default(value)
 
     @staticmethod
     def _write_json(path: Path, payload: Mapping[str, Any]) -> Dict[str, Any]:
         """Write JSON with stable formatting."""
-        existed = path.exists()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(payload, indent=2, default=HmsWatershedVerification._json_default) + "\n",
-            encoding="utf-8",
-        )
-        return {"status": "updated" if existed else "created", "bytes": path.stat().st_size}
+        return write_json(path, payload)
 
     @staticmethod
     def _write_vector(path: Path, gdf) -> Dict[str, Any]:
         """Write a vector dataset with stable overwrite behavior."""
-        suffix = path.suffix.lower()
-        driver_by_suffix = {
-            ".geojson": "GeoJSON",
-            ".json": "GeoJSON",
-            ".shp": "ESRI Shapefile",
-            ".gpkg": "GPKG",
-        }
-        if suffix not in driver_by_suffix:
-            raise ValueError(f"Unsupported vector output format for {path}")
-
-        existed = path.exists()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if suffix == ".shp":
-            for sidecar_suffix in (".shp", ".shx", ".dbf", ".prj", ".cpg", ".qpj"):
-                sidecar = path.with_suffix(sidecar_suffix)
-                if sidecar.exists():
-                    sidecar.unlink()
-        elif path.exists():
-            path.unlink()
-
-        gdf.to_file(path, driver=driver_by_suffix[suffix])
-        return {"status": "updated" if existed else "created", "bytes": path.stat().st_size}
+        return write_vector(path, gdf)
 
     @staticmethod
     def _check_dependencies():
@@ -145,48 +124,17 @@ class HmsWatershedVerification:
     @staticmethod
     def _resolve_crs(crs_value: Any, fallback_crs: Optional[Any] = None):
         """Resolve a CRS-like value, optionally falling back to a supplied CRS."""
-        deps = HmsWatershedVerification._check_dependencies()
-        CRS = deps["CRS"]
-        if crs_value is None:
-            return CRS.from_user_input(fallback_crs) if fallback_crs is not None else None
-        try:
-            resolved = CRS.from_user_input(crs_value)
-        except Exception:
-            return CRS.from_user_input(fallback_crs) if fallback_crs is not None else None
-
-        if fallback_crs is not None and resolved.to_epsg() is None:
-            return CRS.from_user_input(fallback_crs)
-        return resolved
+        return resolve_crs(crs_value, fallback_crs)
 
     @staticmethod
     def _load_vector(path: Union[str, Path], fallback_crs: Optional[Any] = None):
         """Read a vector file and apply fallback CRS when metadata is missing."""
-        deps = HmsWatershedVerification._check_dependencies()
-        gpd = deps["gpd"]
-
-        path = Path(path)
-        gdf = gpd.read_file(path)
-        resolved_crs = HmsWatershedVerification._resolve_crs(gdf.crs, fallback_crs)
-        if resolved_crs is None:
-            raise ValueError(f"Could not determine CRS for vector dataset: {path}")
-        if gdf.crs is None:
-            gdf = gdf.set_crs(resolved_crs)
-        else:
-            gdf = gdf.set_crs(resolved_crs, allow_override=True)
-        return gdf
+        return load_vector(path, fallback_crs)
 
     @staticmethod
     def _single_geometry(gdf):
         """Dissolve a GeoDataFrame into one valid geometry."""
-        deps = HmsWatershedVerification._check_dependencies()
-        unary_union = deps["unary_union"]
-
-        geometry = unary_union([geom for geom in gdf.geometry if geom is not None and not geom.is_empty])
-        if geometry.is_empty:
-            raise ValueError("Dataset does not contain any non-empty geometries")
-        if not geometry.is_valid:
-            geometry = geometry.buffer(0)
-        return geometry
+        return single_geometry(gdf)
 
     @staticmethod
     def _polygonize_watershed_raster(
@@ -196,38 +144,11 @@ class HmsWatershedVerification:
         positive_only: bool = True,
     ):
         """Polygonize a TauDEM watershed grid by dissolving all valid watershed cells."""
-        deps = HmsWatershedVerification._check_dependencies()
-        gpd = deps["gpd"]
-        np = deps["np"]
-        rasterio = deps["rasterio"]
-        shapes = deps["shapes"]
-        shape = deps["shape"]
-        unary_union = deps["unary_union"]
-
-        raster_path = Path(raster_path)
-        with rasterio.open(raster_path) as src:
-            array = src.read(1)
-            nodata = src.nodata
-            mask = np.ones(array.shape, dtype=bool)
-            if nodata is not None:
-                mask &= array != nodata
-            if positive_only:
-                mask &= array > 0
-            if not mask.any():
-                raise ValueError(f"No watershed cells were found in {raster_path}")
-
-            polygon_geometries = [
-                shape(geom)
-                for geom, _ in shapes(array.astype("int32"), mask=mask, transform=src.transform)
-            ]
-            geometry = unary_union(polygon_geometries)
-            resolved_crs = HmsWatershedVerification._resolve_crs(src.crs, fallback_crs)
-            if resolved_crs is None:
-                raise ValueError(f"Could not determine CRS for raster dataset: {raster_path}")
-
-        if not geometry.is_valid:
-            geometry = geometry.buffer(0)
-        return gpd.GeoDataFrame({"source": ["watershed_raster"]}, geometry=[geometry], crs=resolved_crs)
+        return polygonize_watershed_raster(
+            raster_path,
+            fallback_crs=fallback_crs,
+            positive_only=positive_only,
+        )
 
     @staticmethod
     def _stream_network_summary(streams_gdf, verification_crs) -> Dict[str, Any]:

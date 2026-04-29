@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from hms_commander.HmsBasin import HmsBasin
+from hms_commander.HmsPrj import HmsPrj
 
 
 # ---------------------------------------------------------------------------
@@ -250,6 +251,21 @@ class TestCloneBasin:
         orig_params = HmsBasin.get_loss_parameters(original, "A100A")
         # Original should be unchanged
         assert orig_params["method"] == "Green and Ampt"
+
+    def test_clone_registers_basin_in_initialized_project(self, tmp_project):
+        hms_project = HmsPrj().initialize(tmp_project)
+
+        clone_path = HmsBasin.clone_basin(
+            "A100_1PCT",
+            "A100_CLONE_REGISTERED",
+            hms_object=hms_project,
+        )
+
+        assert clone_path.exists()
+        assert "A100_CLONE_REGISTERED" in hms_project.basin_df["name"].tolist()
+        project_text = (tmp_project / "A1000000.hms").read_text(encoding="utf-8")
+        assert "Basin: A100_CLONE_REGISTERED" in project_text
+        assert "Basin File: A100_CLONE_REGISTERED.basin" not in project_text
 
 
 # ---------------------------------------------------------------------------

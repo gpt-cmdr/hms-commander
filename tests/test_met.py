@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from hms_commander.HmsMet import HmsMet
+from hms_commander.HmsPrj import HmsPrj
 
 
 # ---------------------------------------------------------------------------
@@ -148,6 +149,21 @@ class TestCloneMet:
         original_method = HmsMet.get_precipitation_method(met_path_33)
         clone_method = HmsMet.get_precipitation_method(dest)
         assert original_method == clone_method
+
+    def test_clone_registers_precipitation_in_initialized_project(self, tmp_project):
+        hms_project = HmsPrj().initialize(tmp_project)
+
+        clone_path = HmsMet.clone_met(
+            "1%_24HR",
+            "Atlas14_CLONE_REGISTERED",
+            hms_object=hms_project,
+        )
+
+        assert clone_path.exists()
+        assert "Atlas14_CLONE_REGISTERED" in hms_project.met_df["name"].tolist()
+        project_text = (tmp_project / "A1000000.hms").read_text(encoding="utf-8")
+        assert "Precipitation: Atlas14_CLONE_REGISTERED" in project_text
+        assert "Met File: Atlas14_CLONE_REGISTERED.met" not in project_text
 
 
 # ---------------------------------------------------------------------------

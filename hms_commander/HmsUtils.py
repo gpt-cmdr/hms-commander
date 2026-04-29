@@ -27,6 +27,8 @@ from ._constants import (
     MINUTES_PER_HOUR, MINUTES_PER_DAY,
     IA_RATIO, CN_FORMULA_BASE, CN_FORMULA_NUMERATOR, CN_MIN, CN_MAX,
 )
+from ._parsing import HmsFileParser
+from ._project_registry import register_project_block
 
 logger = get_logger(__name__)
 
@@ -555,20 +557,7 @@ class HmsUtils:
         if new_path.exists():
             raise FileExistsError(f"Destination file already exists: {new_path}")
 
-        # Read template with encoding fallback
-        encodings = ['utf-8', 'latin-1', 'cp1252']
-        content = None
-        for encoding in encodings:
-            try:
-                content = template_path.read_text(encoding=encoding)
-                break
-            except UnicodeDecodeError:
-                continue
-
-        if content is None:
-            raise UnicodeDecodeError(
-                f"Could not decode {template_path} with any supported encoding"
-            )
+        content = HmsFileParser.read_file(template_path)
 
         # Apply modification function if provided
         if modify_func is not None:
@@ -577,10 +566,48 @@ class HmsUtils:
             content = ''.join(modified_lines)
 
         # Write new file
-        new_path.write_text(content, encoding='utf-8')
+        HmsFileParser.write_file(new_path, content)
         logger.info(f"Cloned file: {template_path.name} → {new_path.name}")
 
         return new_path
+
+    @staticmethod
+    def _legacy_update_project_file(
+        hms_file: Path,
+        entry_type: str,
+        entry_name: str,
+    ) -> bool:
+        """Fallback for historical flat project-file entries."""
+
+        content = HmsFileParser.read_file(hms_file)
+        file_extensions = {
+            'Run': 'run',
+            'Gage': 'gage',
+        }
+        extension = file_extensions.get(entry_type, entry_type.lower())
+
+        entry_pattern = rf'^{entry_type}\s+File:\s*{re.escape(entry_name)}\.{extension}\s*$'
+        if re.search(entry_pattern, content, re.MULTILINE | re.IGNORECASE):
+            logger.info(f"{entry_type} '{entry_name}' already in project file")
+            return True
+
+        new_entry = f"{entry_type} File: {entry_name}.{extension}\n"
+        type_pattern = rf'^{entry_type}\s+File:.*$'
+        matches = list(re.finditer(type_pattern, content, re.MULTILINE | re.IGNORECASE))
+
+        if matches:
+            insert_pos = matches[-1].end()
+            content = content[:insert_pos] + '\n' + new_entry + content[insert_pos:]
+        else:
+            end_match = re.search(r'^End:\s*$', content, re.MULTILINE)
+            if end_match:
+                content = content[:end_match.start()] + new_entry + content[end_match.start():]
+            else:
+                content = content.rstrip() + '\n' + new_entry
+
+        HmsFileParser.write_file(hms_file, content)
+        logger.info(f"Added legacy {entry_type} file entry '{entry_name}' to project file")
+        return True
 
     @staticmethod
     @log_call
@@ -616,61 +643,30 @@ class HmsUtils:
             ... )
 
         Note:
-            The HMS project file format uses simple lines like:
-            Basin File: BasinName.basin
-            Met File: MetName.met
-            This method appends new entries to ensure proper registration.
+            Basin, Met/Meteorology, and Control entries are written as real HMS
+            registry blocks for new registrations. Existing legacy flat entries
+            such as "Basin File:" and "Met File:" are treated as already
+            registered to avoid duplicates. Other entry types keep the
+            historical flat-line fallback for compatibility.
         """
         hms_file = Path(hms_file)
 
         if not hms_file.exists():
             raise FileNotFoundError(f"HMS project file not found: {hms_file}")
 
-        content = hms_file.read_text(encoding='utf-8')
+        try:
+            register_project_block(
+                hms_file,
+                entry_type=entry_type,
+                logical_name=entry_name,
+                allow_existing=True,
+            )
+        except ValueError:
+            logger.warning(
+                f"Unknown entry type '{entry_type}', using legacy flat-line registration"
+            )
+            return HmsUtils._legacy_update_project_file(hms_file, entry_type, entry_name)
 
-        # Determine the file pattern based on entry type
-        file_extensions = {
-            'Basin': 'basin',
-            'Meteorology': 'met',
-            'Met': 'met',
-            'Control': 'control',
-            'Run': 'run',
-            'Gage': 'gage',
-        }
-
-        extension = file_extensions.get(entry_type)
-        if extension is None:
-            logger.warning(f"Unknown entry type '{entry_type}', using lowercase")
-            extension = entry_type.lower()
-
-        # Check if entry already exists
-        entry_pattern = rf'^{entry_type}\s+File:\s*{re.escape(entry_name)}\.{extension}\s*$'
-        if re.search(entry_pattern, content, re.MULTILINE | re.IGNORECASE):
-            logger.info(f"{entry_type} '{entry_name}' already in project file")
-            return True
-
-        # Add new entry line
-        new_entry = f"{entry_type} File: {entry_name}.{extension}\n"
-
-        # Find insertion point (after last similar entry type, or before End: if exists)
-        type_pattern = rf'^{entry_type}\s+File:.*$'
-        matches = list(re.finditer(type_pattern, content, re.MULTILINE | re.IGNORECASE))
-
-        if matches:
-            # Insert after last matching entry
-            last_match = matches[-1]
-            insert_pos = last_match.end()
-            content = content[:insert_pos] + '\n' + new_entry + content[insert_pos:]
-        else:
-            # Insert before 'End:' or at end of file
-            end_match = re.search(r'^End:\s*$', content, re.MULTILINE)
-            if end_match:
-                content = content[:end_match.start()] + new_entry + content[end_match.start():]
-            else:
-                content = content.rstrip() + '\n' + new_entry
-
-        # Write back
-        hms_file.write_text(content, encoding='utf-8')
         logger.info(f"Added {entry_type} '{entry_name}' to project file")
 
         return True

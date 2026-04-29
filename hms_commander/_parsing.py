@@ -30,7 +30,7 @@ class HmsFileParser:
     @staticmethod
     def read_file(file_path: Union[str, Path]) -> str:
         """
-        Read HMS file with UTF-8 → Latin-1 encoding fallback.
+        Read HMS file with UTF-8 → CP1252 → Latin-1 encoding fallback.
 
         HMS files may use different encodings depending on when they were created
         and what characters they contain. This method tries UTF-8 first, then
@@ -52,13 +52,20 @@ class HmsFileParser:
         """
         file_path = Path(file_path)
 
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                return f.read()
-        except UnicodeDecodeError:
-            logger.debug(f"UTF-8 decode failed for {file_path}, falling back to Latin-1")
-            with open(file_path, 'r', encoding='latin-1') as f:
-                return f.read()
+        for encoding in ('utf-8', 'cp1252', 'latin-1'):
+            try:
+                with open(file_path, 'r', encoding=encoding) as f:
+                    return f.read()
+            except UnicodeDecodeError:
+                logger.debug(f"{encoding} decode failed for {file_path}")
+
+        raise UnicodeDecodeError(
+            'utf-8',
+            b'',
+            0,
+            1,
+            f"Could not decode {file_path} with supported encodings",
+        )
 
     @staticmethod
     def write_file(file_path: Union[str, Path], content: str, encoding: str = 'utf-8') -> None:

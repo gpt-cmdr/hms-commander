@@ -162,3 +162,105 @@ class TestListProjectFiles:
                 assert len(flist) == 0
         except (FileNotFoundError, OSError):
             pass  # Also acceptable
+
+
+# ---------------------------------------------------------------------------
+# update_project_file
+# ---------------------------------------------------------------------------
+
+class TestUpdateProjectFile:
+    def test_basin_registration_writes_canonical_block(self, tmp_project):
+        hms_path = tmp_project / "A1000000.hms"
+
+        assert HmsUtils.update_project_file(hms_path, "Basin", "A100_CLONE") is True
+        content = hms_path.read_text(encoding="utf-8")
+
+        assert "Basin: A100_CLONE" in content
+        assert "Filename: A100_CLONE.basin" in content
+        assert "Basin File: A100_CLONE.basin" not in content
+
+    def test_met_alias_registration_writes_precipitation_block(self, tmp_project):
+        hms_path = tmp_project / "A1000000.hms"
+
+        assert HmsUtils.update_project_file(hms_path, "Met", "Atlas14_CLONE") is True
+        content = hms_path.read_text(encoding="utf-8")
+
+        assert "Precipitation: Atlas14_CLONE" in content
+        assert "Filename: Atlas14_CLONE.met" in content
+        assert "Met File: Atlas14_CLONE.met" not in content
+
+    def test_control_registration_writes_filename_key_used_by_hms(self, tmp_project):
+        hms_path = tmp_project / "A1000000.hms"
+
+        assert HmsUtils.update_project_file(hms_path, "Control", "Control_CLONE") is True
+        content = hms_path.read_text(encoding="utf-8")
+
+        assert "Control: Control_CLONE" in content
+        assert "FileName: Control_CLONE.control" in content
+        assert "Control File: Control_CLONE.control" not in content
+
+    def test_registration_does_not_insert_inside_project_block(self, tmp_project):
+        hms_path = tmp_project / "A1000000.hms"
+
+        HmsUtils.update_project_file(hms_path, "Basin", "Outside_Project")
+        content = hms_path.read_text(encoding="utf-8")
+        project_block = content.split("End:", 1)[0]
+
+        assert "Basin: Outside_Project" not in project_block
+
+    def test_registration_is_idempotent(self, tmp_project):
+        hms_path = tmp_project / "A1000000.hms"
+
+        HmsUtils.update_project_file(hms_path, "Basin", "A100_IDEMPOTENT")
+        HmsUtils.update_project_file(hms_path, "Basin", "A100_IDEMPOTENT")
+        content = hms_path.read_text(encoding="utf-8")
+
+        assert content.count("Basin: A100_IDEMPOTENT") == 1
+
+    def test_legacy_flat_basin_entry_is_treated_as_registered(self, tmp_path):
+        hms_path = tmp_path / "Legacy.hms"
+        hms_path.write_text(
+            "Project: Legacy\n"
+            "     Version: 3.3\n"
+            "Basin File: Legacy_Basin.basin\n"
+            "End:\n",
+            encoding="utf-8",
+        )
+
+        assert HmsUtils.update_project_file(hms_path, "Basin", "Legacy_Basin") is True
+        content = hms_path.read_text(encoding="utf-8")
+
+        assert content.count("Basin File: Legacy_Basin.basin") == 1
+        assert "Basin: Legacy_Basin" not in content
+
+    def test_legacy_flat_met_entry_is_treated_as_registered(self, tmp_path):
+        hms_path = tmp_path / "Legacy.hms"
+        hms_path.write_text(
+            "Project: Legacy\n"
+            "     Version: 3.3\n"
+            "Met File: Legacy_Met.met\n"
+            "End:\n",
+            encoding="utf-8",
+        )
+
+        assert HmsUtils.update_project_file(hms_path, "Met", "Legacy_Met") is True
+        content = hms_path.read_text(encoding="utf-8")
+
+        assert content.count("Met File: Legacy_Met.met") == 1
+        assert "Precipitation: Legacy_Met" not in content
+
+    def test_legacy_flat_control_entry_is_treated_as_registered(self, tmp_path):
+        hms_path = tmp_path / "Legacy.hms"
+        hms_path.write_text(
+            "Project: Legacy\n"
+            "     Version: 3.3\n"
+            "Control File: Legacy_Control.control\n"
+            "End:\n",
+            encoding="utf-8",
+        )
+
+        assert HmsUtils.update_project_file(hms_path, "Control", "Legacy_Control") is True
+        content = hms_path.read_text(encoding="utf-8")
+
+        assert content.count("Control File: Legacy_Control.control") == 1
+        assert "Control: Legacy_Control" not in content

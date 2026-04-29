@@ -23,6 +23,10 @@ import requests
 
 from .LoggingConfig import get_logger
 from .Decorators import log_call
+from ._hyetograph import (
+    build_hyetograph_frame,
+    incremental_depths_from_cumulative_values,
+)
 
 logger = get_logger(__name__)
 
@@ -792,11 +796,11 @@ class Atlas14Storm:
         # Get cumulative curve (0-100%)
         cumulative_percent = temporal_df[prob_col].values
 
-        # Convert to cumulative depth
-        cumulative_depth = cumulative_percent / 100.0 * total_depth_inches
-
-        # Convert to incremental depth
-        incremental = np.diff(cumulative_depth, prepend=0.0)
+        incremental = incremental_depths_from_cumulative_values(
+            cumulative_percent,
+            total_depth_inches=total_depth_inches,
+            value_scale=100.0,
+        )
 
         # Verify total depth matches (within rounding)
         total_check = incremental.sum()
@@ -810,17 +814,7 @@ class Atlas14Storm:
             f"{total_check:.3f} inches total"
         )
 
-        # Calculate time axis
-        num_intervals = len(incremental)
-        interval_hours = interval_minutes / 60.0
-        hours = np.arange(1, num_intervals + 1) * interval_hours
-
-        # Return DataFrame with standard columns
-        return pd.DataFrame({
-            'hour': hours,
-            'incremental_depth': incremental,
-            'cumulative_depth': np.cumsum(incremental)
-        })
+        return build_hyetograph_frame(incremental, interval_minutes)
 
     @staticmethod
     @log_call
