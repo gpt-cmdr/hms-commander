@@ -80,12 +80,12 @@ by the public API.
 
 | Notebook | Official guide category |
 |----------|-------------------------|
-| [22 - Basic Model Setup](../notebooks/22_guide_basic_model_setup.ipynb) | Basic model setup, simulation execution, and output checks |
-| [23 - Meteorologic Methods](../notebooks/23_guide_meteorologic_methods.ipynb) | Meteorologic methods and gridded boundary condition data |
-| [24 - GIS and Terrain Data](../notebooks/24_guide_gis_terrain_data.ipynb) | GIS tools, model-type detection, and GeoJSON extraction |
-| [25 - Basin Methods, Loss, Transform, and Routing](../notebooks/25_guide_basin_methods_loss_transform_routing.ipynb) | Parameter estimation, loss, transform, baseflow, and reach routing |
-| [26 - Calibration and Validation](../notebooks/26_guide_calibration_validation.ipynb) | Baseline run execution and calibration-script scaffolding |
-| [27 - Advanced Analysis](../notebooks/27_guide_advanced_analysis.ipynb) | Advanced-analysis inventory, batch-run scaffolding, and ensemble setup |
+| [101 - Basic Model Setup](../notebooks/101_guide_basic_model_setup.ipynb) | Basic model setup, simulation execution, and DSS hydrograph review |
+| [102 - Meteorologic Methods](../notebooks/102_guide_meteorologic_methods.ipynb) | Historical gage hyetographs, gridded met assets, frequency storms, Atlas 14, and SCS temporal patterns |
+| [103 - GIS and Terrain Data](../notebooks/103_guide_gis_terrain_data.ipynb) | GIS tools, model-type detection, subbasin/stream maps, and GeoJSON extraction |
+| [104 - Basin Methods, Loss, Transform, and Routing](../notebooks/104_guide_basin_methods_loss_transform.ipynb) | Parameter estimation, CN sensitivity, unit hydrographs, baseflow, and reach routing attenuation |
+| [105 - Calibration and Validation](../notebooks/105_guide_calibration_validation.ipynb) | Observed-vs-modeled hydrographs, residuals, calibration scaffolding, and Manning roughness sensitivity |
+| [106 - Advanced Analysis](../notebooks/106_guide_advanced_analysis.ipynb) | Batch-run scaffolding, computed parameter ensembles, fan charts, and objective convergence |
 
 ### TauDEM to HMS Assembly (30-60 minutes)
 
