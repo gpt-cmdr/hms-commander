@@ -72,6 +72,21 @@ projects = HmsExamples.list_projects()
 | [10 - Atlas 14 Hyetograph](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/10_atlas14_hyetograph.ipynb) | Generate design storms from NOAA Atlas 14 |
 | [11 - Frequency Storm](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/11_frequency_storm.ipynb) | Variable duration storms using TP-40/Hydro-35 patterns |
 
+### Official HEC-HMS Guide Mirrors (45-90 minutes)
+
+These notebooks cite the official HEC-HMS Tutorials and Guides category pages
+and show the hms-commander equivalent for workflows that are already supported
+by the public API.
+
+| Notebook | Official guide category |
+|----------|-------------------------|
+| [22 - Basic Model Setup](../notebooks/22_guide_basic_model_setup.ipynb) | Basic model setup, simulation execution, and output checks |
+| [23 - Meteorologic Methods](../notebooks/23_guide_meteorologic_methods.ipynb) | Meteorologic methods and gridded boundary condition data |
+| [24 - GIS and Terrain Data](../notebooks/24_guide_gis_terrain_data.ipynb) | GIS tools, model-type detection, and GeoJSON extraction |
+| [25 - Basin Methods, Loss, Transform, and Routing](../notebooks/25_guide_basin_methods_loss_transform_routing.ipynb) | Parameter estimation, loss, transform, baseflow, and reach routing |
+| [26 - Calibration and Validation](../notebooks/26_guide_calibration_validation.ipynb) | Baseline run execution and calibration-script scaffolding |
+| [27 - Advanced Analysis](../notebooks/27_guide_advanced_analysis.ipynb) | Advanced-analysis inventory, batch-run scaffolding, and ensemble setup |
+
 ### TauDEM to HMS Assembly (30-60 minutes)
 
 | Notebook | Description |
