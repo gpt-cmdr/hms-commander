@@ -2,6 +2,8 @@
 
 **If you're picking up this work, start here.**
 
+> 2026-05-01 archival notice: this file is retained to explain the January 2026 v0.2.0 DataFrame API handoff. Do not use the old `setup.py`, commit, tag, or PyPI commands as current release instructions.
+
 ---
 
 ## Current Status (As of 2026-01-05)

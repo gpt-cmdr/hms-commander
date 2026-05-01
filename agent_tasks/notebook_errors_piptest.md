@@ -1,5 +1,7 @@
 # Notebook Errors - PyPI Test Environment (hmscmdr_piptest)
 
+> 2026-05-01 archival notice: this records December 2025 notebook fixes against older notebook names and environment names. Use it as troubleshooting history, not the current notebook catalog.
+
 Testing date: 2025-12-13
 
 ---

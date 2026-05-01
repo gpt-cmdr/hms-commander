@@ -1,9 +1,11 @@
 # Phase 1.5: Development-Focused Agent Infrastructure
 
 **Created**: 2025-12-17
-**Status**: Planning
+**Status**: Historical / partially superseded by current `.claude/agents/`, `.claude/skills/`, Codex bridge, and repo-local `AGENTS.md`
 **Source**: Adapted from ras-commander development agents
 **Priority**: Next after Phase 1 (Cognitive Infrastructure)
+
+> 2026-05-01 drift note: this plan describes the pre-Codex bridge architecture. Use it as background only; verify environment names, agent locations, and backlog status against current `AGENTS.md`, `.claude/MANIFEST.md`, `.agents/README.md`, and active runner instructions.
 
 ---
 

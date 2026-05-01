@@ -1,6 +1,10 @@
 IMPLEMENTATION COMPLETE - READY FOR GIT COMMIT
 ==============================================
 
+ARCHIVAL NOTICE (2026-05-01)
+This was a January 2026 handoff marker for the v0.2.0 precipitation DataFrame work.
+It is not the current repository status. Current package metadata is in pyproject.toml.
+
 Date: 2026-01-05
 Status: ✅ ALL TESTS PASSING (77/77)
 Notebooks: ✅ ALL VALIDATED (4/4)
@@ -19,7 +23,7 @@ FILES MODIFIED (Ready to Commit):
 - CHANGELOG.md (NEW)
 
 BEFORE COMMIT:
-1. Update setup.py version: 0.1.0 → 0.2.0
+1. Historical only: this handoff expected a setup.py version bump from 0.1.0 to 0.2.0. The current repository uses pyproject.toml and declares version 0.3.0.
 
 COMMIT MESSAGE (ready to use):
 See agent_tasks/cross-repo/NEXT_STEPS.md for complete commit message

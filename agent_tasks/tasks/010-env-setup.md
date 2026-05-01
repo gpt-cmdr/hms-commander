@@ -4,6 +4,8 @@
 **Template**: feature.md
 **Status**: Reusable
 
+> 2026-05-01 runner note: this task documents the older standalone local-dev environment pattern. Symphony runner lanes should use the issue-provided environment policy, currently `symphony-dev` for local-source work and `symphony-pip` for published-package validation.
+
 ---
 
 ## Goal

@@ -1,5 +1,7 @@
 # Implementation Plan: Precipitation DataFrame API Standardization
 
+> 2026-05-01 archival notice: this plan records the January 2026 implementation approach. The work has since been completed and superseded by current package state.
+
 **Source Document**: `agent_tasks/cross-repo/2026-01-05_ras_to_hms_precipitation-dataframe-api.md`
 **Repository**: hms-commander (alpha stage - no backward compatibility needed)
 **Priority**: High (blocking ras-commander integration)

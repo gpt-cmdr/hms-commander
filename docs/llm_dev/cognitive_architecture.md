@@ -33,8 +33,8 @@ graph TB
         J[.claude/commands/]
     end
 
-    subgraph "Production Level - Automation"
-        K[hms_agents/<br/>Production Agents]
+    subgraph "Folder-Based Claude Agents"
+        K[.claude/agents/<br/>Tooling folders]
         L[agent_tasks/<br/>Task Templates]
     end
 
@@ -224,9 +224,9 @@ graph LR
         B3[Examples:<br/>documentation-generator<br/>notebook-runner]
     end
 
-    subgraph "Tier 3: Production Agents"
-        C1[hms_agents/<br/>Full folders with tools/]
-        C2[Purpose: Complete automation<br/>self-contained workflows]
+    subgraph "Tier 3: Folder-Based Claude Agents"
+        C1[.claude/agents/&lt;name&gt;/<br/>Folders with tools/]
+        C2[Purpose: Complete Claude-native automation<br/>self-contained workflows]
         C3[Examples:<br/>hms_decompiler/<br/>hms_atlas14/]
     end
 
@@ -383,7 +383,7 @@ Claude has full context:
 | **Specialists** | `.claude/agents/` | Claude-native domain expertise | When domain knowledge needed |
 | **Commands** | `.claude/commands/` | Claude slash-command entry points | When user uses /command |
 | **Templates** | `agent_tasks/tasks/` | Reusable workflows | When executing structured task |
-| **Production** | `hms_agents/` | Complete automation | When running standalone agent |
+| **Folder-Based Claude Agents** | `.claude/agents/<name>/` | Complete Claude-native automation folders | When a Claude workflow needs that agent |
 
 ---
 

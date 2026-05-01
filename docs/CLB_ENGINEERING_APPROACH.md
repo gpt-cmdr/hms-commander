@@ -418,10 +418,10 @@ For each new agent, verify:
 
 ## Related Documentation
 
-- **Agent Framework:** `agents/README.md`
-- **Development Priorities:** `.agent/PRIORITIES.md`
-- **Development Roadmap:** `DEVELOPMENT_ROADMAP.md`
-- **Example Agent:** `hms_agents/Update_3_to_4/AGENT.md`
+- **Shared Agent Contract:** `AGENTS.md`
+- **Multi-Harness Contract:** `docs/development/multi-harness-agent-contract.md`
+- **Current Roadmap:** `agent_tasks/plans/feature-dev-notes-roadmap-refresh.md`
+- **Claude-Native Agents:** `.claude/agents/`
 
 ---
 

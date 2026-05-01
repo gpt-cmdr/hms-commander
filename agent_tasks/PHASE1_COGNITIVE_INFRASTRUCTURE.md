@@ -1,8 +1,10 @@
 # Phase 1: Cognitive Infrastructure Implementation Plan
 
 **Created**: 2025-12-17
-**Status**: In Progress
+**Status**: Historical / superseded by `AGENTS.md`, `.claude/`, `.agents/`, and `docs/development/multi-harness-agent-contract.md`
 **Focus**: Claude Code-centric infrastructure with maximum leverage
+
+> 2026-05-01 drift note: this file is retained as historical planning evidence. Do not treat TODO items here as the current backlog without checking `agent_tasks/plans/feature-dev-notes-roadmap-refresh.md` and current repository state.
 
 ---
 

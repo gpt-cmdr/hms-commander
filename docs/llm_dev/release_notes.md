@@ -1,220 +1,82 @@
 # Release Notes
 
-Version history and changelog for HMS Commander.
+Version history and current capability notes for HMS Commander.
 
-## Version 0.1.0 (Current Development)
+## Version 0.3.0 (Current)
 
-**Status:** Active development
-**Release Date:** TBD
+**Status:** Alpha package with active engineering oversight required
 
-### Features
+The package metadata in `pyproject.toml` identifies the current version as `0.3.0`.
 
-#### Core Functionality
-- ✅ Project initialization and management (`HmsPrj`)
-- ✅ Basin model operations (`HmsBasin`)
-- ✅ Meteorologic model operations (`HmsMet`)
-- ✅ Control specification operations (`HmsControl`)
-- ✅ Gage operations (`HmsGage`)
-- ✅ Run configuration (`HmsRun`)
-- ✅ Geospatial operations (`HmsGeo`)
+### Public Package Surface
 
-#### Execution
-- ✅ Simulation execution (`HmsCmdr`)
-- ✅ Jython script generation (`HmsJython`)
-- ✅ HMS 3.x and 4.x support
-- ✅ Parallel execution support
-- ✅ Python 2/3 compatible script generation
+- Project initialization and DataFrame-backed project management (`HmsPrj`, `init_hms_project`)
+- File operations for basin, meteorologic, control, gage, and run files (`HmsBasin`, `HmsMet`, `HmsControl`, `HmsGage`, `HmsRun`)
+- Simulation execution, Jython script generation, and compute-output parsing (`HmsCmdr`, `HmsJython`, `HmsOutput`)
+- DSS time-series, paired-data, catalog, and grid operations through ras-commander/HEC Monolith infrastructure (`DssCore`, `HmsDss`, `HmsDssGrid`)
+- Results extraction and analysis (`HmsResults`)
+- Geospatial, HUC, SQLite, AORC, grid, TauDEM, and watershed-verification helpers (`HmsGeo`, `HmsSqlite`, `HmsHuc`, `HmsAorc`, `HmsGrid`, `HmsTerrain`, `HmsTauDEM`, `HmsWatershedVerification`)
+- Example and HCFCD M3 model project helpers (`HmsExamples`, `HmsM3Model`)
+- Storm generation helpers (`Atlas14Config`, `Atlas14Storm`, `FrequencyStorm`, `ScsTypeStorm`)
+- Clone-first, non-destructive workflows for side-by-side HMS GUI review
 
-#### Data Operations
-- ✅ DSS file operations (`HmsDss`)
-- ✅ Results extraction and analysis (`HmsResults`)
-- ✅ GeoJSON export
+### Notable Current Limitations
 
-#### Utilities
-- ✅ File parsing utilities (`HmsFileParser`)
-- ✅ Constants and conversions (`_constants`)
-- ✅ Example project management (`HmsExamples`)
+- The Spring Creek TauDEM-to-HMS path is import-valid and compute-valid, but still needs a readiness gate, TauDEM parameter comparison, and human QAQC bundle before production promotion.
+- `HmsAorc` and `HmsGrid` provide download, DSS grid conversion, grid definition, and mapping helpers, but gridded-precipitation met-model wiring is not yet exposed as a complete `HmsMet` public helper.
+- `HmsAorc.check_availability()` is intentionally not implemented.
+- CI is not yet represented by `.github/workflows/`.
 
-#### LLM Forward Features
-- ✅ Clone workflows (basin, met, control, run)
-- ✅ Non-destructive operations
-- ✅ Traceable modifications
-- ✅ GUI verification support
+### Documentation Notes
 
-#### Atlas 14 Support
-- ✅ TP-40 to Atlas 14 conversion
-- ✅ Project centroid calculation
-- ✅ Precipitation depth updates
-
-### Documentation
-- ✅ Complete API documentation (auto-generated)
-- ✅ User guide (all sections)
-- ✅ Example notebooks
-- ✅ LLM Forward approach documentation
-- ✅ CLAUDE.md for AI assistants
-
-### Known Issues
-- None currently tracked
+- API documentation is generated from package docstrings under `docs/api/`.
+- `AGENTS.md` is the shared coding-agent contract. `CLAUDE.md`, `.claude/`, `.agents/`, and `.codex/` are harness adapters or generated bridges, not user API references.
+- Notebook source lives in `examples/`; only selected notebooks are rendered under `docs/notebooks/`.
 
 ---
 
-## Planned Features
+## Version 0.2.0
 
-### Version 0.2.0 (Planned)
+**Theme:** Precipitation DataFrame API standardization
 
-**Theme:** Enhanced Analysis and Reporting
+### Breaking Change
 
-#### Planned Features
-- [ ] Automated calibration workflows
-- [ ] Sensitivity analysis tools
-- [ ] Enhanced comparison reports
-- [ ] Export to PDF reports
-- [ ] Web-based results viewer
+`Atlas14Storm.generate_hyetograph()`, `FrequencyStorm.generate_hyetograph()`, and `ScsTypeStorm.generate_hyetograph()` return a `pandas.DataFrame` with:
 
-### Version 0.3.0 (Planned)
-
-**Theme:** Advanced Modeling
-
-#### Planned Features
-- [ ] Gridded precipitation support
-- [ ] Reservoir operations
-- [ ] Routing method utilities
-- [ ] Snowmelt model support
-- [ ] Soil moisture accounting
-
-### Version 0.4.0 (Planned)
-
-**Theme:** Integration and Automation
-
-#### Planned Features
-- [ ] QGIS plugin
-- [ ] ArcGIS toolbox
-- [ ] GitHub Actions integration
-- [ ] Automated testing workflows
-- [ ] CI/CD documentation builds
-
----
-
-## Version History
-
-### Development Milestones
-
-#### 2024-12-11: Documentation Complete
-- ✅ All 48 documentation pages created
-- ✅ API reference auto-generation working
-- ✅ User guide complete
-- ✅ LLM Forward principles documented
-
-#### 2024-12: Initial Development
-- ✅ Core architecture established
-- ✅ Static class pattern implemented
-- ✅ File parsing utilities created
-- ✅ HMS 3.x and 4.x support added
-
----
-
-## Breaking Changes
-
-### None Yet
-
-As version 0.1.0 is still in development, no breaking changes have been introduced.
-
-**Future Policy:**
-- Breaking changes will follow semantic versioning
-- Deprecation warnings before removal
-- Migration guides provided
-- Backward compatibility maintained when possible
-
----
-
-## Upgrade Guide
-
-### From Git Repository
-
-```bash
-# Pull latest changes
-git pull origin main
-
-# Reinstall in development mode
-pip install -e .
+```python
+["hour", "incremental_depth", "cumulative_depth"]
 ```
 
-### From PyPI (Future)
+Earlier v0.1-era code that treated the return value as a NumPy array should use DataFrame columns instead:
 
-```bash
-# Upgrade to latest version
-pip install --upgrade hms-commander
-
-# Upgrade with DSS support
-pip install --upgrade hms-commander[dss]
+```python
+hyeto = Atlas14Storm.generate_hyetograph(total_depth_inches=17.0, state="tx", region=3)
+total_depth = hyeto["cumulative_depth"].iloc[-1]
+peak_increment = hyeto["incremental_depth"].max()
 ```
 
 ---
 
-## Contributing
+## Version 0.1.x
 
-See [Contributing Guide](contributing.md) for:
-- Development workflow
-- Pull request process
-- Coding standards
-- Testing requirements
+Initial package architecture for HMS project management, file parsing, HMS execution, DSS/results integration, static class patterns, and example-project workflows.
 
 ---
 
-## Versioning Policy
+## Planned Work
 
-HMS Commander follows [Semantic Versioning](https://semver.org/):
-
-**Format:** MAJOR.MINOR.PATCH
-
-- **MAJOR** - Incompatible API changes
-- **MINOR** - Backward-compatible functionality
-- **PATCH** - Backward-compatible bug fixes
-
-**Examples:**
-- `0.1.0` → `0.2.0` - New features, backward compatible
-- `0.2.0` → `0.2.1` - Bug fixes only
-- `0.9.9` → `1.0.0` - First stable release, API locked
-- `1.0.0` → `2.0.0` - Breaking changes
+- Production-readiness gates for generated HMS scaffolds
+- TauDEM parameter sensitivity and comparison support
+- Human-review QAQC bundles for generated HMS projects
+- CI for the non-HMS-dependent pytest subset
+- Complete gridded-precipitation met-model configuration helpers
+- Additional documentation publishing decisions for the full notebook catalog
 
 ---
 
 ## Support
 
-### Reporting Issues
-
 Report bugs and request features on GitHub:
 https://github.com/gpt-cmdr/hms-commander/issues
 
-**Include:**
-- HMS Commander version
-- HEC-HMS version
-- Python version
-- Operating system
-- Minimal reproducible example
-
-### Getting Help
-
-1. **Documentation** - Check user guide and API reference
-2. **CLAUDE.md** - Complete API reference
-3. **Examples** - Review example notebooks
-4. **GitHub Issues** - Search existing issues
-5. **New Issue** - Create detailed bug report
-
----
-
-## Acknowledgments
-
-**Inspired by:**
-- [ras-commander](https://github.com/fema-ffrd/ras-commander) - Architecture patterns
-- [CLB Engineering](https://clbengineering.com/) - LLM Forward approach
-
-**Built with:**
-- Python 3.10+
-- pandas - Data manipulation
-- pathlib - Path operations
-- ras-commander - DSS operations
-
----
-
-*This document is updated with each release. Check back for the latest changes.*
+Include the HMS Commander version, HEC-HMS version, Python version, operating system, and a minimal reproducible example.

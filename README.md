@@ -35,6 +35,9 @@ This library exists to **bridge that gap**—extending the [ras-commander](https
 **HMS Commander enables:**
 - Automated HMS simulation execution and results extraction
 - DSS file operations for seamless HMS→RAS boundary condition transfer
+- Atlas 14, Frequency Storm, and SCS Type storm generation with DataFrame outputs
+- AORC download, DSS grid conversion, grid-definition, and HRAP cell mapping helpers
+- TauDEM-derived HMS basin/scaffold assembly and validation workflows
 - Consistent API patterns across both HMS and RAS automation
 - LLM-assisted workflows for complex multi-model scenarios
 
@@ -188,14 +191,18 @@ Comprehensive Jupyter notebooks demonstrating workflows:
 
 | Notebook | Description |
 |----------|-------------|
-| [01_multi_version_execution.ipynb](examples/01_multi_version_execution.ipynb) | Execute across multiple HMS versions |
-| [02_run_all_hms413_projects.ipynb](examples/02_run_all_hms413_projects.ipynb) | Batch processing of example projects |
-| [03_project_dataframes.ipynb](examples/03_project_dataframes.ipynb) | Explore project DataFrames and component structure |
-| [04_hms_workflow.ipynb](examples/04_hms_workflow.ipynb) | Complete HMS workflow from init to results |
-| [05_run_management.ipynb](examples/05_run_management.ipynb) | Comprehensive run configuration guide |
-| [clone_workflow.ipynb](examples/clone_workflow.ipynb) | Non-destructive QAQC with model cloning |
+| [00_overview.ipynb](examples/00_overview.ipynb) | Environment verification, HMS glossary, and learning path |
+| [01_basic_workflow.ipynb](examples/01_basic_workflow.ipynb) | Initialize a project, run HMS, and inspect results |
+| [02_project_dataframes.ipynb](examples/02_project_dataframes.ipynb) | Explore project DataFrames and component structure |
+| [05_clone_workflow.ipynb](examples/05_clone_workflow.ipynb) | Non-destructive QAQC with model cloning |
+| [10_atlas14_hyetograph.ipynb](examples/10_atlas14_hyetograph.ipynb) | Generate NOAA Atlas 14 design storms |
+| [11_frequency_storm.ipynb](examples/11_frequency_storm.ipynb) | Generate TP-40/Hydro-35 frequency storms |
+| [14a_aorc_download.ipynb](examples/14a_aorc_download.ipynb) | Download AORC precipitation from NOAA AWS |
+| [21_taudem_to_hms_atlas14.ipynb](examples/21_taudem_to_hms_atlas14.ipynb) | Build and validate a TauDEM-derived HMS bootstrap |
 
-**Run Configuration Management (Phase 1)**:
+See [docs/examples/overview.md](docs/examples/overview.md) for the full notebook catalog.
+
+**Run Configuration Management**:
 ```python
 from hms_commander import HmsRun
 
@@ -207,7 +214,7 @@ HmsRun.set_dss_file("Run 1", "output.dss", hms_object=hms)
 # Prevents HMS from auto-deleting runs with invalid component references
 ```
 
-See [05_run_management.ipynb](examples/05_run_management.ipynb) for complete examples.
+See [04_run_management.ipynb](examples/04_run_management.ipynb) for complete examples.
 
 ## Library Structure
 
@@ -218,13 +225,15 @@ See [05_run_management.ipynb](examples/05_run_management.ipynb) for complete exa
 | `HmsControl` | Control specifications (.control) |
 | `HmsMet` | Meteorologic models (.met) |
 | `HmsGage` | Time-series gages (.gage) |
-| `HmsRun` | Run configuration management (.run) **NEW Phase 1** |
+| `HmsRun` | Run configuration management (.run) |
 | `HmsCmdr` | Simulation execution engine |
 | `HmsJython` | Jython script generation |
-| `HmsDss` | DSS file operations |
+| `HmsOutput` | Compute output and HMS log parsing |
+| `DssCore`, `HmsDss`, `HmsDssGrid` | DSS time-series, paired-data, catalog, and grid operations |
 | `HmsResults` | Results extraction & analysis |
-| `HmsGeo` | GIS data extraction |
-| `HmsUtils` | Utility functions |
+| `HmsGeo`, `HmsHuc`, `HmsAorc`, `HmsGrid`, `HmsTauDEM` | GIS, HUC, AORC, grid, and TauDEM workflows |
+| `Atlas14Storm`, `FrequencyStorm`, `ScsTypeStorm` | Design-storm hyetograph generation |
+| `HmsExamples`, `HmsM3Model`, `HmsUtils` | Example project, M3 model, and utility functions |
 
 ## Key Methods
 
@@ -242,7 +251,7 @@ HmsBasin.get_loss_parameters(basin_path, subbasin)    # Get loss params
 HmsBasin.set_loss_parameters(basin_path, subbasin, curve_number=80)
 ```
 
-### Run Configuration (NEW Phase 1)
+### Run Configuration
 ```python
 HmsRun.set_description("Run 1", "Updated scenario", hms_object=hms)
 HmsRun.set_basin("Run 1", "Basin_Model", hms_object=hms)  # Validates!

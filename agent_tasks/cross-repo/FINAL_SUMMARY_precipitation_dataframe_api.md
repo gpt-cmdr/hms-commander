@@ -1,5 +1,7 @@
 # Final Summary: Precipitation DataFrame API Implementation
 
+> 2026-05-01 archival notice: this is historical completion evidence for the v0.2.0 DataFrame API work.
+
 **Date**: 2026-01-05
 **Status**: ✅ **FULLY COMPLETE AND VALIDATED**
 **Implementation**: Claude Sonnet 4.5 + 4 Parallel Opus Agents

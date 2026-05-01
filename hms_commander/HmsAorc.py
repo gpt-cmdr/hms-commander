@@ -625,8 +625,14 @@ class HmsAorc:
         ...     pathname="/AORC/MAY2020/PRECIP////"
         ... )
         >>>
-        >>> # Use in HMS met model
-        >>> HmsMet.set_gridded_precipitation("model.met", dss_file, pathname)
+        >>> # Create the HMS grid definition that the met model will reference
+        >>> from hms_commander import HmsGrid
+        >>> HmsGrid.create_grid_definition(
+        ...     grid_name="AORC_May2020",
+        ...     dss_file=dss_file,
+        ...     pathname="/AORC/MAY2020/PRECIP////",
+        ...     output_file="grids/aorc_may2020.grid"
+        ... )
 
         Notes
         -----
@@ -635,6 +641,8 @@ class HmsAorc:
         - Data is written in WGS84 (lat/lon) coordinate system
         - Each hourly timestep is written as a separate DSS grid record
         - Implementation uses HEC Monolith classes (same as HEC-Vortex)
+        - HMS met-model wiring for gridded precipitation is still a separate,
+          review-required step; there is no public HmsMet helper for it yet.
 
         See Also
         --------
@@ -745,8 +753,8 @@ class HmsAorc:
         """
         raise NotImplementedError(
             "HmsAorc.check_availability() not yet implemented.\n"
-            "This will check AORC data coverage.\n"
-            "Implementation coming in Phase 2 (Core Automation)."
+            "Use HmsAorc.get_info() for static coverage metadata and "
+            "HmsAorc.download() for actual access attempts."
         )
 
     @staticmethod

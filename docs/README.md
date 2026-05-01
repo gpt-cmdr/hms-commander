@@ -59,8 +59,9 @@ docs/
 │   ├── clone_workflows.md
 │   └── atlas14_updates.md
 ├── examples/
-│   ├── overview.md               # Example notebook index
-│   └── *.ipynb                   # Jupyter notebooks
+│   └── overview.md               # Example notebook catalog
+├── notebooks/
+│   └── *.ipynb                   # Selected rendered benchmark notebooks
 ├── api/
 │   ├── hms_prj.md                # API reference pages
 │   ├── hms_basin.md              # (auto-generated from docstrings)
@@ -127,7 +128,7 @@ from hms_commander import HmsBasin
 subbasins = HmsBasin.get_subbasins("model.basin")
 ```
 
-See the [API Reference](../api/hms_basin.md) for details.
+See the [API Reference](api/hms_basin.md) for details.
 ```
 
 ### API Reference
@@ -144,7 +145,7 @@ This extracts all docstrings from the `HmsBasin` class.
 
 ### Jupyter Notebooks
 
-Notebooks in `examples/` are automatically integrated via mkdocs-jupyter plugin.
+The canonical notebook source lives in the repository-level `examples/` directory. The docs site only renders notebooks that are intentionally present under `docs/notebooks/`; that directory is otherwise treated as generated/synchronized documentation content.
 
 To include a notebook in navigation:
 
@@ -152,17 +153,19 @@ To include a notebook in navigation:
 # mkdocs.yml
 nav:
   - Example Notebooks:
-      - Clone Workflow: examples/clone_workflow.ipynb
+      - Catalog: examples/overview.md
+      - Rendered Benchmarks:
+          - TauDEM Bootstrap: notebooks/21_taudem_to_hms_atlas14.ipynb
 ```
 
 ## Theme Customization
 
 ### Colors
 
-HMS Commander uses a green theme (vs. RAS Commander's blue):
+HMS Commander currently uses the Material blue palette:
 
-- Primary: Green (`#43A047`)
-- Accent: Light Green (`#66BB6A`)
+- Primary: Blue
+- Accent: Light Blue
 
 Defined in `mkdocs.yml`:
 
@@ -170,8 +173,8 @@ Defined in `mkdocs.yml`:
 theme:
   palette:
     - scheme: default
-      primary: green
-      accent: light green
+      primary: blue
+      accent: light blue
 ```
 
 ### Custom CSS

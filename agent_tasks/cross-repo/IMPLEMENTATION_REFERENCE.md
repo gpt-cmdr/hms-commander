@@ -2,12 +2,14 @@
 
 **Quick Reference for Future Sessions**
 
+> 2026-05-01 archival notice: this remains a useful reference for the DataFrame precipitation API, but verify signatures against current docstrings before using it as implementation guidance.
+
 ---
 
 ## ✅ Implementation Status: COMPLETE
 
 **Date**: 2026-01-05
-**Status**: Ready for version bump and git commit
+**Status**: Historical completion reference; not a current git/release checklist
 **Tests**: 77/77 PASSING
 **Notebooks**: 4/4 validated
 
@@ -379,5 +381,5 @@ Untracked:
 ---
 
 **Reference Created**: 2026-01-05
-**Ready For**: Version bump (setup.py), git commit, PyPI release
-**Next Session**: Execute release steps (10 minutes)
+**Ready For**: Historical reference only
+**Next Session**: Verify against current package state before using any release guidance

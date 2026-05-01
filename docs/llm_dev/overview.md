@@ -160,7 +160,7 @@ comparison = HmsResults.compare_runs(
 
 - [Contributing](contributing.md) - Development guidelines
 - [Architecture](architecture.md) - Technical implementation
-- [CLAUDE.md Guide](claude_md.md) - AI assistant documentation
+- [Agent Instructions Guide](claude_md.md) - shared AGENTS/Claude loading model
 - [Style Guide](style_guide.md) - Coding standards
 
 ## Learn More

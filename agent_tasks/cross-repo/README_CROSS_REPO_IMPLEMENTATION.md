@@ -2,6 +2,8 @@
 
 **Master Document for Cross-Repository API Standardization**
 
+> 2026-05-01 archival notice: this is historical completion evidence for the v0.2.0 DataFrame API work. The implementation remains useful reference, but release commands/status flags in this folder are not current instructions; current version metadata is in `pyproject.toml`.
+
 ---
 
 ## Quick Status
@@ -9,7 +11,7 @@
 **Implementation**: ✅ 100% COMPLETE
 **Tests**: ✅ 77/77 PASSING
 **Notebooks**: ✅ 4/4 validated
-**Ready For**: Version bump and release
+**Ready For**: Historical status only; verify current release state before acting
 
 ---
 
@@ -46,7 +48,7 @@
 
 ### 5. Next Steps Guide
 **File**: `NEXT_STEPS.md`
-**Purpose**: Copy/paste ready commands for release
+**Purpose**: Historical copy/paste release commands, not current instructions
 **Contents**:
 - Version bump instructions
 - Git commit message (ready to use)
@@ -64,7 +66,7 @@
 
 ### 7. Ready Indicator
 **File**: `READY_FOR_COMMIT.txt`
-**Purpose**: Simple flag file indicating implementation complete
+**Purpose**: Historical flag file indicating implementation complete
 **Use**: Quick check if work is done
 
 ---
