@@ -21,6 +21,8 @@
 
 ### 📊 **Data Integration**
 - DSS file operations (via ras-commander integration)
+- DSS grid helpers for gridded precipitation
+- AORC precipitation download and storm-catalog workflows
 - Time-series gage management
 - Results extraction and analysis
 - GeoJSON export for spatial visualization
@@ -28,12 +30,14 @@
 ### 🚀 **Modern Workflows**
 - Clone operations for QAQC workflows (baseline vs. updated models)
 - Atlas 14 precipitation updates
+- Frequency Storm and SCS Type storm generation
+- TauDEM-derived basin/scaffold assembly and validation
 - Multi-version HMS support (3.x and 4.x)
 - Jython script generation for HEC-HMS automation
 
 ### 🤖 **LLM Forward Engineering**
 - Built using CLB Engineering's LLM Forward Approach
-- Comprehensive CLAUDE.md for AI context
+- `AGENTS.md` shared contract with thin Claude and Codex adapters
 - Static class architecture for simple, predictable API
 - Example-based testing with real HMS projects
 

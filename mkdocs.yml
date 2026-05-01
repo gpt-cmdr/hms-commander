@@ -118,34 +118,9 @@ nav:
       - Atlas 14 Updates: user_guide/atlas14_updates.md
       - Cloud-Native Export (hms2cng): user_guide/cloud_native_export.md
   - Example Notebooks:
-      - Overview: notebooks/00_overview.ipynb
-      - Beginner Track:
-          - 01 - Basic Workflow: notebooks/01_basic_workflow.ipynb
-          - 02 - Project DataFrames: notebooks/02_project_dataframes.ipynb
-      - Intermediate Track:
-          - 03 - File Operations: notebooks/03_file_ops_basin_met_control_gage.ipynb
-          - 04 - Run Management: notebooks/04_run_management.ipynb
-          - 05 - Clone Workflow: notebooks/05_clone_workflow.ipynb
-          - 06 - Results and DSS: notebooks/06_results_dss.ipynb
-      - Advanced Track:
-          - 07 - Jython Execution: notebooks/07_execution_jython.ipynb
-          - 08 - M3 Models: notebooks/08_m3_models.ipynb
-          - 09 - M3 Conversion: notebooks/09_m3_conversion.ipynb
-      - Storm Generation:
-          - 10 - Atlas 14 Hyetograph: notebooks/10_atlas14_hyetograph.ipynb
-          - 11 - Frequency Storm: notebooks/11_frequency_storm.ipynb
-      - TauDEM to HMS:
+      - Catalog: examples/overview.md
+      - Rendered Benchmarks:
           - 21 - TauDEM to HMS Atlas 14 Bootstrap: notebooks/21_taudem_to_hms_atlas14.ipynb
-      - Validation & Equivalence Proofs:
-          - 12 - SCS Type Validation: notebooks/12_scs_type_validation.ipynb
-          - 13 - Atlas 14 Multi-Duration: notebooks/13_atlas14_multiduration_validation.ipynb
-      - AORC Integration:
-          - 14a - AORC Download: notebooks/14a_aorc_download.ipynb
-          - 14b - AORC Grid Setup: notebooks/14b_aorc_grid_setup.ipynb
-          - 14c - AORC HMS Execution: notebooks/14c_aorc_hms_execution.ipynb
-      - Cloud-Native Export:
-          - 19 - Cloud-Native Export: notebooks/19_cloud_native_export.ipynb
-          - 20 - PMTiles Web Map: notebooks/20_pmtiles_web_map.ipynb
   - API Reference:
       - Core Classes:
           - HmsPrj: api/hms_prj.md
@@ -157,11 +132,18 @@ nav:
       - Execution:
           - HmsCmdr: api/hms_cmdr.md
           - HmsJython: api/hms_jython.md
+          - HmsOutput: api/hms_output.md
       - Data & Results:
+          - DssCore: api/dss_core.md
           - HmsDss: api/hms_dss.md
+          - HmsDssGrid: api/hms_dss_grid.md
           - HmsResults: api/hms_results.md
       - Geospatial:
           - HmsGeo: api/hms_geo.md
+          - HmsSqlite: api/hms_sqlite.md
+          - HmsHuc: api/hms_huc.md
+          - HmsAorc: api/hms_aorc.md
+          - HmsGrid: api/hms_grid.md
           - HmsBasinBuilder: api/hms_basin_builder.md
           - HmsGaugeStudy: api/hms_gauge_study.md
           - HmsGaugeData: api/hms_gauge_data.md
@@ -169,11 +151,15 @@ nav:
           - HmsTauDEM: api/hms_taudem.md
           - HmsWatershedVerification: api/hms_watershed_verification.md
           - HmsRoundTripValidator: api/hms_roundtrip_validator.md
+          - HmsArf: api/hms_arf.md
       - Storm Generation:
-          - Atlas14Storm: api/atlas14_storm.md
+          - Atlas14Storm / Atlas14Config: api/atlas14_storm.md
+          - FrequencyStorm: api/frequency_storm.md
+          - ScsTypeStorm: api/scs_type_storm.md
       - Utilities:
           - HmsUtils: api/hms_utils.md
           - HmsExamples: api/hms_examples.md
+          - HmsM3Model: api/hms_m3_model.md
       - Internal:
           - HmsFileParser: api/_parsing.md
           - Constants: api/_constants.md

@@ -4,6 +4,8 @@
 **Template**: feature.md
 **Status**: Reusable
 
+> 2026-05-01 runner note: this task uses older `hmscmdr_local`/`hmscmdr_pip` environment names. In Symphony runner lanes, follow the active issue policy and use `symphony-dev`/`symphony-pip` instead.
+
 ---
 
 ## Goal
@@ -58,13 +60,7 @@ which python  # Should show hmscmdr_local path
 ls examples/*.ipynb
 ```
 
-**Expected notebooks** (from `examples/AGENTS.md`):
-- `01_multi_version_execution.ipynb`
-- `02_file_operations.ipynb`
-- `03_project_dataframes.ipynb`
-- `04_steady_flow_analysis.ipynb`
-- `05_unsteady_flow_analysis.ipynb`
-- `basin_file_parsing.ipynb`
+**Expected notebooks**: use the current file list from `examples/` and the public catalog in `docs/examples/overview.md`. As of the 2026-05-01 docs-drift audit, the main learning-track notebooks are numbered `00_overview.ipynb` through `21_taudem_to_hms_atlas14.ipynb`; `examples/original_notebooks/` is retained as historical source material.
 
 ### 3. Run Individual Notebook
 
@@ -173,7 +169,7 @@ Not directly supported by nbmake. Use Jupyter for cell-by-cell debugging.
 
 ## Notebook Quality Standards
 
-**Reference**: `.claude/rules/documentation/notebook-standards.md`
+**Reference**: `examples/AGENTS.md` is the shared notebook contract. Claude may preload `.claude/rules/documentation/notebook-standards.md`, but that file is not the shared source of truth.
 
 **Requirements**:
 - [x] First cell is markdown with H1 title

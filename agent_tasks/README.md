@@ -8,6 +8,8 @@ This directory provides structured task templates and reusable workflows for hms
 
 **Cross-repo handoff rule**: land work where it is most generalizable. Keep reusable hydrology, TauDEM, GIS preprocessing, and HMS-facing workflow patterns in `hms-commander`; upstream reusable HEC-RAS primitives to `ras-commander`; keep region-specific product adaptation in sibling application repos such as `ras-agent`. When another repo needs a feature here, or this repo needs a feature elsewhere, the canonical request should be a GitHub issue in the target repository. Freeze region-specific prototype snapshots under `feature_dev_notes/completed/` when they are no longer the active target.
 
+**Historical-note warning**: early Phase 1/1.5 plans and the January 2026 precipitation DataFrame release handoff are retained for traceability. Do not execute their old release commands or environment setup verbatim without checking current `AGENTS.md`, `pyproject.toml`, and the active Linear/runner instructions.
+
 ---
 
 ## Directory Structure

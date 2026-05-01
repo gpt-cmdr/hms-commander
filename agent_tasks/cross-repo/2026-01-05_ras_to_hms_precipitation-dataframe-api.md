@@ -1,5 +1,7 @@
 # Cross-Repo Implementation Request
 
+> 2026-05-01 archival notice: this request was completed by the v0.2.0 precipitation DataFrame API work. Use it as historical context, not an active request.
+
 ## Metadata
 
 | Field | Value |
@@ -9,7 +11,7 @@
 | **Target Repo** | hms-commander |
 | **Request Type** | Enhancement / API Standardization |
 | **Priority** | High |
-| **Status** | Draft / Awaiting Human Review |
+| **Status** | Completed / historical |
 | **Blocking** | Yes - Blocks ras-commander RasUnsteady integration and precipitation notebook standardization |
 
 ## Summary

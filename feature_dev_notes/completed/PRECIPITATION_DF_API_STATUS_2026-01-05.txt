@@ -2,6 +2,11 @@
 PRECIPITATION DATAFRAME API IMPLEMENTATION - COMPLETE
 ================================================================================
 
+ARCHIVAL NOTICE (2026-05-01)
+This note is historical completion evidence for the v0.2.0 DataFrame API work.
+Do not execute the release commands below as current instructions; the repository now
+uses pyproject.toml and declares version 0.3.0.
+
 Date: 2026-01-05
 Implementation: Claude Sonnet 4.5 + 4 Opus Subagents
 Status: READY FOR RELEASE (v0.2.0)
@@ -60,7 +65,7 @@ Documentation (2):
 NEXT STEPS (Ready to Execute)
 ================================================================================
 
-1. Update setup.py version: 0.1.0 → 0.2.0
+1. Historical only: this handoff expected a setup.py version bump from 0.1.0 to 0.2.0. The current repository uses pyproject.toml and declares version 0.3.0.
 
 2. Git commit:
    git add .

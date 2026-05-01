@@ -35,11 +35,4 @@ print(hms.gage_df)       # Time-series gages
 - [API Reference: HmsPrj](../api/hms_prj.md) - Complete API documentation
 - [Quick Start Guide](../getting_started/quick_start.md) - Basic workflow
 
-## Detailed Documentation
-
-For complete API documentation and examples, see:
-- [CLAUDE.md](https://github.com/gpt-cmdr/hms-commander/blob/main/CLAUDE.md) - Complete API reference
-
----
-
-*This page is being developed. Check back for more examples and workflows.*
+The API reference is generated from current package docstrings. Agent-facing files such as `AGENTS.md` and `CLAUDE.md` describe coding-agent behavior and should not be used as the user API reference.

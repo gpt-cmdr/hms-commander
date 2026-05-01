@@ -1,5 +1,7 @@
 # Next Steps: Release v0.2.0
 
+> 2026-05-01 archival notice: these release steps are historical. The package now declares version `0.3.0` in `pyproject.toml`, there is no `setup.py`, and this file must not be used as an active release checklist without a fresh release issue.
+
 **Current Status**: Implementation 100% complete, all tests passing, ready for release
 **Remaining**: Version bump, git commit, PyPI release (~10 minutes)
 

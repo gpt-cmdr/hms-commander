@@ -6,6 +6,8 @@
 **Priority**: High
 **Requester**: Cross-repo validation (ras-commander)
 
+> 2026-05-01 archival notice: this is pre-validation planning history. Current shipped storm-generation APIs are `Atlas14Storm`, `FrequencyStorm`, and `ScsTypeStorm`; old `hms_agents.*` import examples in this file are not current package imports.
+
 ---
 
 ## Ultimate Goal

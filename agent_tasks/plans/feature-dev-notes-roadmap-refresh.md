@@ -40,8 +40,9 @@ This plan is the shared cross-session source of truth for repo-wide prioritizati
 ### Still missing at repo level
 
 - `.github/workflows/` does not exist yet
-- later notebooks are not fully represented in `docs/notebooks/`
-- `HmsAorc` and `HmsGrid` still contain unimplemented paths
+- the full notebook catalog lives in `examples/`; `docs/notebooks/` intentionally renders only selected benchmarks until a documentation-publishing decision is made
+- AORC/Grid helpers exist, but a complete public `HmsMet` helper for gridded-precipitation met-model wiring is still missing
+- `HmsAorc.check_availability()` remains intentionally unimplemented
 
 ---
 
@@ -68,8 +69,7 @@ This plan is the shared cross-session source of truth for repo-wide prioritizati
 - Several features that are already real in code still look "pending" if someone reads the older notes first.
 
 **Immediate actions**:
-- finish the notebook reorganization carryover
-- sync or intentionally exclude later notebooks from `docs/notebooks/`
+- keep the notebook catalog linked to `examples/` unless specific notebooks are intentionally copied/rendered under `docs/notebooks/`
 - update feature notes that are now validation/reference rather than backlog
 - make the public docs explicit that the TauDEM/HMS Spring Creek path is import-valid and compute-valid, but still quality-gated from production use
 
@@ -132,21 +132,21 @@ Update this plan when any of the following happen:
 - the TauDEM/HMS readiness gate, TauDEM parameter-comparison support, or reviewer QAQC bundle lands
 - CI lands in `.github/workflows/`
 - later notebooks are brought into or intentionally left out of `docs/notebooks/`
-- `HmsAorc` / `HmsGrid` move from partial to complete
+- `HmsAorc` / `HmsGrid` / gridded-precipitation met-model wiring move from partial to complete
 - a new repo-wide initiative displaces the current priority order
 
 ---
 
 ## Evidence Pointers
 
-- `feature_dev_notes/INDEX.md`
-- `feature_dev_notes/DEVELOPMENT_ROADMAP.md`
-- `feature_dev_notes/historyreview_2026_04-12.md`
-- `feature_dev_notes/reference/legacy_hms_commander_2025_07/`
-- `feature_dev_notes/completed/scs_type_storm_validation_2026_01/`
-- `workspace/scripts/`
+- `feature_dev_notes/completed/PRECIPITATION_DF_API_STATUS_2026-01-05.txt`
+- `agent_tasks/cross-repo/`
 - `tests/`
 - `examples/`
+- `docs/examples/overview.md`
+- `docs/development/multi-harness-agent-contract.md`
+
+Older evidence pointers to `feature_dev_notes/INDEX.md`, `feature_dev_notes/DEVELOPMENT_ROADMAP.md`, history-review notes, reference imports, and `workspace/scripts/` were valid during the April 2026 reorganization but are not present in this checkout as of the 2026-05-01 CLB-130 drift audit.
 
 User clarification recorded on 2026-04-21:
 

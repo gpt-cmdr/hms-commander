@@ -6,15 +6,16 @@ with HMS using HUC watershed boundaries.
 
 This example shows:
 1. Downloading HUC12 watersheds for project area (HmsHuc)
-2. Downloading AORC precipitation data (HmsAorc - coming in Phase 2)
-3. Mapping AORC grid cells to HUC watersheds (HmsGrid - coming in Phase 3)
+2. Downloading AORC precipitation data (HmsAorc)
+3. Mapping AORC grid cells to HUC watersheds (HmsGrid)
 4. Generating HMS grid definition files (HmsGrid)
-5. Configuring HMS met models for gridded precipitation
+5. Preparing HMS met-model inputs for gridded precipitation
 
 Status:
-    Phase 1 (Current): HmsHuc is fully implemented and tested
-    Phase 2 (Next): HmsAorc download and DSS conversion
-    Phase 3 (Future): HmsGrid spatial operations
+    HmsHuc, HmsAorc, and HmsGrid are public package APIs.
+    End-to-end HMS met-model gridded-precipitation wiring still requires
+    engineer review/manual HMS configuration; there is not yet a public
+    HmsMet.set_gridded_precipitation() helper.
 """
 
 from hms_commander import HmsHuc, HmsAorc, HmsGrid
@@ -48,22 +49,23 @@ def example_huc_download():
     return watersheds
 
 
-def example_aorc_workflow_planned():
-    """Example 2: Complete AORC workflow (planned for Phase 2-3)."""
+def example_aorc_workflow_reference():
+    """Example 2: AORC workflow using current public helpers."""
 
     print("\n" + "=" * 70)
-    print("Example 2: Complete AORC Workflow (Planned)")
+    print("Example 2: AORC Workflow Reference")
     print("=" * 70)
 
-    # This shows the intended API - not yet implemented
-    print("\nPlanned workflow (coming in Phase 2-3):")
+    # This is a reference workflow; it is not executed here because it needs
+    # network access, optional GIS/DSS dependencies, and a reviewed HMS project.
+    print("\nCurrent helper workflow:")
     print("""
-# 1. Download HUC12 watersheds (WORKING NOW!)
+# 1. Download HUC12 watersheds
 from hms_commander import HmsHuc
 bounds = (-77.71, 41.01, -77.25, 41.22)
 watersheds = HmsHuc.get_huc12_for_bounds(bounds)
 
-# 2. Download AORC precipitation (Phase 2)
+# 2. Download AORC precipitation
 from hms_commander import HmsAorc
 aorc_nc = HmsAorc.download(
     bounds=bounds,
@@ -72,14 +74,14 @@ aorc_nc = HmsAorc.download(
     output_path="precip/aorc_may2020.nc"
 )
 
-# 3. Convert to DSS grid (Phase 2)
+# 3. Convert to DSS grid
 aorc_dss = HmsAorc.convert_to_dss_grid(
     netcdf_file=aorc_nc,
     output_dss_file="precip/aorc_may2020.dss",
     pathname="/AORC/MAY2020/PRECIP////"
 )
 
-# 4. Create grid definition (Phase 3)
+# 4. Create grid definition
 from hms_commander import HmsGrid
 HmsGrid.create_grid_definition(
     grid_name="AORC_May2020",
@@ -88,17 +90,17 @@ HmsGrid.create_grid_definition(
     output_file="grids/aorc.grid"
 )
 
-# 5. Map AORC grid to each HUC12 (Phase 3)
+# 5. Map AORC grid to each HUC12
 for idx, watershed in watersheds.iterrows():
     HmsGrid.map_aorc_to_subbasins(
         basin_geometry=watershed['geometry'],
         aorc_grid=aorc_nc,
-        output_hrapcells=f"regions/huc12_{watershed['huc12']}"
+        output_hrapcells=f"regions/huc12_{watershed['huc12']}",
+        subbasin_name=watershed['name']
     )
 
-# 6. Configure HMS met model (Phase 4)
-from hms_commander import HmsMet
-HmsMet.set_gridded_precipitation("model.met", "AORC_May2020")
+# 6. Configure the HMS met model to reference the grid definition.
+# Current status: review/update this part in HEC-HMS or project files manually.
 
 # 7. Run HMS simulation
 from hms_commander import HmsCmdr
@@ -149,9 +151,10 @@ if __name__ == "__main__":
     print("\n" + "=" * 70)
     print("HMS Commander AORC Integration Examples")
     print("=" * 70)
-    print("\nPhase 1: HmsHuc (HUC Watershed Operations) - IMPLEMENTED")
-    print("Phase 2: HmsAorc (AORC Download) - PLANNED")
-    print("Phase 3: HmsGrid (Grid Cell Mapping) - PLANNED")
+    print("\nHmsHuc: watershed boundary helpers")
+    print("HmsAorc: AORC download, catalog, and DSS grid conversion helpers")
+    print("HmsGrid: grid definition and HRAP cell mapping helpers")
+    print("Met-model gridded precipitation wiring still requires engineer review")
     print()
 
     # Run examples
@@ -159,8 +162,8 @@ if __name__ == "__main__":
         # Example 1: Download HUC12 watersheds (WORKING)
         watersheds = example_huc_download()
 
-        # Example 2: Show planned AORC workflow
-        example_aorc_workflow_planned()
+        # Example 2: Show current AORC helper workflow
+        example_aorc_workflow_reference()
 
         # Example 3: HUC level information
         example_huc_info()
@@ -171,8 +174,8 @@ if __name__ == "__main__":
         print("\n" + "=" * 70)
         print("Examples Complete!")
         print("=" * 70)
-        print("\nPhase 1 (HmsHuc) is working and ready to use.")
-        print("Phase 2-3 (HmsAorc, HmsGrid) coming soon.")
+        print("\nHmsHuc, HmsAorc, and HmsGrid helpers are available.")
+        print("Complete HMS gridded-precipitation setup still needs reviewed met-model configuration.")
 
     except Exception as e:
         print(f"\nError running examples: {e}")
