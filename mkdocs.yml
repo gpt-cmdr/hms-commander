@@ -121,6 +121,13 @@ nav:
       - Catalog: examples/overview.md
       - Rendered Benchmarks:
           - 21 - TauDEM to HMS Atlas 14 Bootstrap: notebooks/21_taudem_to_hms_atlas14.ipynb
+      - Official HEC-HMS Guide Mirrors:
+          - 101 - Basic Model Setup: notebooks/101_guide_basic_model_setup.ipynb
+          - 102 - Meteorologic Methods: notebooks/102_guide_meteorologic_methods.ipynb
+          - 103 - GIS and Terrain Data: notebooks/103_guide_gis_terrain_data.ipynb
+          - 104 - Basin Methods, Loss, Transform, and Routing: notebooks/104_guide_basin_methods_loss_transform.ipynb
+          - 105 - Calibration and Validation: notebooks/105_guide_calibration_validation.ipynb
+          - 106 - Advanced Analysis: notebooks/106_guide_advanced_analysis.ipynb
   - API Reference:
       - Core Classes:
           - HmsPrj: api/hms_prj.md

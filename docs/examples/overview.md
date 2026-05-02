@@ -72,6 +72,21 @@ projects = HmsExamples.list_projects()
 | [10 - Atlas 14 Hyetograph](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/10_atlas14_hyetograph.ipynb) | Generate design storms from NOAA Atlas 14 |
 | [11 - Frequency Storm](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/11_frequency_storm.ipynb) | Variable duration storms using TP-40/Hydro-35 patterns |
 
+### Official HEC-HMS Guide Mirrors (45-90 minutes)
+
+These notebooks cite the official HEC-HMS Tutorials and Guides category pages
+and show the hms-commander equivalent for workflows that are already supported
+by the public API.
+
+| Notebook | Official guide category |
+|----------|-------------------------|
+| [101 - Basic Model Setup](../notebooks/101_guide_basic_model_setup.ipynb) | Basic model setup, simulation execution, and DSS hydrograph review |
+| [102 - Meteorologic Methods](../notebooks/102_guide_meteorologic_methods.ipynb) | Historical gage hyetographs, gridded met assets, frequency storms, Atlas 14, and SCS temporal patterns |
+| [103 - GIS and Terrain Data](../notebooks/103_guide_gis_terrain_data.ipynb) | GIS tools, model-type detection, subbasin/stream maps, and GeoJSON extraction |
+| [104 - Basin Methods, Loss, Transform, and Routing](../notebooks/104_guide_basin_methods_loss_transform.ipynb) | Parameter estimation, CN sensitivity, unit hydrographs, baseflow, and reach routing attenuation |
+| [105 - Calibration and Validation](../notebooks/105_guide_calibration_validation.ipynb) | Observed-vs-modeled hydrographs, residuals, calibration scaffolding, and Manning roughness sensitivity |
+| [106 - Advanced Analysis](../notebooks/106_guide_advanced_analysis.ipynb) | Batch-run scaffolding, computed parameter ensembles, fan charts, and objective convergence |
+
 ### TauDEM to HMS Assembly (30-60 minutes)
 
 | Notebook | Description |
