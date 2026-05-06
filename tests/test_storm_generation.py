@@ -9,12 +9,27 @@ import pytest
 from hms_commander.Atlas14Storm import Atlas14Storm
 from hms_commander.FrequencyStorm import FrequencyStorm
 
+DEPTH_CONSERVATION_TOLERANCE = 1e-6
+FREQUENCY_STORM_DEPTHS = [1.0, 5.0, 10.0, 17.9, 25.0]
+FREQUENCY_STORM_DURATIONS_MIN = [360, 720, 1440]
+
 ATLAS14_FIXTURE_PATH = (
     Path(__file__).parent
     / "fixtures"
     / "atlas14"
     / "spring_creek_pfds_depth_english_pds.txt"
 )
+
+
+def assert_depth_conserved(result: pd.DataFrame, expected_depth: float) -> None:
+    actual_sum = result["incremental_depth"].sum()
+    assert abs(actual_sum - expected_depth) < DEPTH_CONSERVATION_TOLERANCE, (
+        f"Depth conservation failed: {actual_sum} vs {expected_depth}"
+    )
+    actual_cumulative = result["cumulative_depth"].iloc[-1]
+    assert abs(actual_cumulative - expected_depth) < DEPTH_CONSERVATION_TOLERANCE, (
+        f"Cumulative depth conservation failed: {actual_cumulative} vs {expected_depth}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -30,16 +45,23 @@ class TestFrequencyStormGenerate:
         """Sum of incremental depths must equal total depth to 1e-6."""
         total = 13.20
         result = FrequencyStorm.generate_hyetograph(total_depth_inches=total)
-        actual_sum = result["incremental_depth"].sum()
-        assert abs(actual_sum - total) < 1e-4, (
-            f"Depth conservation failed: {actual_sum} vs {total}"
-        )
+        assert_depth_conserved(result, total)
 
     def test_depth_conservation_different_depth(self):
         total = 9.10
         result = FrequencyStorm.generate_hyetograph(total_depth_inches=total)
-        actual_sum = result["incremental_depth"].sum()
-        assert abs(actual_sum - total) < 1e-4
+        assert_depth_conserved(result, total)
+
+    @pytest.mark.parametrize("total_depth", FREQUENCY_STORM_DEPTHS)
+    @pytest.mark.parametrize("total_duration_min", FREQUENCY_STORM_DURATIONS_MIN)
+    def test_depth_conservation_various_depths_and_durations(
+        self, total_depth, total_duration_min
+    ):
+        result = FrequencyStorm.generate_hyetograph(
+            total_depth_inches=total_depth,
+            total_duration_min=total_duration_min,
+        )
+        assert_depth_conserved(result, total_depth)
 
     def test_non_negative_increments(self):
         result = FrequencyStorm.generate_hyetograph(total_depth_inches=13.20)
@@ -100,16 +122,14 @@ class TestFrequencyStormVariableDuration:
         result = FrequencyStorm.generate_hyetograph(
             total_depth_inches=total, total_duration_min=360
         )
-        actual_sum = result["incremental_depth"].sum()
-        assert abs(actual_sum - total) < 1e-4
+        assert_depth_conserved(result, total)
 
     def test_12hr_depth_conservation(self):
         total = 11.10
         result = FrequencyStorm.generate_hyetograph(
             total_depth_inches=total, total_duration_min=720
         )
-        actual_sum = result["incremental_depth"].sum()
-        assert abs(actual_sum - total) < 1e-4
+        assert_depth_conserved(result, total)
 
     def test_6hr_interval_count(self):
         result = FrequencyStorm.generate_hyetograph(
@@ -451,7 +471,7 @@ class TestAtlas14PointFrequency:
             total_depth_inches=2.0,
             state="tx",
             region=3,
-            duration_hours=24,
+            duration_hours=1,
             aep_percent=1.0,
         )
 
@@ -477,7 +497,7 @@ class TestAtlas14PointFrequency:
             total_depth_inches=2.0,
             state="tx",
             region=3,
-            duration_hours=24,
+            duration_hours=1,
             aep_percent=1.0,
             probability_column="10%",
         )
