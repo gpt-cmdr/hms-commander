@@ -30,7 +30,7 @@ from .LoggingConfig import get_logger
 from .Decorators import log_call
 from ._hyetograph import (
     build_hyetograph_frame,
-    incremental_depths_from_cumulative_values,
+    incremental_depths_from_cumulative_pattern,
 )
 
 logger = get_logger(__name__)
@@ -802,9 +802,11 @@ class Atlas14Storm:
         # Get cumulative curve (0-100%)
         cumulative_percent = temporal_df[prob_col].values
 
-        incremental = incremental_depths_from_cumulative_values(
+        incremental = incremental_depths_from_cumulative_pattern(
             cumulative_percent,
             total_depth_inches=total_depth_inches,
+            source_duration_min=duration_hours * 60,
+            time_interval_min=interval_minutes,
             value_scale=100.0,
         )
 
