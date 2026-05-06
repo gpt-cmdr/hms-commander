@@ -377,6 +377,51 @@ class TestAtlas14PointFrequency:
         assert result["hour"].iloc[-1] == pytest.approx(24.0)
         assert result["cumulative_depth"].iloc[-1] == pytest.approx(2.0)
 
+    @pytest.mark.parametrize(
+        ("interval_minutes", "expected_length"),
+        [
+            (5, 289),
+            (10, 145),
+            (15, 97),
+            (30, 49),
+            (60, 25),
+        ],
+    )
+    def test_generate_hyetograph_resamples_interval_minutes(
+        self, monkeypatch, interval_minutes, expected_length
+    ):
+        total_depth = 7.25
+        duration_hours = 24
+        temporal = pd.DataFrame(
+            {"50%": np.linspace(0.0, 100.0, 49)},
+            index=pd.Index(np.linspace(0.0, 24.0, 49), name="hours"),
+        )
+
+        monkeypatch.setattr(
+            Atlas14Storm,
+            "load_temporal_distribution",
+            staticmethod(lambda *args, **kwargs: {"All Cases": temporal}),
+        )
+
+        result = Atlas14Storm.generate_hyetograph(
+            total_depth_inches=total_depth,
+            state="tx",
+            region=3,
+            duration_hours=duration_hours,
+            aep_percent=50.0,
+            interval_minutes=interval_minutes,
+        )
+
+        assert len(result) == expected_length
+        assert result["hour"].iloc[-1] - result["hour"].iloc[0] == pytest.approx(
+            duration_hours
+        )
+        assert result["incremental_depth"].iloc[0] == pytest.approx(0.0)
+        assert result["incremental_depth"].sum() == pytest.approx(total_depth, abs=1e-6)
+        assert result["cumulative_depth"].iloc[-1] == pytest.approx(
+            total_depth, abs=1e-6
+        )
+
 
 # ---------------------------------------------------------------------------
 # Atlas14Storm (requires network — marked accordingly)
