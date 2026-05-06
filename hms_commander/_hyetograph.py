@@ -3,6 +3,10 @@
 Public storm classes keep their domain-specific API and validation. These
 helpers centralize the repeated numerical operations used to assemble the
 standard HMS-style hyetograph DataFrame.
+
+Storm generators use a sentinel-inclusive time axis: row 0 is the zero-depth
+t=0 value, later rows are interval end times, and the last row is the storm
+duration when the input covers the full storm.
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ def build_hyetograph_frame(
 
     incremental = np.asarray(incremental_depth, dtype=float)
     interval_hours = time_interval_min / 60.0
-    hours = np.arange(1, len(incremental) + 1) * interval_hours
+    hours = np.arange(0, len(incremental)) * interval_hours
     return pd.DataFrame(
         {
             "hour": hours,

@@ -9,6 +9,11 @@ This module supports two NOAA Atlas 14 workflows:
 
 The temporal-distribution workflow matches the algorithm used by HEC-HMS
 internally for specified-pattern design storms.
+
+Time Axis:
+    Output DataFrames include a t=0 zero-sentinel row. Row 0 has hour=0.0
+    and incremental_depth=0.0; subsequent rows are interval end times, so a
+    24-hour storm at 30-minute intervals ends at hour=24.0.
 """
 
 import ast
@@ -738,12 +743,13 @@ class Atlas14Storm:
         Returns:
             pd.DataFrame with columns:
                 - 'hour': Time in hours from storm start (float)
-                    Values: [0.5, 1.0, 1.5, ...] for 30-min intervals
+                    Values: [0.0, 0.5, 1.0, ...] for 30-min intervals
                 - 'incremental_depth': Precipitation depth for this interval (inches, float)
                     Description: Rainfall that occurred during this time step
                 - 'cumulative_depth': Cumulative precipitation depth (inches, float)
                     Description: Total rainfall from storm start to end of this interval
-            Length = duration_hours * 60 / interval_minutes
+            Length = duration_hours * 60 / interval_minutes + 1 (includes
+            t=0 sentinel); the final row is the storm duration in hours.
 
         Raises:
             ValueError: If duration_hours is 48 or not supported
