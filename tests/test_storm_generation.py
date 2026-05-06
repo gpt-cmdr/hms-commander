@@ -348,6 +348,16 @@ class TestAtlas14PointFrequency:
         assert result.columns.tolist() == ["hour", "incremental_depth", "cumulative_depth"]
         assert result is expected
         assert calls["aep_percent"] == pytest.approx(1.0)
+        assert calls["probability_column"] == "50%"
+
+        Atlas14Storm.generate_hyetograph_from_ari(
+            ari_years=100,
+            total_depth_inches=1.0,
+            state="tx",
+            region=3,
+            probability_column="10%",
+        )
+        assert calls["probability_column"] == "10%"
 
     def test_generate_hyetograph_time_axis_contract(self, monkeypatch):
         temporal = pd.DataFrame(
@@ -421,6 +431,96 @@ class TestAtlas14PointFrequency:
         assert result["cumulative_depth"].iloc[-1] == pytest.approx(
             total_depth, abs=1e-6
         )
+
+    def test_generate_hyetograph_defaults_to_median_probability_column(self, monkeypatch):
+        temporal = pd.DataFrame(
+            {
+                "50%": [0.0, 20.0, 100.0],
+                "10%": [0.0, 90.0, 100.0],
+            },
+            index=pd.Index([0.0, 0.5, 1.0], name="hours"),
+        )
+
+        monkeypatch.setattr(
+            Atlas14Storm,
+            "load_temporal_distribution",
+            staticmethod(lambda *args, **kwargs: {"All Cases": temporal}),
+        )
+
+        result = Atlas14Storm.generate_hyetograph(
+            total_depth_inches=2.0,
+            state="tx",
+            region=3,
+            duration_hours=24,
+            aep_percent=1.0,
+        )
+
+        assert result["incremental_depth"].tolist() == pytest.approx([0.0, 0.4, 1.6])
+        assert result["cumulative_depth"].iloc[-1] == pytest.approx(2.0)
+
+    def test_generate_hyetograph_accepts_explicit_probability_column(self, monkeypatch):
+        temporal = pd.DataFrame(
+            {
+                "50%": [0.0, 20.0, 100.0],
+                "10%": [0.0, 90.0, 100.0],
+            },
+            index=pd.Index([0.0, 0.5, 1.0], name="hours"),
+        )
+
+        monkeypatch.setattr(
+            Atlas14Storm,
+            "load_temporal_distribution",
+            staticmethod(lambda *args, **kwargs: {"All Cases": temporal}),
+        )
+
+        result = Atlas14Storm.generate_hyetograph(
+            total_depth_inches=2.0,
+            state="tx",
+            region=3,
+            duration_hours=24,
+            aep_percent=1.0,
+            probability_column="10%",
+        )
+
+        assert result["incremental_depth"].tolist() == pytest.approx([0.0, 1.8, 0.2])
+        assert result["cumulative_depth"].iloc[-1] == pytest.approx(2.0)
+
+    def test_generate_hyetograph_rejects_invalid_probability_column(self, monkeypatch):
+        monkeypatch.setattr(
+            Atlas14Storm,
+            "load_temporal_distribution",
+            staticmethod(lambda *args, **kwargs: pytest.fail("load should not be called")),
+        )
+
+        with pytest.raises(ValueError, match="Probability column '95%' is not valid"):
+            Atlas14Storm.generate_hyetograph(
+                total_depth_inches=2.0,
+                state="tx",
+                region=3,
+                duration_hours=24,
+                probability_column="95%",
+            )
+
+    def test_generate_hyetograph_rejects_missing_probability_column(self, monkeypatch):
+        temporal = pd.DataFrame(
+            {"50%": [0.0, 50.0, 100.0]},
+            index=pd.Index([0.0, 0.5, 1.0], name="hours"),
+        )
+
+        monkeypatch.setattr(
+            Atlas14Storm,
+            "load_temporal_distribution",
+            staticmethod(lambda *args, **kwargs: {"All Cases": temporal}),
+        )
+
+        with pytest.raises(ValueError, match="Probability column '10%' not found"):
+            Atlas14Storm.generate_hyetograph(
+                total_depth_inches=2.0,
+                state="tx",
+                region=3,
+                duration_hours=24,
+                probability_column="10%",
+            )
 
 
 # ---------------------------------------------------------------------------

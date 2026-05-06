@@ -95,7 +95,8 @@ class Atlas14Storm:
         ...     region=3,
         ...     duration_hours=24,
         ...     aep_percent=1.0,
-        ...     quartile="All Cases"
+        ...     quartile="All Cases",
+        ...     probability_column="50%"
         ... )
         >>> print(f"Generated {len(hyetograph)} time steps")
         >>> print(f"Total depth: {hyetograph['cumulative_depth'].iloc[-1]:.3f} inches")
@@ -106,7 +107,8 @@ class Atlas14Storm:
         ...     state="tx",
         ...     region=3,
         ...     duration_hours=6,
-        ...     aep_percent=1.0
+        ...     aep_percent=1.0,
+        ...     probability_column="50%"
         ... )
     """
 
@@ -684,7 +686,13 @@ class Atlas14Storm:
     @staticmethod
     def _aep_to_probability_column(aep_percent: float) -> str:
         """
-        Map AEP percentage to nearest probability column.
+        Map AEP percentage to the legacy nearest probability column.
+
+        This helper is kept for callers that intentionally want an AEP-derived
+        temporal distribution probability. ``generate_hyetograph()`` does not
+        apply this mapping automatically; it defaults to the median "50%"
+        temporal distribution probability unless ``probability_column`` is
+        provided.
 
         Args:
             aep_percent: Annual Exceedance Probability (0.2 to 50)
@@ -721,7 +729,8 @@ class Atlas14Storm:
         aep_percent: float = 1.0,
         quartile: str = "All Cases",
         interval_minutes: int = 30,
-        cache_dir: Optional[Path] = None
+        cache_dir: Optional[Path] = None,
+        probability_column: str = "50%",
     ) -> pd.DataFrame:
         """
         Generate incremental precipitation hyetograph using Atlas 14 temporal distribution.
@@ -735,10 +744,18 @@ class Atlas14Storm:
             duration_hours: Storm duration in hours (default: 24)
                 Supported: 6, 12, 24, 96 hours
                 Note: 48h NOT available - use FrequencyStorm instead
-            aep_percent: Annual Exceedance Probability percentage (default: 1.0 for 100-yr)
+            aep_percent: Annual Exceedance Probability percentage (default: 1.0
+                for 100-yr). Retained for storm-event context and backward
+                compatibility; it does not select the temporal distribution
+                probability column.
             quartile: Quartile to use (default: "All Cases")
             interval_minutes: Output interval in minutes (default: 30)
             cache_dir: Optional cache directory
+            probability_column: NOAA temporal distribution probability column to
+                use (default: "50%"). The "50%" column is the median temporal
+                pattern and is the standard design choice. Use non-median
+                columns such as "10%" or "90%" only for agency guidance,
+                project-specific requirements, or sensitivity analysis.
 
         Returns:
             pd.DataFrame with columns:
@@ -755,12 +772,14 @@ class Atlas14Storm:
             ValueError: If duration_hours is 48 or not supported
 
         Example:
-            >>> # 100-year, 24-hour storm for Houston, TX (17.9 inches total)
+            >>> # 100-year, 24-hour storm for Houston, TX using the median
+            >>> # Atlas 14 temporal distribution (17.9 inches total)
             >>> hyeto = Atlas14Storm.generate_hyetograph(
             ...     total_depth_inches=17.9,
             ...     state="tx",
             ...     region=3,
-            ...     aep_percent=1.0
+            ...     aep_percent=1.0,
+            ...     probability_column="50%"
             ... )
             >>> print(hyeto.columns.tolist())
             ['hour', 'incremental_depth', 'cumulative_depth']
@@ -775,6 +794,12 @@ class Atlas14Storm:
             ...     duration_hours=6
             ... )
         """
+        if probability_column not in Atlas14Storm.PROBABILITY_COLUMNS:
+            raise ValueError(
+                f"Probability column '{probability_column}' is not valid. "
+                f"Available: {Atlas14Storm.PROBABILITY_COLUMNS}"
+            )
+
         # Validation is done in load_temporal_distribution()
         # Load temporal distribution
         temporal_distributions = Atlas14Storm.load_temporal_distribution(
@@ -791,16 +816,14 @@ class Atlas14Storm:
         temporal_df = temporal_distributions[quartile]
 
         # Select probability column
-        prob_col = Atlas14Storm._aep_to_probability_column(aep_percent)
-
-        if prob_col not in temporal_df.columns:
+        if probability_column not in temporal_df.columns:
             raise ValueError(
-                f"Probability '{prob_col}' not available. "
+                f"Probability column '{probability_column}' not found in temporal distribution. "
                 f"Available: {list(temporal_df.columns)}"
             )
 
         # Get cumulative curve (0-100%)
-        cumulative_percent = temporal_df[prob_col].values
+        cumulative_percent = temporal_df[probability_column].values
 
         incremental = incremental_depths_from_cumulative_pattern(
             cumulative_percent,
@@ -833,12 +856,15 @@ class Atlas14Storm:
         region: int = 3,
         duration_hours: int = 24,
         quartile: str = "All Cases",
-        cache_dir: Optional[Path] = None
+        cache_dir: Optional[Path] = None,
+        probability_column: str = "50%",
     ) -> pd.DataFrame:
         """
         Generate hyetograph using Average Recurrence Interval.
 
-        Convenience method that converts ARI (years) to AEP (%).
+        Convenience method that converts ARI (years) to AEP (%) while using the
+        selected Atlas 14 temporal distribution probability column. The default
+        "50%" column is the median temporal pattern.
 
         Args:
             ari_years: Average Recurrence Interval in years (e.g., 100 for 100-yr storm)
@@ -848,6 +874,9 @@ class Atlas14Storm:
             duration_hours: Storm duration in hours
             quartile: Temporal-distribution quartile to use
             cache_dir: Optional Atlas 14 temporal-distribution cache directory
+            probability_column: NOAA temporal distribution probability column to
+                use (default: "50%"). Use non-median columns only for agency
+                guidance, project-specific requirements, or sensitivity analysis.
 
         Returns:
             pd.DataFrame with columns: ``hour``, ``incremental_depth``, and
@@ -859,7 +888,8 @@ class Atlas14Storm:
             ...     ari_years=100,
             ...     total_depth_inches=17.9,
             ...     state="tx",
-            ...     region=3
+            ...     region=3,
+            ...     probability_column="50%"
             ... )
             >>> print(hyeto.columns.tolist())
             ['hour', 'incremental_depth', 'cumulative_depth']
@@ -874,5 +904,6 @@ class Atlas14Storm:
             duration_hours=duration_hours,
             aep_percent=aep_percent,
             quartile=quartile,
-            cache_dir=cache_dir
+            cache_dir=cache_dir,
+            probability_column=probability_column,
         )
