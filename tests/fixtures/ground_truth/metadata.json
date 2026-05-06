@@ -1,0 +1,72 @@
+{
+  "generated_at_utc": "2026-05-06T13:03:36.756889+00:00",
+  "linear_issue": "CLB-581",
+  "hms_version": "4.13",
+  "hms_install": "C:\\Program Files\\HEC\\HEC-HMS\\4.13",
+  "source_sample": "C:\\Program Files\\HEC\\HEC-HMS\\4.13\\samples.zip",
+  "source_project_artifact": "H:\\Symphony\\hms-commander\\CLB-581\\hms-ground-truth-work\\castro_ground_truth_20260506_084942\\castro",
+  "method": "HMS_Controller JAB Multiple Compute GUI run in HEC-HMS 4.13; PRECIP-INC extracted from output DSS version 2 records",
+  "acceptance_max_abs_diff_inches": 0.0001,
+  "cases": [
+    {
+      "test_id": "T01",
+      "fixture": "t01_t01_scs_type_ii_10in_24hr_60min.csv",
+      "storm_type": "SCS Type II",
+      "rows": 24,
+      "hms_total_inches": 10.0,
+      "python_total_inches": 10.0,
+      "max_abs_diff_inches": 1.304512053934559e-15,
+      "total_diff_inches": 0.0,
+      "dss_pathname": "//Subbasin-1/PRECIP-INC/01Jan2000/1Hour/MET:T01_SCS_TYPE_II_10IN_24HR_60MIN/",
+      "dss_file": "H:\\Symphony\\hms-commander\\CLB-581\\hms-ground-truth-work\\castro_ground_truth_20260506_084942\\castro\\T01_SCS_TYPE_II_10IN_24HR_60MIN.dss"
+    },
+    {
+      "test_id": "T02",
+      "fixture": "t02_t02_scs_type_ii_10in_24hr_5min.csv",
+      "storm_type": "SCS Type II",
+      "rows": 288,
+      "hms_total_inches": 10.0,
+      "python_total_inches": 10.0,
+      "max_abs_diff_inches": 1.5543122344752192e-15,
+      "total_diff_inches": 0.0,
+      "dss_pathname": "//Subbasin-1/PRECIP-INC/01Jan2000/5Minute/MET:T02_SCS_TYPE_II_10IN_24HR_5MIN/",
+      "dss_file": "H:\\Symphony\\hms-commander\\CLB-581\\hms-ground-truth-work\\castro_ground_truth_20260506_084942\\castro\\T02_SCS_TYPE_II_10IN_24HR_5MIN.dss"
+    },
+    {
+      "test_id": "T03",
+      "fixture": "t03_t03_scs_type_i_10in_24hr_60min.csv",
+      "storm_type": "SCS Type I",
+      "rows": 24,
+      "hms_total_inches": 10.0,
+      "python_total_inches": 10.0,
+      "max_abs_diff_inches": 1.5543122344752192e-15,
+      "total_diff_inches": 0.0,
+      "dss_pathname": "//Subbasin-1/PRECIP-INC/01Jan2000/1Hour/MET:T03_SCS_TYPE_I_10IN_24HR_60MIN/",
+      "dss_file": "H:\\Symphony\\hms-commander\\CLB-581\\hms-ground-truth-work\\castro_ground_truth_20260506_084942\\castro\\T03_SCS_TYPE_I_10IN_24HR_60MIN.dss"
+    },
+    {
+      "test_id": "T04",
+      "fixture": "t04_t04_scs_type_iii_10in_24hr_60min.csv",
+      "storm_type": "SCS Type III",
+      "rows": 24,
+      "hms_total_inches": 10.0,
+      "python_total_inches": 10.0,
+      "max_abs_diff_inches": 1.5543122344752192e-15,
+      "total_diff_inches": 0.0,
+      "dss_pathname": "//Subbasin-1/PRECIP-INC/01Jan2000/1Hour/MET:T04_SCS_TYPE_III_10IN_24HR_60MIN/",
+      "dss_file": "H:\\Symphony\\hms-commander\\CLB-581\\hms-ground-truth-work\\castro_ground_truth_20260506_084942\\castro\\T04_SCS_TYPE_III_10IN_24HR_60MIN.dss"
+    },
+    {
+      "test_id": "T05",
+      "fixture": "t05_t05_frequency_tp40_13_20in_24hr_5min.csv",
+      "storm_type": "Frequency Storm (TP-40)",
+      "rows": 288,
+      "hms_total_inches": 13.199821813364332,
+      "python_total_inches": 13.2,
+      "max_abs_diff_inches": 1.619783748996184e-05,
+      "total_diff_inches": 0.0001781866356669326,
+      "dss_pathname": "//Subbasin-1/PRECIP-INC/01Jan2000/5Minute/MET:T05_FREQUENCY_TP40_13_20IN_24HR_5MIN/",
+      "dss_file": "H:\\Symphony\\hms-commander\\CLB-581\\hms-ground-truth-work\\castro_ground_truth_20260506_084942\\castro\\T05_FREQUENCY_TP40_13_20IN_24HR_5MIN.dss"
+    }
+  ]
+}
