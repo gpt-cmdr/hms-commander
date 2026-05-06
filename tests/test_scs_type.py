@@ -181,8 +181,9 @@ class TestTimeIntervals:
         hyeto = ScsTypeStorm.generate_hyetograph(10.0, 'II', 60)
 
         assert hyeto['incremental_depth'].iloc[0] == 0.0
-        assert hyeto['hour'].iloc[0] == pytest.approx(1.0)
-        assert hyeto['hour'].iloc[-1] == pytest.approx(25.0)
+        assert hyeto['hour'].iloc[0] == pytest.approx(0.0)
+        assert hyeto['hour'].iloc[1] == pytest.approx(1.0)
+        assert hyeto['hour'].iloc[-1] == pytest.approx(24.0)
 
 
 class TestAllTypes:

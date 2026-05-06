@@ -20,6 +20,11 @@ CRITICAL: Duration is ALWAYS 24 hours (1440 minutes).
 This is a HEC-HMS constraint - SCS storms are hardcoded to 24hr duration.
 Use FrequencyStorm for variable duration storms.
 
+Time Axis:
+    Output DataFrames include a t=0 zero-sentinel row. Row 0 has hour=0.0
+    and incremental_depth=0.0; subsequent rows are interval end times, so a
+    24-hour storm ends at hour=24.0.
+
 Pattern Data:
     Extracted from HEC-HMS 4.13 source code (aH.java)
     Arrays contain 1441 cumulative values (0 to 1) at 1-minute intervals
@@ -184,7 +189,8 @@ class ScsTypeStorm:
                 - 'hour': Time in hours from storm start (float)
                 - 'incremental_depth': Precipitation depth for this interval (inches)
                 - 'cumulative_depth': Cumulative precipitation depth (inches)
-            Length = 1440 / time_interval_min + 1 (includes t=0)
+            Length = 1440 / time_interval_min + 1 (includes t=0 sentinel);
+            the final row is hour=24.0.
 
         Raises:
             ValueError: If scs_type is not valid or interval invalid

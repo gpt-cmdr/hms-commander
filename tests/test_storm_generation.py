@@ -73,8 +73,9 @@ class TestFrequencyStormGenerate:
         )
 
         assert result["incremental_depth"].iloc[0] == 0.0
-        assert result["hour"].iloc[0] == pytest.approx(5 / 60)
-        assert result["hour"].iloc[-1] == pytest.approx(((1440 // 5) + 1) * 5 / 60)
+        assert result["hour"].iloc[0] == pytest.approx(0.0)
+        assert result["hour"].iloc[1] == pytest.approx(5 / 60)
+        assert result["hour"].iloc[-1] == pytest.approx(24.0)
 
     def test_has_required_columns(self):
         result = FrequencyStorm.generate_hyetograph(total_depth_inches=13.20)
@@ -320,9 +321,9 @@ class TestAtlas14PointFrequency:
         calls = {}
         expected = pd.DataFrame(
             {
-                "hour": [0.5, 1.0],
-                "incremental_depth": [0.4, 0.6],
-                "cumulative_depth": [0.4, 1.0],
+                "hour": [0.0, 0.5],
+                "incremental_depth": [0.0, 1.0],
+                "cumulative_depth": [0.0, 1.0],
             }
         )
 
@@ -350,8 +351,8 @@ class TestAtlas14PointFrequency:
 
     def test_generate_hyetograph_time_axis_contract(self, monkeypatch):
         temporal = pd.DataFrame(
-            {"50%": [0.0, 50.0, 100.0]},
-            index=pd.Index([0.0, 0.5, 1.0], name="hours"),
+            {"50%": np.linspace(0.0, 100.0, 49)},
+            index=pd.Index(np.linspace(0.0, 24.0, 49), name="hours"),
         )
 
         monkeypatch.setattr(
@@ -364,14 +365,16 @@ class TestAtlas14PointFrequency:
             total_depth_inches=2.0,
             state="tx",
             region=3,
-            duration_hours=6,
+            duration_hours=24,
             aep_percent=50.0,
             interval_minutes=30,
         )
 
         assert result.columns.tolist() == ["hour", "incremental_depth", "cumulative_depth"]
-        assert result["hour"].tolist() == pytest.approx([0.5, 1.0, 1.5])
         assert result["incremental_depth"].iloc[0] == 0.0
+        assert result["hour"].iloc[0] == pytest.approx(0.0)
+        assert result["hour"].iloc[1] == pytest.approx(0.5)
+        assert result["hour"].iloc[-1] == pytest.approx(24.0)
         assert result["cumulative_depth"].iloc[-1] == pytest.approx(2.0)
 
 

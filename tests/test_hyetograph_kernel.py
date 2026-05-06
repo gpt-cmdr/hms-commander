@@ -47,5 +47,5 @@ def test_build_hyetograph_frame_contract():
     frame = build_hyetograph_frame(np.array([0.0, 1.0, 2.0]), time_interval_min=30)
 
     assert frame.columns.tolist() == ["hour", "incremental_depth", "cumulative_depth"]
-    assert frame["hour"].tolist() == [0.5, 1.0, 1.5]
+    assert frame["hour"].tolist() == [0.0, 0.5, 1.0]
     assert frame["cumulative_depth"].tolist() == [0.0, 1.0, 3.0]

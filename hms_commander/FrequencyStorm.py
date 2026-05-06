@@ -20,6 +20,11 @@ HCFCD M3 Model Defaults:
     - Peak position: 67% of duration
     - All 21 M3 models use these values for consistency
 
+Time Axis:
+    Output DataFrames include a t=0 zero-sentinel row. Row 0 has hour=0.0
+    and incremental_depth=0.0; subsequent rows are interval end times, so a
+    24-hour storm ends at hour=24.0.
+
 Supported Configurations:
     - Duration: Any duration (validated for 24-hour)
     - Intervals: Any interval (5-minute recommended for HCFCD)
@@ -30,13 +35,13 @@ Example:
     >>>
     >>> # HCFCD M3 compatible (all defaults)
     >>> hyeto = FrequencyStorm.generate_hyetograph(13.20)
-    >>> print(f"24hr: {len(hyeto)} intervals, peak={hyeto.max():.2f}")
-    24hr: 288 intervals, peak=1.20
+    >>> print(f"24hr: {len(hyeto)} time steps, peak={hyeto['incremental_depth'].max():.2f}")
+    24hr: 289 time steps, peak=1.20
     >>>
     >>> # Variable duration (6-hour storm)
     >>> hyeto_6hr = FrequencyStorm.generate_hyetograph(9.10, total_duration_min=360)
-    >>> print(f"6hr: {len(hyeto_6hr)} intervals, peak={hyeto_6hr.max():.2f}")
-    6hr: 72 intervals, peak=1.48
+    >>> print(f"6hr: {len(hyeto_6hr)} time steps, peak={hyeto_6hr['incremental_depth'].max():.2f}")
+    6hr: 73 time steps, peak=1.48
 """
 
 import numpy as np
@@ -146,6 +151,8 @@ class FrequencyStorm:
                 - 'hour': Time in hours from storm start (float)
                 - 'incremental_depth': Precipitation depth for this interval (inches)
                 - 'cumulative_depth': Cumulative precipitation depth (inches)
+            Length = total_duration_min / time_interval_min + 1 (includes
+            t=0 sentinel); the final row is the storm duration in hours.
 
         Example:
             >>> # HCFCD M3 compatible (all defaults)
@@ -153,14 +160,14 @@ class FrequencyStorm:
             >>> print(hyeto.columns.tolist())
             ['hour', 'incremental_depth', 'cumulative_depth']
             >>> print(f"{len(hyeto)} intervals, total={hyeto['cumulative_depth'].iloc[-1]:.2f} inches")
-            288 intervals, total=13.20 inches
+            289 intervals, total=13.20 inches
 
             >>> # Variable duration (6-hour storm)
             >>> hyeto_6hr = FrequencyStorm.generate_hyetograph(
             ...     total_depth_inches=9.10, total_duration_min=360
             ... )
             >>> print(f"{len(hyeto_6hr)} intervals, total={hyeto_6hr['cumulative_depth'].iloc[-1]:.2f} inches")
-            72 intervals, total=9.10 inches
+            73 intervals, total=9.10 inches
 
         Notes:
             - Algorithm validated against HMS source code (aY.java)
