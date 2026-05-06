@@ -101,12 +101,13 @@ Status note:
 
 ### Validation & Equivalence Proofs (20-30 minutes)
 
-These notebooks demonstrate that hms-commander algorithms produce identical results to HEC-HMS (validated to 10^-6 precision):
+These notebooks demonstrate hms-commander storm-generation equivalence against reference data and HEC-HMS output:
 
 | Notebook | Description |
 |----------|-------------|
 | [12 - SCS Type Validation](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/12_scs_type_validation.ipynb) | SCS Type I, IA, II, III equivalence proof |
 | [13 - Atlas 14 Multi-Duration](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/13_atlas14_multiduration_validation.ipynb) | Multi-duration Atlas 14 validation (6h, 12h, 24h, 96h) |
+| [22 - Ground Truth Validation](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/22_ground_truth_validation.ipynb) | HEC-HMS 4.13 PRECIP-INC fixtures for SCS Type I/II/III and TP-40 frequency storms |
 
 ### AORC Integration (30-60 minutes)
 
