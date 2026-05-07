@@ -89,6 +89,18 @@ Core areas:
 - `agent_tasks/` - long-running task coordination and worktree tracking.
 - `feature_dev_notes/` - feature research and development notes.
 
+### External Reference: HMS_Controller
+
+`G:\GH\HMS_Controller` contains proven JAB automation research for HEC-HMS, including:
+- PowerShell scripts for JAB tree walking, action invocation, combo box selection, and dialog dismissal
+- Full JAB tree dumps from HMS 4.12 and 4.13 with projects open (menu structure, dialog layouts, component states)
+- Screenshots of HMS dialogs and reports at various interaction stages
+- Documented gotchas: false positives from `doAccessibleActions("click")` on disabled items, `addAccessibleSelectionFromContext` not updating visible combo state, foreground-stealing protection blocking `SendInput`
+- Proven patterns: `requestFocus` for internal frames, `toggleexpand` for tree nodes, keyboard fallback for combo selection, `projects4XX.hms` manipulation for deterministic project open
+- `test_report.md` with 40+ end-to-end test results across 3 rounds
+
+When working on `hms_commander/gui/` modules, read `G:\GH\HMS_Controller\CLAUDE.md` and relevant JAB dump files for real HMS element names, roles, states, and action names.
+
 ## Working Rules
 
 - Most `Hms*` classes are static namespaces. Do not instantiate them unless the API clearly requires an instance.
