@@ -1,0 +1,31 @@
+{
+  "test_id": "T09",
+  "csv": "t09_t09_atlas14_tx_r3_1pct_6hr_30min.csv",
+  "storm_type": "Atlas 14 Specified Pattern",
+  "storm_params": {
+    "total_depth_inches": 12.3,
+    "duration_hours": 6,
+    "interval_minutes": 30,
+    "aep_percent": 1.0,
+    "state": "tx",
+    "region": 3,
+    "region_code": "TX_R3",
+    "quartile": "All Cases",
+    "probability_column": "50%",
+    "county_fips": "48201",
+    "latitude": 29.632,
+    "longitude": -95.1352,
+    "pattern_name": "TX_R3_6H_AC_50%"
+  },
+  "hms_version": "4.13",
+  "method": "HEC-HMS GUI compute via Java Access Bridge Compute menu; PRECIP-INC extracted from output DSS with HmsDss.read_timeseries()",
+  "run_name": "T09_ATLAS14_TX_R3_1PCT_6HR_30MIN",
+  "met_name": "T09_ATLAS14_TX_R3_1PCT_6HR_30MIN",
+  "control_name": "CLB586_30MIN_6HR",
+  "dss_pathname": "//Subbasin-1/PRECIP-INC/01Jan2000/30Minute/MET:T09_ATLAS14_TX_R3_1PCT_6HR_30MIN/",
+  "rows": 12,
+  "hms_total_inches": 12.3,
+  "python_total_inches": 12.3,
+  "max_abs_diff_inches": 7.04562164943745e-07,
+  "total_diff_inches": 0.0
+}

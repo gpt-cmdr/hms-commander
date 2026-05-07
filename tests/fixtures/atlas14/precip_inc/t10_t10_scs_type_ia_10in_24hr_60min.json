@@ -1,0 +1,22 @@
+{
+  "test_id": "T10",
+  "csv": "t10_t10_scs_type_ia_10in_24hr_60min.csv",
+  "storm_type": "SCS Type IA",
+  "storm_params": {
+    "total_depth_inches": 10.0,
+    "duration_hours": 24,
+    "interval_minutes": 60,
+    "scs_type": "IA"
+  },
+  "hms_version": "4.13",
+  "method": "HEC-HMS GUI compute via Java Access Bridge Compute menu; PRECIP-INC extracted from output DSS with HmsDss.read_timeseries()",
+  "run_name": "T10_SCS_TYPE_IA_10IN_24HR_60MIN",
+  "met_name": "T10_SCS_TYPE_IA_10IN_24HR_60MIN",
+  "control_name": "CLB586_60MIN_24HR",
+  "dss_pathname": "//Subbasin-1/PRECIP-INC/01Jan2000/1Hour/MET:T10_SCS_TYPE_IA_10IN_24HR_60MIN/",
+  "rows": 24,
+  "hms_total_inches": 10.0,
+  "python_total_inches": 10.0,
+  "max_abs_diff_inches": 1.3322676295501878e-15,
+  "total_diff_inches": 0.0
+}
