@@ -7,19 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-04-24
+## [0.3.1] - 2026-05-07
 
 ### Added
 
-- Gauge-first study packaging, workspace reports, and TauDEM input-pack helpers.
-- Direct TauDEM execution wrappers with command manifests and run reports.
-- Watershed verification, boundary handoff outlet selection, figures, and CRS audit support.
-- TauDEM-to-HMS basin assembly, HMS scaffold writing, SQLite geometry writing, and parser-of-record round-trip validation.
+- **DSS Time Series Writing** (`HmsDss.write_timeseries`) for writing HMS time series data to HEC-DSS files (CLB-507).
+- **HMS Output Parsing** (`HmsOutput`, `HmsMessage`, `ComputeResult`) for structured parsing of HMS compute log output.
+- **TauDEM Integration** (`HmsTauDEM`, `HmsTerrain`) for direct TauDEM execution wrappers with command manifests and run reports.
+- **Watershed Verification** (`HmsWatershedVerification`) for boundary handoff outlet selection, figures, and CRS audit support.
+- **Round-Trip Validation** (`HmsRoundTripValidator`) for TauDEM-to-HMS basin assembly and parser-of-record validation.
+- **Gauge Study Packaging** (`HmsGaugeStudy`, `HmsGaugeData`) for gauge-first study packaging and workspace reports.
+- **Areal Reduction Factors** (`HmsArf`) ARF computation pipeline with NOAA Atlas 14 point-to-area conversion.
+- **Modified Puls Routing** (`HmsBasin.set_modified_puls_routing`) for configuring Modified Puls routing on reaches.
+- **Batch Parameter Management** for `HmsBasin` and `HmsMet` -- bulk update loss, transform, and precipitation parameters across subbasins.
+- **HmsSqlite Enhancements** -- flowpath extraction and statistics methods for grid database layers.
+- **ScsTypeStorm** (`ScsTypeStorm.generate_hyetograph`) for SCS Type I, IA, II, III storm distributions with bundled `.npy` pattern data.
 - Atlas 14 point-frequency storm bootstrap for TauDEM-derived HMS projects.
 - Spring Creek TauDEM-to-HMS Atlas 14 example notebook and committed test fixtures.
+- Comprehensive pytest suite with 265+ tests across 9 modules.
+- CLB Engineering branding banner on project init with doc links in logs.
+- LLM-forward contribution guidelines and GitHub issue/PR templates.
+- Example notebooks 22-27: HMS guide series covering basic setup, met methods, GIS/terrain, basin methods, calibration, and advanced analysis.
+- Cloud-native export integration guide and example notebooks for hms2cng.
 
 ### Fixed
 
+- `HmsJython` `SaveProject` and `Compute` calls corrected to match HMS Jython API signatures.
+- `HmsDss.write_timeseries` QAQC fixes for correct DSS pathname handling and documentation (CLB-507).
+- `HmsArf.apply_arf` global depth bug fix.
+- Phantom API references removed from docs and examples (CLB-340).
 - Normalized Atlas 14 manual metric depth overrides before writing HMS frequency-storm depths.
 - Aligned `Atlas14Storm.generate_hyetograph_from_ari()` with the DataFrame return contract.
 - Tightened storm-generation tests so old ndarray-compatible behavior cannot silently return.
@@ -62,6 +78,23 @@ Temporal distributions remain exactly HMS-compliant. Only the return wrapper cha
 - `tests/test_scs_type.py`
 
 **Related**: Cross-repo API standardization with ras-commander for integrated HMS→RAS workflows.
+
+---
+
+## [0.2.1] - 2026-04-01
+
+### Added
+
+- HmsSqlite for SQLite grid database operations.
+- Upstream network analysis primitives.
+- Batch parameter management for HmsBasin and HmsMet.
+- Quick Wins QW7-QW8: ARF application and Modified Puls import.
+- Comprehensive pytest suite with 265 tests.
+
+### Fixed
+
+- Java detection and HMS date parsing in notebook execution.
+- All example notebooks re-executed with current API.
 
 ---
 

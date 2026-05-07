@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hms-commander"
-version = "0.3.0"
+version = "0.3.1"
 description = "HEC-HMS automation library for hydrologic modeling - Python API for project management, simulation execution, and results analysis"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -91,6 +91,9 @@ Issues = "https://github.com/gpt-cmdr/hms-commander/issues"
 
 [tool.setuptools]
 packages = ["hms_commander", "hms_commander.data", "hms_commander.dss"]
+
+[tool.setuptools.package-data]
+"hms_commander.data" = ["*.npy", "*.csv"]
 
 [tool.setuptools.package-dir]
 hms_commander = "hms_commander"
