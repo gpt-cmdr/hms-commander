@@ -111,6 +111,7 @@ nav:
       - Time-Series Gages: user_guide/gages.md
       - Run Configuration: user_guide/run_configuration.md
       - Execution: user_guide/execution.md
+      - GUI Control: user_guide/gui_control.md
       - Geospatial Operations: user_guide/geospatial.md
       - DSS Operations: user_guide/dss_operations.md
       - Results Analysis: user_guide/results_analysis.md
@@ -139,6 +140,7 @@ nav:
       - Execution:
           - HmsCmdr: api/hms_cmdr.md
           - HmsJython: api/hms_jython.md
+          - HmsGui: api/hms_gui.md
           - HmsOutput: api/hms_output.md
       - Data & Results:
           - DssCore: api/dss_core.md

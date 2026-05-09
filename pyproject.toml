@@ -90,7 +90,7 @@ Repository = "https://github.com/gpt-cmdr/hms-commander"
 Issues = "https://github.com/gpt-cmdr/hms-commander/issues"
 
 [tool.setuptools]
-packages = ["hms_commander", "hms_commander.data", "hms_commander.dss"]
+packages = ["hms_commander", "hms_commander.data", "hms_commander.dss", "hms_commander.gui"]
 
 [tool.setuptools.package-data]
 "hms_commander.data" = ["*.npy", "*.csv"]
@@ -110,6 +110,7 @@ python_functions = "test_*"
 markers = [
     "requires_hms: test needs HEC-HMS installation",
     "local_hms: test executes a local HMS open-save-close round trip",
+    "requires_hms_gui: test needs a running HEC-HMS GUI with Java Access Bridge enabled",
     "requires_java: test needs Java/pyjnius",
     "requires_gis: test needs geopandas/shapely",
     "requires_network: test needs internet access",
