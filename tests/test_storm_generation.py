@@ -6,7 +6,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from hms_commander.Atlas14Storm import Atlas14Storm
+from hms_commander.Atlas14Storm import (
+    Atlas14Config,
+    Atlas14Storm,
+    STATE_TO_NOAA_VOLUME,
+)
 from hms_commander.FrequencyStorm import FrequencyStorm
 
 DEPTH_CONSERVATION_TOLERANCE = 1e-6
@@ -241,6 +245,75 @@ class TestValidateAgainstGroundTruth:
 # Atlas14Storm point-frequency parsing (fixture-based, no network)
 # ---------------------------------------------------------------------------
 
+class TestAtlas14TemporalUrlMapping:
+    @pytest.mark.parametrize("state", sorted(STATE_TO_NOAA_VOLUME))
+    def test_midwest_state_tokens_resolve_to_mw_noaa_volume(self, state):
+        config = Atlas14Config(state=state, region=2, duration=24)
+
+        assert config.noaa_volume == "mw"
+        assert config.url == (
+            "https://hdsc.nws.noaa.gov/pub/hdsc/data/mw/"
+            "mw_2_24h_temporal.csv"
+        )
+
+    def test_direct_noaa_volume_token_still_builds_mw_url(self):
+        config = Atlas14Config(state="mw", region=2, duration=24)
+
+        assert config.user_state == "mw"
+        assert config.noaa_volume == "mw"
+        assert config.region_code == "MW_R2"
+        assert config.url == (
+            "https://hdsc.nws.noaa.gov/pub/hdsc/data/mw/"
+            "mw_2_24h_temporal.csv"
+        )
+
+    def test_unmapped_state_token_falls_back_to_existing_url_pattern(self):
+        config = Atlas14Config(state="tx", region=3, duration=24)
+
+        assert config.noaa_volume == "tx"
+        assert config.url == (
+            "https://hdsc.nws.noaa.gov/pub/hdsc/data/tx/"
+            "tx_3_24h_temporal.csv"
+        )
+
+    def test_load_temporal_distribution_uses_mapped_url_for_illinois(
+        self, monkeypatch, tmp_path
+    ):
+        calls = []
+        temporal_content = (
+            "ALL CASES\n"
+            "0.0,0,0,0,0,0,0,0,0,0\n"
+            "24.0,100,100,100,100,100,100,100,100,100\n"
+        )
+
+        def fake_download(config, cache_dir=None):
+            calls.append((config.url, cache_dir))
+            return temporal_content
+
+        monkeypatch.setattr(
+            Atlas14Storm,
+            "download_temporal_csv",
+            staticmethod(fake_download),
+        )
+        Atlas14Storm._temporal_cache.clear()
+
+        result = Atlas14Storm.load_temporal_distribution(
+            state="il",
+            region=2,
+            duration_hours=24,
+            cache_dir=tmp_path,
+        )
+
+        assert calls == [
+            (
+                "https://hdsc.nws.noaa.gov/pub/hdsc/data/mw/"
+                "mw_2_24h_temporal.csv",
+                tmp_path,
+            )
+        ]
+        assert list(result) == ["All Cases"]
+
+
 class TestAtlas14PointFrequency:
     def test_parse_pfds_response_builds_duration_table(self):
         response_text = ATLAS14_FIXTURE_PATH.read_text(encoding="utf-8")
@@ -406,6 +479,40 @@ class TestAtlas14PointFrequency:
         assert result["hour"].iloc[1] == pytest.approx(0.5)
         assert result["hour"].iloc[-1] == pytest.approx(24.0)
         assert result["cumulative_depth"].iloc[-1] == pytest.approx(2.0)
+
+    def test_generate_hyetograph_records_illinois_midwest_provenance(
+        self, monkeypatch
+    ):
+        temporal = pd.DataFrame(
+            {"50%": np.linspace(0.0, 100.0, 49)},
+            index=pd.Index(np.linspace(0.0, 24.0, 49), name="hours"),
+        )
+
+        monkeypatch.setattr(
+            Atlas14Storm,
+            "load_temporal_distribution",
+            staticmethod(lambda *args, **kwargs: {"All Cases": temporal}),
+        )
+
+        result = Atlas14Storm.generate_hyetograph(
+            total_depth_inches=6.15,
+            state="il",
+            region=2,
+            duration_hours=24,
+            interval_minutes=30,
+        )
+
+        provenance = result.attrs["provenance"]
+        assert provenance["source_label"] == "Illinois Region 2 / NOAA Midwest"
+        assert provenance["requested_state"] == "il"
+        assert provenance["requested_state_name"] == "Illinois"
+        assert provenance["region_code"] == "IL_R2"
+        assert provenance["noaa_volume"] == "mw"
+        assert provenance["noaa_volume_name"] == "Midwest"
+        assert provenance["source_url"] == (
+            "https://hdsc.nws.noaa.gov/pub/hdsc/data/mw/"
+            "mw_2_24h_temporal.csv"
+        )
 
     @pytest.mark.parametrize(
         ("interval_minutes", "expected_length"),

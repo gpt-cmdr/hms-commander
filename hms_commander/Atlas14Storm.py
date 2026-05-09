@@ -36,30 +36,115 @@ from ._hyetograph import (
 logger = get_logger(__name__)
 
 
+STATE_TO_NOAA_VOLUME: Dict[str, str] = {
+    # NOAA Atlas 14 temporal-distribution files for these states are hosted
+    # under the Midwest volume token rather than per-state directories.
+    "co": "mw",
+    "ia": "mw",
+    "il": "mw",
+    "in": "mw",
+    "ks": "mw",
+    "ky": "mw",
+    "mi": "mw",
+    "mn": "mw",
+    "mo": "mw",
+    "mt": "mw",
+    "ne": "mw",
+    "nd": "mw",
+    "oh": "mw",
+    "ok": "mw",
+    "sd": "mw",
+    "wi": "mw",
+    "wy": "mw",
+}
+
+NOAA_VOLUME_NAMES: Dict[str, str] = {
+    "mw": "Midwest",
+    "tx": "Texas",
+}
+
+STATE_DISPLAY_NAMES: Dict[str, str] = {
+    "co": "Colorado",
+    "ia": "Iowa",
+    "il": "Illinois",
+    "in": "Indiana",
+    "ks": "Kansas",
+    "ky": "Kentucky",
+    "mi": "Michigan",
+    "mn": "Minnesota",
+    "mo": "Missouri",
+    "mt": "Montana",
+    "ne": "Nebraska",
+    "nd": "North Dakota",
+    "oh": "Ohio",
+    "ok": "Oklahoma",
+    "sd": "South Dakota",
+    "wi": "Wisconsin",
+    "wy": "Wyoming",
+    "tx": "Texas",
+}
+
+
+def _normalize_atlas14_token(value: Union[int, str]) -> str:
+    """Normalize user-facing Atlas 14 state, region, and volume tokens."""
+    return str(value).strip().lower()
+
+
 @dataclass
 class Atlas14Config:
-    """Configuration for Atlas 14 temporal distribution."""
+    """Configuration for Atlas 14 temporal distribution downloads."""
 
-    state: str  # Two-letter state code (lowercase)
+    state: str  # Two-letter state code or NOAA temporal volume token
     region: Union[int, str]  # Atlas 14 region number or named regional token
     duration: int  # Duration in hours
 
     @property
     def url(self) -> str:
         """Generate the NOAA temporal distribution URL."""
-        state = str(self.state).strip().lower()
-        region = str(self.region).strip().lower()
+        volume = self.noaa_volume
+        region = _normalize_atlas14_token(self.region)
         return (
             "https://hdsc.nws.noaa.gov/pub/hdsc/data/"
-            f"{state}/{state}_{region}_{self.duration}h_temporal.csv"
+            f"{volume}/{volume}_{region}_{self.duration}h_temporal.csv"
+        )
+
+    @property
+    def user_state(self) -> str:
+        """Return the normalized user-facing state or NOAA volume token."""
+        return _normalize_atlas14_token(self.state)
+
+    @property
+    def noaa_volume(self) -> str:
+        """Return the NOAA HDSC temporal-distribution volume token."""
+        return STATE_TO_NOAA_VOLUME.get(self.user_state, self.user_state)
+
+    @property
+    def noaa_volume_name(self) -> str:
+        """Return a human-readable NOAA temporal-distribution volume name."""
+        return NOAA_VOLUME_NAMES.get(self.noaa_volume, self.noaa_volume.upper())
+
+    @property
+    def user_state_name(self) -> str:
+        """Return a human-readable state or volume name for provenance."""
+        return STATE_DISPLAY_NAMES.get(
+            self.user_state,
+            NOAA_VOLUME_NAMES.get(self.user_state, self.user_state.upper()),
         )
 
     @property
     def region_code(self) -> str:
         """Generate region identifier (e.g., TX_R3)."""
         if isinstance(self.region, int):
-            return f"{self.state.upper()}_R{self.region}"
-        return f"{self.state.upper()}_{str(self.region).upper()}"
+            return f"{self.user_state.upper()}_R{self.region}"
+        return f"{self.user_state.upper()}_{str(self.region).strip().upper()}"
+
+    @property
+    def region_label(self) -> str:
+        """Return a human-readable temporal distribution region label."""
+        region = str(self.region).strip()
+        if region.isdigit():
+            return f"Region {region}"
+        return region
 
 
 class Atlas14Storm:
@@ -269,7 +354,10 @@ class Atlas14Storm:
         # Check cache first
         if cache_dir is not None:
             cache_dir = Atlas14Storm._normalize_cache_dir(cache_dir)
-            cache_file = cache_dir / f"{config.state}_{config.region}_{config.duration}h_temporal.csv"
+            cache_file = cache_dir / (
+                f"{config.user_state}_{_normalize_atlas14_token(config.region)}_"
+                f"{config.duration}h_temporal.csv"
+            )
             if cache_file.exists():
                 logger.info(f"Using cached temporal distribution: {cache_file}")
                 return cache_file.read_text()
@@ -387,7 +475,8 @@ class Atlas14Storm:
         Load Atlas 14 temporal distribution with caching.
 
         Args:
-            state: Two-letter state code (lowercase, e.g., "tx")
+            state: Two-letter state code or NOAA temporal volume token
+                (e.g., "il", "tx", "mw")
             region: Atlas 14 region number
             duration_hours: Storm duration in hours (default: 24)
                 Supported: 6, 12, 24, 96 (NOAA published)
@@ -403,9 +492,13 @@ class Atlas14Storm:
         """
         # Validate duration first
         Atlas14Storm._validate_duration(duration_hours)
+        config = Atlas14Config(state=state, region=region, duration=duration_hours)
 
         # Check memory cache
-        cache_key = f"{state}_{region}_{duration_hours}h"
+        cache_key = (
+            f"{config.user_state}_{_normalize_atlas14_token(region)}_"
+            f"{duration_hours}h"
+        )
         if cache_key in Atlas14Storm._temporal_cache:
             logger.info(f"Using cached temporal distribution: {cache_key}")
             return Atlas14Storm._temporal_cache[cache_key]
@@ -414,13 +507,13 @@ class Atlas14Storm:
         cache_dir = Atlas14Storm._normalize_cache_dir(cache_dir)
 
         # Download and parse with 404 handling
-        config = Atlas14Config(state=state, region=region, duration=duration_hours)
         try:
             csv_content = Atlas14Storm.download_temporal_csv(config, cache_dir)
         except requests.HTTPError as e:
             if e.response is not None and e.response.status_code == 404:
                 raise ValueError(
-                    f"Duration {duration_hours}h is not available for {state.upper()} region {region}.\n"
+                    f"Duration {duration_hours}h is not available for "
+                    f"{config.user_state.upper()} region {region}.\n"
                     f"This region may only have 24-hour temporal distributions.\n"
                     f"Try duration_hours=24 or use StormGenerator for other durations."
                 ) from e
@@ -739,7 +832,8 @@ class Atlas14Storm:
 
         Args:
             total_depth_inches: Total storm precipitation depth (from DDF table)
-            state: Two-letter state code (e.g., "tx")
+            state: Two-letter state code or NOAA temporal volume token
+                (e.g., "il", "tx", "mw")
             region: Atlas 14 region number (e.g., 3 for Houston area)
             duration_hours: Storm duration in hours (default: 24)
                 Supported: 6, 12, 24, 96 hours
@@ -800,6 +894,8 @@ class Atlas14Storm:
                 f"Available: {Atlas14Storm.PROBABILITY_COLUMNS}"
             )
 
+        config = Atlas14Config(state=state, region=region, duration=duration_hours)
+
         # Validation is done in load_temporal_distribution()
         # Load temporal distribution
         temporal_distributions = Atlas14Storm.load_temporal_distribution(
@@ -845,7 +941,26 @@ class Atlas14Storm:
             f"{total_check:.3f} inches total"
         )
 
-        return build_hyetograph_frame(incremental, interval_minutes)
+        hyetograph = build_hyetograph_frame(incremental, interval_minutes)
+        hyetograph.attrs["provenance"] = {
+            "storm_type": "Atlas 14 Specified Pattern",
+            "source": "NOAA Atlas 14 temporal distribution",
+            "source_label": (
+                f"{config.user_state_name} {config.region_label} / "
+                f"NOAA {config.noaa_volume_name}"
+            ),
+            "requested_state": config.user_state,
+            "requested_state_name": config.user_state_name,
+            "region": region,
+            "region_code": config.region_code,
+            "duration_hours": duration_hours,
+            "quartile": quartile,
+            "probability_column": probability_column,
+            "noaa_volume": config.noaa_volume,
+            "noaa_volume_name": config.noaa_volume_name,
+            "source_url": config.url,
+        }
+        return hyetograph
 
     @staticmethod
     @log_call
