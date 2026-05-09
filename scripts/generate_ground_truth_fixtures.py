@@ -1,7 +1,7 @@
-"""Generate CLB-581 HEC-HMS PRECIP-INC ground-truth CSV fixtures.
+"""Generate CLB-536 HEC-HMS PRECIP-INC ground-truth CSV fixtures.
 
 This script builds a temporary HEC-HMS 4.13 project from the bundled Castro
-sample, computes the five CLB-581 storm runs with the HMS engine, extracts the
+sample, computes the CLB-536 storm validation runs with the HMS engine, extracts the
 Subbasin-1 PRECIP-INC DSS records, and writes durable CSV fixtures. It can also
 extract from an existing GUI-computed project with ``--existing-project-dir``
 and ``--skip-compute``.
@@ -28,12 +28,14 @@ from hms_commander.dss import DssCore
 
 HMS_INSTALL = Path("C:/Program Files/HEC/HEC-HMS/4.13")
 SAMPLES_ZIP = HMS_INSTALL / "samples.zip"
-DEFAULT_ARTIFACT_ROOT = Path("H:/Symphony/hms-commander/CLB-581/hms-ground-truth-work")
-DEFAULT_FIXTURE_DIR = Path("tests/fixtures/ground_truth")
+DEFAULT_ARTIFACT_ROOT = Path("H:/Symphony/hms-commander/CLB-536/hms-ground-truth-work")
+DEFAULT_FIXTURE_DIR = Path("tests/fixtures/clb536_storm_ground_truth")
 DEFAULT_METHOD = "HEC-HMS 4.13 compute run from Castro sample project; PRECIP-INC extracted from output DSS"
-DATE_TEXT = "6 May 2026"
+LINEAR_ISSUE = "CLB-536"
+DATE_TEXT = "9 May 2026"
 TIME_TEXT = "09:00:00"
 SUBBASINS = ("Subbasin-1", "Subbasin-2", "Subbasin-3", "Subbasin-4")
+HEC_EPOCH = pd.Timestamp("1899-12-31 00:00:00")
 
 
 @dataclass(frozen=True)
@@ -57,57 +59,101 @@ class Case:
 CASES = (
     Case(
         test_id="T01",
-        storm_type="SCS Type II",
-        total_depth_inches=10.0,
-        duration_hours=24,
-        interval_minutes=60,
-        met_name="T01_SCS_TYPE_II_10IN_24HR_60MIN",
-        control_name="CLB581_60MIN_24HR",
-        run_name="T01_SCS_TYPE_II_10IN_24HR_60MIN",
-        scs_type="II",
-    ),
-    Case(
-        test_id="T02",
-        storm_type="SCS Type II",
-        total_depth_inches=10.0,
-        duration_hours=24,
-        interval_minutes=5,
-        met_name="T02_SCS_TYPE_II_10IN_24HR_5MIN",
-        control_name="CLB581_5MIN_24HR",
-        run_name="T02_SCS_TYPE_II_10IN_24HR_5MIN",
-        scs_type="II",
-    ),
-    Case(
-        test_id="T03",
         storm_type="SCS Type I",
         total_depth_inches=10.0,
         duration_hours=24,
         interval_minutes=60,
-        met_name="T03_SCS_TYPE_I_10IN_24HR_60MIN",
-        control_name="CLB581_60MIN_24HR",
-        run_name="T03_SCS_TYPE_I_10IN_24HR_60MIN",
+        met_name="T01_SCS_TYPE_I_10IN_24HR_60MIN",
+        control_name="CLB536_60MIN_24HR",
+        run_name="T01_SCS_TYPE_I_10IN_24HR_60MIN",
         scs_type="I",
     ),
     Case(
+        test_id="T02",
+        storm_type="SCS Type I",
+        total_depth_inches=10.0,
+        duration_hours=24,
+        interval_minutes=5,
+        met_name="T02_SCS_TYPE_I_10IN_24HR_5MIN",
+        control_name="CLB536_5MIN_24HR",
+        run_name="T02_SCS_TYPE_I_10IN_24HR_5MIN",
+        scs_type="I",
+    ),
+    Case(
+        test_id="T03",
+        storm_type="SCS Type IA",
+        total_depth_inches=10.0,
+        duration_hours=24,
+        interval_minutes=60,
+        met_name="T03_SCS_TYPE_IA_10IN_24HR_60MIN",
+        control_name="CLB536_60MIN_24HR",
+        run_name="T03_SCS_TYPE_IA_10IN_24HR_60MIN",
+        scs_type="IA",
+    ),
+    Case(
         test_id="T04",
+        storm_type="SCS Type IA",
+        total_depth_inches=10.0,
+        duration_hours=24,
+        interval_minutes=5,
+        met_name="T04_SCS_TYPE_IA_10IN_24HR_5MIN",
+        control_name="CLB536_5MIN_24HR",
+        run_name="T04_SCS_TYPE_IA_10IN_24HR_5MIN",
+        scs_type="IA",
+    ),
+    Case(
+        test_id="T05",
+        storm_type="SCS Type II",
+        total_depth_inches=10.0,
+        duration_hours=24,
+        interval_minutes=60,
+        met_name="T05_SCS_TYPE_II_10IN_24HR_60MIN",
+        control_name="CLB536_60MIN_24HR",
+        run_name="T05_SCS_TYPE_II_10IN_24HR_60MIN",
+        scs_type="II",
+    ),
+    Case(
+        test_id="T06",
+        storm_type="SCS Type II",
+        total_depth_inches=10.0,
+        duration_hours=24,
+        interval_minutes=5,
+        met_name="T06_SCS_TYPE_II_10IN_24HR_5MIN",
+        control_name="CLB536_5MIN_24HR",
+        run_name="T06_SCS_TYPE_II_10IN_24HR_5MIN",
+        scs_type="II",
+    ),
+    Case(
+        test_id="T07",
         storm_type="SCS Type III",
         total_depth_inches=10.0,
         duration_hours=24,
         interval_minutes=60,
-        met_name="T04_SCS_TYPE_III_10IN_24HR_60MIN",
-        control_name="CLB581_60MIN_24HR",
-        run_name="T04_SCS_TYPE_III_10IN_24HR_60MIN",
+        met_name="T07_SCS_TYPE_III_10IN_24HR_60MIN",
+        control_name="CLB536_60MIN_24HR",
+        run_name="T07_SCS_TYPE_III_10IN_24HR_60MIN",
         scs_type="III",
     ),
     Case(
-        test_id="T05",
+        test_id="T08",
+        storm_type="SCS Type III",
+        total_depth_inches=10.0,
+        duration_hours=24,
+        interval_minutes=5,
+        met_name="T08_SCS_TYPE_III_10IN_24HR_5MIN",
+        control_name="CLB536_5MIN_24HR",
+        run_name="T08_SCS_TYPE_III_10IN_24HR_5MIN",
+        scs_type="III",
+    ),
+    Case(
+        test_id="T09",
         storm_type="Frequency Storm (TP-40)",
         total_depth_inches=13.20,
         duration_hours=24,
         interval_minutes=5,
-        met_name="T05_FREQUENCY_TP40_13_20IN_24HR_5MIN",
-        control_name="CLB581_5MIN_24HR",
-        run_name="T05_FREQUENCY_TP40_13_20IN_24HR_5MIN",
+        met_name="T09_FREQUENCY_TP40_13_20IN_24HR_5MIN",
+        control_name="CLB536_5MIN_24HR",
+        run_name="T09_FREQUENCY_TP40_13_20IN_24HR_5MIN",
         frequency_depths=(1.2, 1.731, 2.1, 3.178, 4.3, 5.7, 6.7, 8.9, 10.8, 13.2),
     ),
 )
@@ -172,7 +218,7 @@ def _subbasin_blocks(extra_lines: Iterable[str] = ()) -> str:
 
 def _scs_met_text(case: Case) -> str:
     return f"""Meteorology: {case.met_name}
-     Description: CLB-581 ground truth {case.test_id} {case.storm_type}
+     Description: {LINEAR_ISSUE} ground truth {case.test_id} {case.storm_type}
      Last Modified Date: {DATE_TEXT}
      Last Modified Time: {TIME_TEXT}
      Version: 4.13
@@ -216,7 +262,7 @@ def _frequency_met_text(case: Case) -> str:
     blank_depths = [f"Depth {duration}: " for duration in (*depth_names, 2880, 4320, 5760, 10080, 14400)]
 
     return f"""Meteorology: {case.met_name}
-     Description: CLB-581 ground truth {case.test_id} TP-40 Frequency Storm
+     Description: {LINEAR_ISSUE} ground truth {case.test_id} TP-40 Frequency Storm
      Last Modified Date: {DATE_TEXT}
      Last Modified Time: {TIME_TEXT}
      Version: 4.13
@@ -266,15 +312,15 @@ def _configure_project(project_dir: Path) -> None:
     run_text = run_file.read_text(encoding="utf-8")
 
     controls = {
-        "CLB581_60MIN_24HR": 60,
-        "CLB581_5MIN_24HR": 5,
+        "CLB536_60MIN_24HR": 60,
+        "CLB536_5MIN_24HR": 5,
     }
     for control_name, interval in controls.items():
         _write_text(project_dir / f"{control_name}.control", _control_text(control_name, interval))
         hms_text += (
             f"\nControl: {control_name}\n"
             f"     FileName: {control_name}.control\n"
-            f"     Description: CLB-581 ground truth {interval} minute control\n"
+            f"     Description: {LINEAR_ISSUE} ground truth {interval} minute control\n"
             "End:\n"
         )
 
@@ -284,7 +330,7 @@ def _configure_project(project_dir: Path) -> None:
         hms_text += (
             f"\nPrecipitation: {case.met_name}\n"
             f"     Filename: {case.met_name}.met\n"
-            f"     Description: CLB-581 ground truth {case.test_id}\n"
+            f"     Description: {LINEAR_ISSUE} ground truth {case.test_id}\n"
             f"     Last Modified Date: {DATE_TEXT}\n"
             f"     Last Modified Time: {TIME_TEXT}\n"
             "End:\n"
@@ -346,8 +392,7 @@ def _generated_values(case: Case) -> np.ndarray:
     return frame["incremental_depth"].to_numpy(dtype=float)[1:]
 
 
-def _precip_path(dss_file: Path, run_name: str) -> str:
-    catalog = DssCore.get_catalog(dss_file)
+def _select_precip_path(catalog: Iterable[str], run_name: str) -> str:
     paths = [
         path
         for path in catalog
@@ -357,11 +402,87 @@ def _precip_path(dss_file: Path, run_name: str) -> str:
         paths = [path for path in catalog if "/PRECIP-INC/" in path.upper()]
     for path in paths:
         parts = path.strip("/").split("/")
-        if len(parts) >= 2 and parts[1] == "Subbasin-1":
+        if parts and parts[0].upper() == "SUBBASIN-1":
             return path
     if paths:
         return sorted(paths)[0]
     raise RuntimeError(f"No PRECIP-INC path found in {dss_file}")
+
+
+def _read_precip_with_hms_jython(dss_file: Path, run_name: str) -> tuple[str, pd.DataFrame]:
+    """Read PRECIP-INC using the HMS-bundled Java stack when pyjnius is unavailable."""
+
+    script = f'''
+from hec.heclib.dss import HecDss
+
+dss = HecDss.open(r"{str(dss_file).replace(chr(92), "/")}")
+catalog = dss.getCatalogedPathnames()
+paths = []
+for i in range(catalog.size()):
+    path = str(catalog.get(i))
+    if "/PRECIP-INC/" in path.upper() and "MET:{run_name}".upper() in path.upper():
+        paths.append(path)
+if not paths:
+    for i in range(catalog.size()):
+        path = str(catalog.get(i))
+        if "/PRECIP-INC/" in path.upper():
+            paths.append(path)
+
+selected = None
+for path in paths:
+    parts = path.strip("/").split("/")
+    if len(parts) > 0 and parts[0].upper() == "SUBBASIN-1":
+        selected = path
+        break
+if selected is None and len(paths) > 0:
+    paths.sort()
+    selected = paths[0]
+if selected is None:
+    dss.done()
+    raise RuntimeError("No PRECIP-INC path found in {dss_file}")
+
+print("SELECTED|" + selected)
+container = dss.get(selected, True)
+for i in range(len(container.values)):
+    print("DATA|%d|%.17g" % (container.times[i], container.values[i]))
+dss.done()
+'''
+    success, stdout, stderr = HmsJython.execute_script(
+        script,
+        HMS_INSTALL,
+        working_dir=dss_file.parent,
+        timeout=120,
+        max_memory="2G",
+    )
+    if not success:
+        raise RuntimeError(f"HMS Jython DSS extraction failed for {dss_file}\n{stdout}\n{stderr}")
+
+    pathname = None
+    hec_times = []
+    values = []
+    for raw_line in stdout.splitlines():
+        line = raw_line.strip()
+        if line.startswith("SELECTED|"):
+            pathname = line.split("|", 1)[1]
+        elif line.startswith("DATA|"):
+            _, time_text, value_text = line.split("|", 2)
+            hec_times.append(int(time_text))
+            values.append(float(value_text))
+
+    if pathname is None or not values:
+        raise RuntimeError(f"No PRECIP-INC data parsed from HMS Jython output for {dss_file}")
+
+    datetimes = [HEC_EPOCH + pd.Timedelta(minutes=time) for time in hec_times]
+    return pathname, pd.DataFrame({"datetime": datetimes, "value": values})
+
+
+def _read_precip_timeseries(dss_file: Path, run_name: str) -> tuple[str, pd.DataFrame]:
+    if DssCore.is_available():
+        catalog = DssCore.get_catalog(dss_file)
+        pathname = _select_precip_path(catalog, run_name)
+        return pathname, DssCore.read_timeseries(dss_file, pathname)
+
+    return _read_precip_with_hms_jython(dss_file, run_name)
 
 
 def _write_fixtures(
@@ -376,8 +497,7 @@ def _write_fixtures(
 
     for case in CASES:
         dss_file = project_dir / f"{case.run_name}.dss"
-        pathname = _precip_path(dss_file, case.run_name)
-        precip = DssCore.read_timeseries(dss_file, pathname)
+        pathname, precip = _read_precip_timeseries(dss_file, case.run_name)
         values = precip["value"].to_numpy(dtype=float)
         generated = _generated_values(case)
         diff = generated - values
@@ -424,7 +544,7 @@ def _write_fixtures(
     summary.to_csv(fixture_dir / "summary.csv", index=False, float_format="%.12g")
     metadata = {
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
-        "linear_issue": "CLB-581",
+        "linear_issue": LINEAR_ISSUE,
         "hms_version": "4.13",
         "hms_install": str(HMS_INSTALL),
         "source_sample": str(SAMPLES_ZIP),

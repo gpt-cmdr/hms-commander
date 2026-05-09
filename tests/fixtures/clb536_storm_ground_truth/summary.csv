@@ -1,0 +1,10 @@
+test_id,fixture,storm_type,rows,hms_total_inches,python_total_inches,max_abs_diff_inches,total_diff_inches,dss_pathname
+T01,t01_t01_scs_type_i_10in_24hr_60min.csv,SCS Type I,24,10,10,1.55431223448e-15,0,//Subbasin-1/PRECIP-INC/01Jan2000/1Hour/MET:T01_SCS_TYPE_I_10IN_24HR_60MIN/
+T02,t02_t02_scs_type_i_10in_24hr_5min.csv,SCS Type I,288,10,10,1.7763568394e-15,0,//Subbasin-1/PRECIP-INC/01Jan2000/5Minute/MET:T02_SCS_TYPE_I_10IN_24HR_5MIN/
+T03,t03_t03_scs_type_ia_10in_24hr_60min.csv,SCS Type IA,24,10,10,1.33226762955e-15,0,//Subbasin-1/PRECIP-INC/01Jan2000/1Hour/MET:T03_SCS_TYPE_IA_10IN_24HR_60MIN/
+T04,t04_t04_scs_type_ia_10in_24hr_5min.csv,SCS Type IA,288,10,10,1.55431223448e-15,0,//Subbasin-1/PRECIP-INC/01Jan2000/5Minute/MET:T04_SCS_TYPE_IA_10IN_24HR_5MIN/
+T05,t05_t05_scs_type_ii_10in_24hr_60min.csv,SCS Type II,24,10,10,1.30451205393e-15,0,//Subbasin-1/PRECIP-INC/01Jan2000/1Hour/MET:T05_SCS_TYPE_II_10IN_24HR_60MIN/
+T06,t06_t06_scs_type_ii_10in_24hr_5min.csv,SCS Type II,288,10,10,1.55431223448e-15,0,//Subbasin-1/PRECIP-INC/01Jan2000/5Minute/MET:T06_SCS_TYPE_II_10IN_24HR_5MIN/
+T07,t07_t07_scs_type_iii_10in_24hr_60min.csv,SCS Type III,24,10,10,1.55431223448e-15,0,//Subbasin-1/PRECIP-INC/01Jan2000/1Hour/MET:T07_SCS_TYPE_III_10IN_24HR_60MIN/
+T08,t08_t08_scs_type_iii_10in_24hr_5min.csv,SCS Type III,288,10,10,1.7763568394e-15,0,//Subbasin-1/PRECIP-INC/01Jan2000/5Minute/MET:T08_SCS_TYPE_III_10IN_24HR_5MIN/
+T09,t09_t09_frequency_tp40_13_20in_24hr_5min.csv,Frequency Storm (TP-40),288,13.1998218134,13.2,1.619783749e-05,0.000178186635667,//Subbasin-1/PRECIP-INC/01Jan2000/5Minute/MET:T09_FREQUENCY_TP40_13_20IN_24HR_5MIN/
