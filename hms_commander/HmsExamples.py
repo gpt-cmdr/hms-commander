@@ -35,11 +35,14 @@ import zipfile
 import shutil
 import logging
 import json
+import hashlib
 from datetime import datetime, timezone
 from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 import pandas as pd
+import requests
+from tqdm import tqdm
 
 from .LoggingConfig import get_logger, log_call
 
@@ -79,6 +82,7 @@ class HmsExamples:
     base_dir = Path.cwd()
     projects_dir = base_dir / 'hms_example_projects'
     ebfe_projects_dir = base_dir / 'example_projects'
+    sciencebase_cache_dir = Path.home() / ".hms-commander" / "sciencebase"
 
     # eBFE deliveries currently validated with HMS project content in
     # ras-commander's delivery matrix.
@@ -122,6 +126,41 @@ class HmsExamples:
         "upper-guadalupe": "upper-guadalupe",
         "upper_guadalupe": "upper-guadalupe",
         "upperguadalupe": "upper-guadalupe",
+    }
+
+    SCIENCEBASE_API_BASE_URL = "https://www.sciencebase.gov/catalog"
+    SCIENCEBASE_PROJECT_METADATA = {
+        "hahn_arroyo_validation": {
+            "name": "hahn_arroyo_validation",
+            "sb_item_id": "5e6299ebe4b01d509257dcc3",
+            "description": (
+                "HEC-HMS validation-period input and output data for the "
+                "Hahn Arroyo Watershed in Albuquerque, New Mexico."
+            ),
+            "size_mb": 5.18,
+            "methods": (
+                "SCS Curve Number; SCS Unit Hydrograph; Initial and Constant"
+            ),
+            "file_name": "HEC_HMS_Validation.zip",
+            "hms_file": "hahn_valid.hms",
+            "title": "HEC-HMS Validation Period Input and Output Data",
+            "doi": "https://doi.org/10.5066/P930WKCH",
+            "citation": (
+                "Shephard, Z.M., and Douglas-Mankin, K.R., 2020, Input and "
+                "Output Data used to Compare Storm Runoff Models for a Small "
+                "Watershed in an Urban Metropolitan Area, Albuquerque, New "
+                "Mexico: U.S. Geological Survey data release, "
+                "https://doi.org/10.5066/P930WKCH."
+            ),
+        },
+    }
+    SCIENCEBASE_PROJECT_ALIASES = {
+        "hahn-arroyo-validation": "hahn_arroyo_validation",
+        "hahn_arroyo_validation": "hahn_arroyo_validation",
+        "hahn arroyo validation": "hahn_arroyo_validation",
+        "hahn": "hahn_arroyo_validation",
+        "hahn_arroyo": "hahn_arroyo_validation",
+        "hahn-arroyo": "hahn_arroyo_validation",
     }
 
     # Cache
@@ -330,6 +369,124 @@ class HmsExamples:
             })
 
         return pd.DataFrame.from_records(records, columns=columns)
+
+    @classmethod
+    @log_call
+    def list_sciencebase_projects(cls) -> pd.DataFrame:
+        """
+        List validated HMS projects available from USGS ScienceBase.
+
+        This is a local catalog call. It does not contact ScienceBase or
+        download project data.
+
+        Returns:
+            DataFrame with columns ``name``, ``sb_item_id``, ``description``,
+            ``size_mb``, and ``methods``.
+
+        Example:
+            sources = HmsExamples.list_sciencebase_projects()
+            print(sources[["name", "size_mb", "methods"]])
+        """
+        columns = [
+            "name",
+            "sb_item_id",
+            "description",
+            "size_mb",
+            "methods",
+        ]
+        records = [
+            {column: metadata.get(column) for column in columns}
+            for metadata in cls.SCIENCEBASE_PROJECT_METADATA.values()
+        ]
+        return pd.DataFrame.from_records(records, columns=columns)
+
+    @classmethod
+    @log_call
+    def extract_sciencebase_project(
+        cls,
+        project_name: str = "hahn_arroyo_validation",
+        output_path: Optional[Union[str, Path]] = None,
+        overwrite: bool = False,
+        timeout: int = 300,
+    ) -> Path:
+        """
+        Download, cache, and extract a validated ScienceBase HMS project.
+
+        ScienceBase downloads are cached under
+        ``~/.hms-commander/sciencebase/{project_name}/``. A valid local cache
+        is reused without contacting ScienceBase.
+
+        Args:
+            project_name: ScienceBase project key or alias. The first validated
+                project is ``"hahn_arroyo_validation"``.
+            output_path: Optional base output folder. If omitted, the cached
+                extracted project is returned. If provided, the cached project
+                is copied into ``output_path / project_name``.
+            overwrite: If True, replace an existing custom output folder.
+                The ScienceBase cache is preserved unless it is invalid.
+            timeout: HTTP request timeout in seconds.
+
+        Returns:
+            Path to the extracted HMS project folder containing the ``.hms``
+            project file and ``SOURCE_SCIENCEBASE.json`` provenance.
+
+        Raises:
+            ValueError: If the requested project is not in the validated
+                ScienceBase catalog.
+            requests.HTTPError: If ScienceBase returns an HTTP error.
+            FileNotFoundError: If the downloaded archive does not contain the
+                expected HMS project file.
+
+        Example:
+            project_dir = HmsExamples.extract_sciencebase_project(
+                "hahn_arroyo_validation"
+            )
+        """
+        canonical_key = cls._normalize_sciencebase_project_key(project_name)
+        metadata = cls.SCIENCEBASE_PROJECT_METADATA[canonical_key]
+        cache_root = cls._sciencebase_project_cache_dir(canonical_key)
+        cache_project_dir = cache_root / "project"
+
+        if not cls._is_sciencebase_project_cache_valid(
+            cache_project_dir,
+            metadata,
+        ):
+            logger.info(f"Preparing ScienceBase cache for '{canonical_key}'")
+            cls._refresh_sciencebase_project_cache(
+                canonical_key=canonical_key,
+                metadata=metadata,
+                cache_root=cache_root,
+                cache_project_dir=cache_project_dir,
+                timeout=timeout,
+            )
+        else:
+            logger.info(f"Using cached ScienceBase project: {cache_project_dir}")
+
+        if output_path is None:
+            return cache_project_dir
+
+        base_output = cls._resolve_path(output_path)
+        destination = base_output / canonical_key
+
+        if destination.exists():
+            if overwrite:
+                logger.info(
+                    f"Removing existing ScienceBase project folder: {destination}"
+                )
+                shutil.rmtree(destination)
+            elif cls._is_sciencebase_project_cache_valid(destination, metadata):
+                logger.info(f"Using existing ScienceBase project: {destination}")
+                return destination
+            else:
+                raise FileExistsError(
+                    f"ScienceBase project output already exists but is not "
+                    f"valid for '{canonical_key}': {destination}"
+                )
+
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(cache_project_dir, destination)
+        logger.info(f"Copied ScienceBase project to {destination}")
+        return destination
 
     @classmethod
     @log_call
@@ -874,6 +1031,325 @@ class HmsExamples:
     # -------------------------------------------------------------------------
     # Private Methods
     # -------------------------------------------------------------------------
+
+    @classmethod
+    def _normalize_sciencebase_project_key(cls, project_name: str) -> str:
+        """Normalize ScienceBase project names and aliases."""
+        requested = str(project_name).strip()
+        alias_keys = {
+            requested,
+            requested.lower(),
+            requested.lower().replace("_", "-"),
+            requested.lower().replace("-", "_"),
+            requested.lower().replace(" ", "_"),
+            requested.lower().replace(" ", "-"),
+        }
+
+        for alias in alias_keys:
+            if alias in cls.SCIENCEBASE_PROJECT_METADATA:
+                return alias
+            if alias in cls.SCIENCEBASE_PROJECT_ALIASES:
+                return cls.SCIENCEBASE_PROJECT_ALIASES[alias]
+
+        available = ", ".join(sorted(cls.SCIENCEBASE_PROJECT_METADATA))
+        raise ValueError(
+            f"Unknown ScienceBase HMS project '{project_name}'. "
+            f"Available projects: {available}"
+        )
+
+    @classmethod
+    def _sciencebase_project_cache_dir(cls, project_name: str) -> Path:
+        """Return the cache directory for a ScienceBase project."""
+        return Path(cls.sciencebase_cache_dir) / project_name
+
+    @classmethod
+    def _sciencebase_item_url(cls, item_id: str) -> str:
+        """Return a ScienceBase item URL."""
+        return f"{cls.SCIENCEBASE_API_BASE_URL}/item/{item_id}"
+
+    @classmethod
+    def _sciencebase_item_metadata_url(cls, item_id: str) -> str:
+        """Return the ScienceBase JSON metadata URL for an item."""
+        return f"{cls._sciencebase_item_url(item_id)}?format=json"
+
+    @classmethod
+    def _fetch_sciencebase_item_metadata(
+        cls,
+        item_id: str,
+        timeout: int = 300,
+    ) -> Dict[str, Any]:
+        """Fetch ScienceBase item metadata through the public REST API."""
+        url = cls._sciencebase_item_metadata_url(item_id)
+        response = requests.get(url, timeout=timeout)
+        response.raise_for_status()
+        return response.json()
+
+    @classmethod
+    def _select_sciencebase_zip_file(
+        cls,
+        item_metadata: Dict[str, Any],
+        metadata: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Select the expected ZIP file from ScienceBase item metadata."""
+        files = item_metadata.get("files") or []
+        expected_name = metadata.get("file_name")
+
+        for file_info in files:
+            if file_info.get("name") == expected_name:
+                return file_info
+
+        for file_info in files:
+            file_name = str(file_info.get("name", ""))
+            content_type = str(file_info.get("contentType", ""))
+            if (
+                file_name.lower().endswith(".zip")
+                or content_type == "application/zip"
+            ):
+                return file_info
+
+        raise FileNotFoundError(
+            f"No ZIP file found for ScienceBase item "
+            f"{metadata.get('sb_item_id')}"
+        )
+
+    @classmethod
+    def _refresh_sciencebase_project_cache(
+        cls,
+        canonical_key: str,
+        metadata: Dict[str, Any],
+        cache_root: Path,
+        cache_project_dir: Path,
+        timeout: int,
+    ) -> None:
+        """Download and extract a ScienceBase project into the local cache."""
+        cache_root.mkdir(parents=True, exist_ok=True)
+        item_id = metadata["sb_item_id"]
+        item_metadata = cls._fetch_sciencebase_item_metadata(item_id, timeout=timeout)
+        file_metadata = cls._select_sciencebase_zip_file(item_metadata, metadata)
+        archive_path = cache_root / str(
+            file_metadata.get("name") or metadata["file_name"]
+        )
+        download_url = (
+            file_metadata.get("downloadUri")
+            or file_metadata.get("url")
+            or f"{cls.SCIENCEBASE_API_BASE_URL}/file/get/{item_id}"
+        )
+
+        download_info = cls._download_sciencebase_file(
+            download_url=download_url,
+            archive_path=archive_path,
+            file_metadata=file_metadata,
+            timeout=timeout,
+        )
+
+        if cache_project_dir.exists():
+            shutil.rmtree(cache_project_dir)
+        cache_project_dir.mkdir(parents=True, exist_ok=True)
+        cls._extract_sciencebase_zip(archive_path, cache_project_dir)
+
+        if not (cache_project_dir / metadata["hms_file"]).exists():
+            discovered = cls._discover_hms_project_roots(cache_project_dir)
+            if len(discovered) == 1:
+                source_root, _ = discovered[0]
+                if source_root != cache_project_dir:
+                    staging_dir = cache_root / "_project_staging"
+                    if staging_dir.exists():
+                        shutil.rmtree(staging_dir)
+                    shutil.move(str(source_root), str(staging_dir))
+                    shutil.rmtree(cache_project_dir)
+                    shutil.move(str(staging_dir), str(cache_project_dir))
+
+        if not (cache_project_dir / metadata["hms_file"]).exists():
+            raise FileNotFoundError(
+                f"Expected HMS project file '{metadata['hms_file']}' was not "
+                f"found after extracting ScienceBase project '{canonical_key}'"
+            )
+
+        provenance = cls._build_sciencebase_provenance(
+            canonical_key=canonical_key,
+            metadata=metadata,
+            item_metadata=item_metadata,
+            file_metadata=file_metadata,
+            download_info=download_info,
+            download_url=download_url,
+        )
+        cls._write_sciencebase_provenance(cache_project_dir, provenance)
+
+    @classmethod
+    def _download_sciencebase_file(
+        cls,
+        download_url: str,
+        archive_path: Path,
+        file_metadata: Dict[str, Any],
+        timeout: int,
+    ) -> Dict[str, Any]:
+        """Download a ScienceBase file with streaming and a tqdm progress bar."""
+        expected_size = file_metadata.get("size")
+        chunk_size = 1024 * 1024
+        tmp_path = archive_path.with_suffix(archive_path.suffix + ".part")
+        digest = hashlib.sha256()
+        downloaded = 0
+
+        try:
+            response = requests.get(download_url, stream=True, timeout=timeout)
+            response.raise_for_status()
+            total_size = int(
+                response.headers.get("content-length") or expected_size or 0
+            )
+
+            archive_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(tmp_path, "wb") as file_obj:
+                with tqdm(
+                    desc=f"Downloading {archive_path.name}",
+                    total=total_size if total_size > 0 else None,
+                    unit="iB",
+                    unit_scale=True,
+                    unit_divisor=1024,
+                ) as progress_bar:
+                    for chunk in response.iter_content(chunk_size=chunk_size):
+                        if not chunk:
+                            continue
+                        file_obj.write(chunk)
+                        digest.update(chunk)
+                        downloaded += len(chunk)
+                        progress_bar.update(len(chunk))
+
+            tmp_path.replace(archive_path)
+        except Exception:
+            if tmp_path.exists():
+                tmp_path.unlink()
+            raise
+
+        if expected_size is not None and int(expected_size) != downloaded:
+            logger.warning(
+                f"ScienceBase file size mismatch for {archive_path.name}: "
+                f"expected {expected_size}, downloaded {downloaded}"
+            )
+
+        return {
+            "path": str(archive_path),
+            "file_sha256": digest.hexdigest(),
+            "file_size": downloaded,
+        }
+
+    @classmethod
+    def _extract_sciencebase_zip(cls, archive_path: Path, destination: Path) -> None:
+        """Extract a ScienceBase ZIP while stripping a single top-level folder."""
+        destination = Path(destination)
+        destination_resolved = destination.resolve()
+
+        with zipfile.ZipFile(archive_path, "r") as zip_file:
+            members = [
+                member
+                for member in zip_file.infolist()
+                if not member.filename.endswith("/")
+            ]
+            member_parts = [Path(member.filename).parts for member in members]
+            top_level_parts = {
+                parts[0]
+                for parts in member_parts
+                if parts and parts[0] not in {"", ".", "..", "__MACOSX"}
+            }
+            strip_top_level = len(top_level_parts) == 1
+
+            for member, parts in zip(members, member_parts):
+                if parts and parts[0] == "__MACOSX":
+                    continue
+                if not parts or any(part in {"", ".", ".."} for part in parts):
+                    raise ValueError(
+                        f"Unsafe path in ScienceBase ZIP: {member.filename}"
+                    )
+
+                relative_parts = parts[1:] if strip_top_level else parts
+                if not relative_parts:
+                    continue
+
+                target_path = destination.joinpath(*relative_parts)
+                target_resolved = target_path.resolve()
+                try:
+                    target_resolved.relative_to(destination_resolved)
+                except ValueError:
+                    raise ValueError(
+                        f"Unsafe path in ScienceBase ZIP: {member.filename}"
+                    )
+
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                with zip_file.open(member) as source:
+                    with open(target_path, "wb") as target:
+                        shutil.copyfileobj(source, target)
+
+    @classmethod
+    def _build_sciencebase_provenance(
+        cls,
+        canonical_key: str,
+        metadata: Dict[str, Any],
+        item_metadata: Dict[str, Any],
+        file_metadata: Dict[str, Any],
+        download_info: Dict[str, Any],
+        download_url: str,
+    ) -> Dict[str, Any]:
+        """Build ScienceBase provenance metadata for an extracted project."""
+        downloaded_utc = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        return {
+            "source": "ScienceBase",
+            "project_name": canonical_key,
+            "sb_item_id": metadata["sb_item_id"],
+            "item_url": cls._sciencebase_item_url(metadata["sb_item_id"]),
+            "title": item_metadata.get("title") or metadata.get("title"),
+            "description": metadata.get("description"),
+            "methods": metadata.get("methods"),
+            "doi": metadata.get("doi"),
+            "citation": item_metadata.get("citation") or metadata.get("citation"),
+            "source_file_name": file_metadata.get("name") or metadata.get("file_name"),
+            "source_file_url": download_url,
+            "source_file_size": download_info["file_size"],
+            "source_file_sha256": download_info["file_sha256"],
+            "hms_file": metadata.get("hms_file"),
+            "download_date": downloaded_utc[:10],
+            "downloaded_utc": downloaded_utc,
+        }
+
+    @classmethod
+    def _write_sciencebase_provenance(
+        cls,
+        project_dir: Path,
+        provenance: Dict[str, Any],
+    ) -> None:
+        """Write ScienceBase source metadata into an extracted project."""
+        project_dir = Path(project_dir)
+        project_dir.mkdir(parents=True, exist_ok=True)
+        (project_dir / "SOURCE_SCIENCEBASE.json").write_text(
+            json.dumps(provenance, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+
+    @classmethod
+    def _is_sciencebase_project_cache_valid(
+        cls,
+        project_dir: Path,
+        metadata: Dict[str, Any],
+    ) -> bool:
+        """Return True when an extracted ScienceBase project cache is valid."""
+        project_dir = Path(project_dir)
+        provenance_path = project_dir / "SOURCE_SCIENCEBASE.json"
+        hms_file = project_dir / metadata["hms_file"]
+
+        if not project_dir.is_dir() or not provenance_path.is_file():
+            return False
+        if not hms_file.is_file():
+            return False
+
+        try:
+            provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return False
+
+        return (
+            provenance.get("source") == "ScienceBase"
+            and provenance.get("sb_item_id") == metadata["sb_item_id"]
+            and provenance.get("source_file_name") == metadata["file_name"]
+            and bool(provenance.get("source_file_sha256"))
+        )
 
     @classmethod
     def _ebfe_available_models(cls, RasEbfeModels) -> Dict[str, Dict[str, Any]]:
