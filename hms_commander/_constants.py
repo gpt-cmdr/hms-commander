@@ -309,6 +309,7 @@ ROUTING_METHODS: Final[List[str]] = [
 # Valid precipitation methods for meteorologic models.
 
 PRECIP_METHODS: Final[List[str]] = [
+    "Frequency Based Hypothetical",
     "Frequency Storm",
     "Gage Weights",
     "Gridded Precipitation",
