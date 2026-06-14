@@ -104,12 +104,15 @@ class TestGetControlInfo:
 # ---------------------------------------------------------------------------
 
 class TestCloneControl:
-    def test_clone_preserves_time_window(self, tmp_path, control_path):
-        import shutil
-        dest = tmp_path / "Control_Clone.control"
-        shutil.copy2(control_path, dest)
-        tw_orig = HmsControl.get_time_window(control_path)
-        tw_clone = HmsControl.get_time_window(dest)
+    def test_clone_preserves_time_window_without_project_context(self, tmp_control, monkeypatch):
+        prj_module = importlib.import_module("hms_commander.HmsPrj")
+        monkeypatch.setattr(prj_module, "hms", None)
+
+        clone_path = HmsControl.clone_control(tmp_control, "Control_Clone")
+
+        assert isinstance(clone_path, Path)
+        tw_orig = HmsControl.get_time_window(tmp_control)
+        tw_clone = HmsControl.get_time_window(clone_path)
         assert tw_orig["start_date"] == tw_clone["start_date"]
         assert tw_orig["end_date"] == tw_clone["end_date"]
 
@@ -122,11 +125,13 @@ class TestCloneControl:
             hms_object=hms_project,
         )
 
+        assert isinstance(clone_path, Path)
         assert clone_path.exists()
         assert "Control_CLONE_REGISTERED" in hms_project.control_df["name"].tolist()
         project_text = (tmp_project / "A1000000.hms").read_text(encoding="utf-8")
         assert "Control: Control_CLONE_REGISTERED" in project_text
-        assert "FileName: Control_CLONE_REGISTERED.control" in project_text
+        assert "Filename: Control_CLONE_REGISTERED.control" in project_text
+        assert "FileName: Control_CLONE_REGISTERED.control" not in project_text
 
     def test_clone_without_project_context_is_file_only(self, tmp_control, monkeypatch):
         prj_module = importlib.import_module("hms_commander.HmsPrj")
@@ -137,6 +142,7 @@ class TestCloneControl:
             "Control_STANDALONE",
         )
 
+        assert isinstance(clone_path, Path)
         assert clone_path.exists()
         assert clone_path.parent == tmp_control.parent
         assert not (clone_path.parent / "A1000000.hms").exists()
@@ -163,10 +169,12 @@ class TestCloneControl:
             "Control_GLOBAL_REGISTERED",
         )
 
+        assert isinstance(clone_path, Path)
         assert clone_path.exists()
         assert "Control_GLOBAL_REGISTERED" in global_project.control_df["name"].tolist()
         project_text = (tmp_project / "A1000000.hms").read_text(encoding="utf-8")
         assert "Control: Control_GLOBAL_REGISTERED" in project_text
+        assert "Filename: Control_GLOBAL_REGISTERED.control" in project_text
 
 
 # ---------------------------------------------------------------------------

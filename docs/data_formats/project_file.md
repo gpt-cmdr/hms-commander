@@ -229,7 +229,7 @@ Basin: Proposed Conditions
      Last Modified Time: 14:30
 End:
 
-Precipitation: Atlas14 Conditions
+Met: Atlas14 Conditions
      Filename: Atlas14 Conditions.met
      Description:
      Last Modified Date: 28 April 2026
@@ -237,7 +237,7 @@ Precipitation: Atlas14 Conditions
 End:
 
 Control: QAQC Window
-     FileName: QAQC Window.control
+     Filename: QAQC Window.control
      Description:
 End:
 ```

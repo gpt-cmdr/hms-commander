@@ -612,8 +612,9 @@ class HmsBasin:
         from .HmsUtils import HmsUtils
         from .HmsPrj import hms
 
-        hms_obj = hms_object or hms
+        hms_obj = hms_object if hms_object is not None else hms
         template_path = Path(template_basin)
+        template_name = template_path.stem
 
         # Try to resolve template path from project
         if not template_path.exists() and hms_obj is not None and hms_obj.initialized:
@@ -623,16 +624,14 @@ class HmsBasin:
             if not matching.empty:
                 template_path = Path(matching.iloc[0]['full_path'])
                 template_name = matching.iloc[0]['name']
-            else:
-                # Try with .basin extension
-                potential = Path(template_basin)
-                if not potential.suffix:
-                    template_path = potential.with_suffix('.basin')
-                    template_name = template_basin
-                else:
-                    template_name = template_path.stem
-        else:
-            template_name = template_path.stem
+
+        # Try a same-folder file path with the expected extension when no
+        # project object can resolve the logical component name.
+        if not template_path.exists() and not template_path.suffix:
+            potential = template_path.with_suffix('.basin')
+            if potential.exists():
+                template_path = potential
+                template_name = potential.stem
 
         if not template_path.exists():
             raise FileNotFoundError(f"Template basin not found: {template_basin}")

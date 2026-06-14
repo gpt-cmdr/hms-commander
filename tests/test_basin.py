@@ -1,6 +1,6 @@
 """Tests for HmsBasin — the largest and most complex module."""
 
-import shutil
+import importlib
 from pathlib import Path
 
 import pandas as pd
@@ -233,22 +233,25 @@ class TestSetLossParameters:
 # ---------------------------------------------------------------------------
 
 class TestCloneBasin:
-    def test_clone_preserves_elements(self, tmp_project):
-        """A file copy should have same subbasin count (clone_basin requires hms_object)."""
-        original = tmp_project / "A100_1PCT.basin"
-        clone_path = tmp_project / "A100_CLONE.basin"
-        shutil.copy2(original, clone_path)
-        df_orig = HmsBasin.get_subbasins(original)
+    def test_clone_preserves_elements_without_project_context(self, tmp_basin, monkeypatch):
+        prj_module = importlib.import_module("hms_commander.HmsPrj")
+        monkeypatch.setattr(prj_module, "hms", None)
+
+        clone_path = HmsBasin.clone_basin(tmp_basin, "A100_CLONE")
+
+        assert isinstance(clone_path, Path)
+        df_orig = HmsBasin.get_subbasins(tmp_basin)
         df_clone = HmsBasin.get_subbasins(clone_path)
         assert len(df_clone) == len(df_orig)
 
-    def test_clone_independent_modification(self, tmp_project):
+    def test_clone_independent_modification_without_project_context(self, tmp_basin, monkeypatch):
         """Modifying a clone should not affect the original."""
-        original = tmp_project / "A100_1PCT.basin"
-        clone_path = tmp_project / "A100_CLONE2.basin"
-        shutil.copy2(original, clone_path)
+        prj_module = importlib.import_module("hms_commander.HmsPrj")
+        monkeypatch.setattr(prj_module, "hms", None)
+
+        clone_path = HmsBasin.clone_basin(tmp_basin, "A100_CLONE2")
         HmsBasin.set_loss_parameters(clone_path, "A100A", percent_impervious=99.0)
-        orig_params = HmsBasin.get_loss_parameters(original, "A100A")
+        orig_params = HmsBasin.get_loss_parameters(tmp_basin, "A100A")
         # Original should be unchanged
         assert orig_params["method"] == "Green and Ampt"
 
@@ -261,11 +264,30 @@ class TestCloneBasin:
             hms_object=hms_project,
         )
 
+        assert isinstance(clone_path, Path)
         assert clone_path.exists()
         assert "A100_CLONE_REGISTERED" in hms_project.basin_df["name"].tolist()
         project_text = (tmp_project / "A1000000.hms").read_text(encoding="utf-8")
         assert "Basin: A100_CLONE_REGISTERED" in project_text
+        assert "Filename: A100_CLONE_REGISTERED.basin" in project_text
         assert "Basin File: A100_CLONE_REGISTERED.basin" not in project_text
+
+    def test_clone_uses_initialized_global_project_when_no_object_supplied(self, tmp_project, monkeypatch):
+        prj_module = importlib.import_module("hms_commander.HmsPrj")
+        global_project = HmsPrj().initialize(tmp_project)
+        monkeypatch.setattr(prj_module, "hms", global_project)
+
+        clone_path = HmsBasin.clone_basin(
+            "A100_1PCT",
+            "A100_GLOBAL_REGISTERED",
+        )
+
+        assert isinstance(clone_path, Path)
+        assert clone_path.exists()
+        assert "A100_GLOBAL_REGISTERED" in global_project.basin_df["name"].tolist()
+        project_text = (tmp_project / "A1000000.hms").read_text(encoding="utf-8")
+        assert "Basin: A100_GLOBAL_REGISTERED" in project_text
+        assert "Filename: A100_GLOBAL_REGISTERED.basin" in project_text
 
 
 # ---------------------------------------------------------------------------

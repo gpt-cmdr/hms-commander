@@ -179,24 +179,25 @@ class TestUpdateProjectFile:
         assert "Filename: A100_CLONE.basin" in content
         assert "Basin File: A100_CLONE.basin" not in content
 
-    def test_met_alias_registration_writes_precipitation_block(self, tmp_project):
+    def test_met_alias_registration_writes_met_block(self, tmp_project):
         hms_path = tmp_project / "A1000000.hms"
 
         assert HmsUtils.update_project_file(hms_path, "Met", "Atlas14_CLONE") is True
         content = hms_path.read_text(encoding="utf-8")
 
-        assert "Precipitation: Atlas14_CLONE" in content
+        assert "Met: Atlas14_CLONE" in content
         assert "Filename: Atlas14_CLONE.met" in content
         assert "Met File: Atlas14_CLONE.met" not in content
 
-    def test_control_registration_writes_filename_key_used_by_hms(self, tmp_project):
+    def test_control_registration_writes_consistent_filename_key(self, tmp_project):
         hms_path = tmp_project / "A1000000.hms"
 
         assert HmsUtils.update_project_file(hms_path, "Control", "Control_CLONE") is True
         content = hms_path.read_text(encoding="utf-8")
 
         assert "Control: Control_CLONE" in content
-        assert "FileName: Control_CLONE.control" in content
+        assert "Filename: Control_CLONE.control" in content
+        assert "FileName: Control_CLONE.control" not in content
         assert "Control File: Control_CLONE.control" not in content
 
     def test_registration_does_not_insert_inside_project_block(self, tmp_project):
@@ -247,7 +248,7 @@ class TestUpdateProjectFile:
         content = hms_path.read_text(encoding="utf-8")
 
         assert content.count("Met File: Legacy_Met.met") == 1
-        assert "Precipitation: Legacy_Met" not in content
+        assert "Met: Legacy_Met" not in content
 
     def test_legacy_flat_control_entry_is_treated_as_registered(self, tmp_path):
         hms_path = tmp_path / "Legacy.hms"

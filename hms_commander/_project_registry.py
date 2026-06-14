@@ -32,19 +32,24 @@ class ProjectComponentSpec:
 _COMPONENT_SPECS: Mapping[str, ProjectComponentSpec] = {
     "basin": ProjectComponentSpec("Basin", "basin", "Filename", ("Basin",)),
     "meteorology": ProjectComponentSpec(
-        "Precipitation",
+        "Met",
         "met",
         "Filename",
         ("Met", "Meteorology", "Precipitation"),
     ),
-    "met": ProjectComponentSpec("Precipitation", "met", "Filename", ("Met", "Meteorology", "Precipitation")),
+    "met": ProjectComponentSpec(
+        "Met",
+        "met",
+        "Filename",
+        ("Met", "Meteorology", "Precipitation"),
+    ),
     "precipitation": ProjectComponentSpec(
-        "Precipitation",
+        "Met",
         "met",
         "Filename",
         ("Met", "Meteorology", "Precipitation"),
     ),
-    "control": ProjectComponentSpec("Control", "control", "FileName", ("Control",)),
+    "control": ProjectComponentSpec("Control", "control", "Filename", ("Control",)),
 }
 
 _PROJECT_BLOCK_PATTERN = re.compile(
@@ -103,9 +108,15 @@ def build_project_registry_block(
 ) -> str:
     """Build a canonical HMS ``.hms`` registry block."""
 
-    block_type = str(block_type).strip()
+    try:
+        spec = normalize_component_type(block_type)
+        block_type = spec.block_type
+        filename_key = spec.filename_key
+    except ValueError:
+        block_type = str(block_type).strip()
+        filename_key = "Filename"
+
     timestamp = _local_hms_timestamp()
-    filename_key = "FileName" if block_type == "Control" else "Filename"
 
     lines = [
         f"{block_type}: {logical_name}",
@@ -161,16 +172,26 @@ def iter_project_blocks(content: str) -> Iterator[tuple[re.Match[str], str, str,
         yield match, block_type.strip(), block_name.strip(), attrs
 
 
+def _block_type_aliases(spec: ProjectComponentSpec) -> set[str]:
+    """Return lower-case block headers that are equivalent for a component."""
+
+    return {
+        spec.block_type.lower(),
+        *(alias.lower() for alias in spec.legacy_line_types),
+    }
+
+
 def component_is_registered(
     content: str,
-    block_type: str,
+    spec: ProjectComponentSpec,
     logical_name: str,
 ) -> bool:
     """Return True when the project already has the requested component block."""
 
+    block_type_aliases = _block_type_aliases(spec)
     for _, candidate_type, candidate_name, _ in iter_project_blocks(content):
         if (
-            candidate_type.lower() == block_type.lower()
+            candidate_type.lower() in block_type_aliases
             and candidate_name.lower() == str(logical_name).strip().lower()
         ):
             return True
@@ -191,13 +212,14 @@ def legacy_component_is_registered(
     return False
 
 
-def _find_insert_position(content: str, block_type: str) -> int:
+def _find_insert_position(content: str, spec: ProjectComponentSpec) -> int:
     """Find a stable insertion point outside the ``Project`` block."""
 
     matches = list(iter_project_blocks(content))
+    block_type_aliases = _block_type_aliases(spec)
     same_type_matches = [
         match for match, candidate_type, _, _ in matches
-        if candidate_type.lower() == block_type.lower()
+        if candidate_type.lower() in block_type_aliases
     ]
     if same_type_matches:
         return same_type_matches[-1].end()
@@ -233,7 +255,7 @@ def register_project_block(
     description: str = "",
     allow_existing: bool = False,
 ) -> Path:
-    """Register a Basin/Precipitation/Control block in a project file."""
+    """Register a Basin/Met/Control block in a project file."""
 
     hms_path = Path(hms_path)
     if not hms_path.exists():
@@ -244,7 +266,7 @@ def register_project_block(
     resolved_filename = _filename_for(logical_name, spec.extension, filename)
     if component_is_registered(
         content,
-        spec.block_type,
+        spec,
         logical_name,
     ) or legacy_component_is_registered(content, spec, resolved_filename):
         if allow_existing:
@@ -258,7 +280,7 @@ def register_project_block(
         filename=resolved_filename,
         description=description,
     )
-    insert_pos = _find_insert_position(content, spec.block_type)
+    insert_pos = _find_insert_position(content, spec)
     write_project_text(hms_path, _insert_block(content, insert_pos, block_text))
     return hms_path
 
@@ -270,7 +292,7 @@ def rewrite_project_block(
     filename: Optional[str] = None,
     description: str = "",
 ) -> Path:
-    """Rewrite an existing Basin/Precipitation/Control block in a project file."""
+    """Rewrite an existing Basin/Met/Control block in a project file."""
 
     hms_path = Path(hms_path)
     if not hms_path.exists():
@@ -286,9 +308,10 @@ def rewrite_project_block(
     ).rstrip()
 
     content = read_project_text(hms_path)
+    block_type_aliases = _block_type_aliases(spec)
     for match, candidate_type, candidate_name, _ in iter_project_blocks(content):
         if (
-            candidate_type.lower() == spec.block_type.lower()
+            candidate_type.lower() in block_type_aliases
             and candidate_name.lower() == str(logical_name).strip().lower()
         ):
             new_content = content[:match.start()] + replacement + content[match.end():]

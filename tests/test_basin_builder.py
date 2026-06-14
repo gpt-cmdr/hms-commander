@@ -257,7 +257,7 @@ def test_bootstrap_taudem_project_registers_real_hms_blocks(
     run_content = paths["run"].read_text(encoding="utf-8")
 
     assert "Basin: Spring Creek TauDEM Sink" in hms_content
-    assert "Precipitation: Spring Creek TauDEM Met" in hms_content
+    assert "Met: Spring Creek TauDEM Met" in hms_content
     assert "Control: Spring Creek TauDEM Control" in hms_content
     assert paths["run"].name == "river_bend.run"
     assert "Run: Spring Creek TauDEM Run" in run_content

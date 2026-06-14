@@ -1075,7 +1075,7 @@ class HmsBasinBuilder:
         filename: str,
         description: str = "",
     ) -> Path:
-        """Register a Basin/Precipitation/Control block in a real HMS project file."""
+        """Register a Basin/Met/Control block in a real HMS project file."""
         return register_project_block(
             hms_path,
             entry_type=block_type,
@@ -1093,7 +1093,7 @@ class HmsBasinBuilder:
         filename: str,
         description: str = "",
     ) -> Path:
-        """Rewrite an existing Basin/Precipitation/Control block in a .hms file."""
+        """Rewrite an existing Basin/Met/Control block in a .hms file."""
         return rewrite_project_block(
             hms_path,
             entry_type=block_type,
@@ -1707,7 +1707,7 @@ class HmsBasinBuilder:
         )
         HmsBasinBuilder._register_project_block(
             hms_path=project.project_file,
-            block_type="Precipitation",
+            block_type="Met",
             logical_name=met_name,
             filename=met_path.name,
             description="TauDEM import placeholder met; non-production scaffold",
@@ -1922,7 +1922,7 @@ class HmsBasinBuilder:
         )
         HmsBasinBuilder._rewrite_project_block(
             hms_path=project_paths["project_file"],
-            block_type="Precipitation",
+            block_type="Met",
             logical_name=met_name,
             filename=project_paths["met"].name,
             description=met_registry_description,
