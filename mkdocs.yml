@@ -59,6 +59,8 @@ plugins:
       type: timeago
 
 markdown_extensions:
+  - attr_list
+  - md_in_html
   - pymdownx.highlight:
       anchor_linenums: true
   - pymdownx.inlinehilite
