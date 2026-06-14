@@ -57,6 +57,22 @@ class DssCore:
     _monolith = None
 
     @staticmethod
+    def _to_1d_array(values) -> np.ndarray:
+        """Convert Java arrays or scalar values returned by pyjnius to 1-D arrays."""
+        if values is None:
+            return np.asarray([])
+
+        try:
+            array = np.asarray(list(values))
+        except TypeError:
+            array = np.asarray(values)
+
+        if array.ndim == 0:
+            array = array.reshape(1)
+
+        return array.ravel()
+
+    @staticmethod
     def _ensure_monolith():
         """Ensure HEC Monolith is downloaded and available."""
         if DssCore._monolith is not None:
@@ -133,7 +149,7 @@ class DssCore:
         classpath = monolith.get_classpath()
         library_path = monolith.get_library_path()
 
-        print("Configuring Java VM for DSS operations...")
+        logger.info("Configuring Java VM for DSS operations")
 
         # Set JAVA_HOME if not already set
         if 'JAVA_HOME' not in os.environ:
@@ -170,7 +186,7 @@ class DssCore:
             for java_home in java_candidates:
                 if java_home.exists():
                     os.environ['JAVA_HOME'] = str(java_home)
-                    print(f"  Found Java: {java_home}")
+                    logger.info("Using Java runtime at %s", java_home)
                     break
             else:
                 raise RuntimeError(
@@ -197,7 +213,7 @@ class DssCore:
             )
 
         DssCore._jvm_configured = True
-        print("[OK] Java VM configured")
+        logger.info("Java VM configured for DSS operations")
 
     @staticmethod
     def is_available() -> bool:
@@ -330,16 +346,16 @@ class DssCore:
 
             # Extract values and times from Java container
             # pyjnius automatically converts Java arrays to Python lists
-            values = np.array(tsc.values)  # Java double[] -> numpy array
-            times = np.array(tsc.times)    # Java int[] -> numpy array (minutes since 1899-12-31)
+            values = DssCore._to_1d_array(tsc.values)
+            times = DssCore._to_1d_array(tsc.times)
 
             # Validate that we got data
-            if len(values) == 0 or len(times) == 0:
+            if values.size == 0 or times.size == 0:
                 raise ValueError(f"No data found in time series for pathname: {pathname}")
 
-            if len(values) != len(times):
+            if values.size != times.size:
                 raise ValueError(
-                    f"Mismatched array lengths: {len(values)} values, {len(times)} times"
+                    f"Mismatched array lengths: {values.size} values, {times.size} times"
                 )
 
             # Convert HEC time to numpy datetime64
@@ -464,17 +480,17 @@ class DssCore:
 
             # Extract values and times from Java container directly to NumPy
             # pyjnius automatically converts Java arrays to Python lists
-            values = np.array(tsc.values)  # Java double[] -> numpy array
-            times = np.array(tsc.times)    # Java int[] -> numpy array (minutes since 1899-12-31)
+            values = DssCore._to_1d_array(tsc.values)
+            times = DssCore._to_1d_array(tsc.times)
 
             # Validate that we got data
-            if len(values) == 0 or len(times) == 0:
+            if values.size == 0 or times.size == 0:
                 logger.warning(f"No data found in time series for pathname: {pathname}")
                 return None
 
-            if len(values) != len(times):
+            if values.size != times.size:
                 logger.warning(
-                    f"Mismatched array lengths: {len(values)} values, {len(times)} times"
+                    f"Mismatched array lengths: {values.size} values, {times.size} times"
                 )
                 return None
 
@@ -489,7 +505,7 @@ class DssCore:
             # Calculate additional statistics
             min_value = float(np.min(values))
             mean_value = float(np.mean(values))
-            count = len(values)
+            count = int(values.size)
 
             # Extract units from container
             units = str(tsc.units) if tsc.units else ""

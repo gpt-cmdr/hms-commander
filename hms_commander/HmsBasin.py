@@ -8,6 +8,7 @@ All methods are static and designed to be used without instantiation.
 """
 
 import re
+from numbers import Integral, Real
 from pathlib import Path
 from typing import Dict, List, Optional, Union, Any, Tuple
 import pandas as pd
@@ -41,6 +42,19 @@ class HmsBasin:
         >>> print(subbasins)
         >>> loss_params = HmsBasin.get_loss_parameters("model.basin", "Subbasin-1")
     """
+
+    @staticmethod
+    def _normalize_element_name(name: Any) -> str:
+        """Return a stable string key for HMS element names."""
+        if pd.isna(name):
+            return ""
+        if isinstance(name, bool):
+            return str(name)
+        if isinstance(name, Integral):
+            return str(int(name))
+        if isinstance(name, Real) and float(name).is_integer():
+            return str(int(name))
+        return str(name)
 
     # HMS method enumerations (from _constants)
 
@@ -1423,7 +1437,7 @@ class HmsBasin:
         basin_path = Path(basin_path)
         input_csv = Path(input_csv)
 
-        df = pd.read_csv(input_csv, comment='#')
+        df = pd.read_csv(input_csv, comment='#', dtype={'param_type': str, 'name': str})
 
         if 'param_type' not in df.columns:
             raise ValueError(
@@ -1569,7 +1583,7 @@ class HmsBasin:
         # Build lookup from DataFrame: name -> {col: value} (non-NaN only)
         df_lookup = {}
         for _, row in params_df.iterrows():
-            name = row['name']
+            name = HmsBasin._normalize_element_name(row['name'])
             updates = {}
             for col_name, hms_key in reverse_map.items():
                 if col_name in row.index:

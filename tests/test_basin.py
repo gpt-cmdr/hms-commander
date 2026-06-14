@@ -205,6 +205,48 @@ class TestCsvRoundtrip:
                 tmp_basin, tmp_path / "nonexistent.csv"
             )
 
+    def test_import_preserves_numeric_element_names(self, tmp_path):
+        basin_path = tmp_path / "numeric_names.basin"
+        basin_path.write_text(
+            "\n".join([
+                "Basin: NumericNames",
+                "     Unit System: English",
+                "End:",
+                "",
+                "Subbasin: 113",
+                "     Area: 1.0",
+                "     Downstream: Outlet",
+                "     LossRate: Initial and Constant",
+                "     Percent Impervious Area: 0.0",
+                "     Initial Loss: 1.3",
+                "     Constant Rate: 0.05",
+                "End:",
+                "",
+            ]),
+            encoding="utf-8",
+        )
+        csv_path = tmp_path / "loss.csv"
+        csv_path.write_text(
+            "\n".join([
+                "# HMS Basin Parameters - loss",
+                "param_type,name,initial_loss",
+                "loss,113,2.0",
+                "",
+            ]),
+            encoding="utf-8",
+        )
+
+        result = HmsBasin.import_parameters_csv(
+            basin_path,
+            csv_path,
+            create_backup=False,
+        )
+
+        assert result["loss"]["elements_modified"] == 1
+        assert result["loss"]["parameters_changed"] == 1
+        loss_df = HmsBasin.get_all_loss_parameters(basin_path)
+        assert loss_df.loc[loss_df["name"] == "113", "initial_loss"].iloc[0] == 2.0
+
 
 # ---------------------------------------------------------------------------
 # set_loss_parameters (single element)
