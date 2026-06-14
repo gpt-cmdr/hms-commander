@@ -28,6 +28,15 @@ FAILED_COMPUTE_STDERR = (
 )
 
 
+NONZERO_EXIT_WITHOUT_ERRORS_STDOUT = """Begin HEC-HMS 4.11.0 U.S. Army Corps of Engineers
+NOTE 10019: Finished opening project "SyntheticProject" in directory "C:\\HMS\\SyntheticProject" at time 01Jan2024, 00:00:00.
+NOTE 15301: Began computing simulation run "Run 1" at time 01Jan2024, 00:00:00.
+NOTE 15302: Finished computing simulation run "Run 1" at time 01Jan2024, 01:00:00.
+NOTE 12573: End script "compute.py"; Exit code 2
+End HEC-HMS 4.11.0 U.S. Army Corps of Engineers; Exit status = 2
+"""
+
+
 class TestParseComputeOutput:
     def test_successful_compute_output_returns_structured_result(self):
         result = HmsOutput.parse_compute_output(SUCCESSFUL_COMPUTE_STDOUT)
@@ -72,6 +81,14 @@ class TestParseComputeOutput:
             "ERROR 10018: Project file write permission denied."
         )
 
+    def test_nonzero_exit_status_without_error_lines_fails_result(self):
+        result = HmsOutput.parse_compute_output(NONZERO_EXIT_WITHOUT_ERRORS_STDOUT)
+
+        assert result.success is False
+        assert result.exit_code == 2
+        assert result.errors == []
+        assert [note.code for note in result.notes] == [10019, 15301, 15302, 12573]
+
 
 class TestMessageExtraction:
     def test_get_errors_returns_known_error_patterns(self):
@@ -94,6 +111,9 @@ class TestMessageExtraction:
         assert warnings[0].message == (
             'Project "SyntheticProject" was updated from Version 4.10 to Version 4.11'
         )
+
+    def test_has_fatal_errors_detects_nonzero_exit_without_error_lines(self):
+        assert HmsOutput.has_fatal_errors(NONZERO_EXIT_WITHOUT_ERRORS_STDOUT) is True
 
 
 class TestComputeResultDataclass:
