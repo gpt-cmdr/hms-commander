@@ -643,11 +643,13 @@ class HmsUtils:
             ... )
 
         Note:
-            Basin, Met/Meteorology, and Control entries are written as real HMS
-            registry blocks for new registrations. Existing legacy flat entries
-            such as "Basin File:" and "Met File:" are treated as already
-            registered to avoid duplicates. Other entry types keep the
-            historical flat-line fallback for compatibility.
+            Basin, Met/Meteorology, and Control entries are written as
+            structured HMS registry blocks for new registrations. Met aliases
+            are stored in project files using HMS-native "Precipitation:"
+            blocks. Existing legacy flat entries such as "Basin File:" and
+            "Met File:" are treated as already registered to avoid duplicates.
+            Other entry types keep the historical flat-line fallback for
+            compatibility.
         """
         hms_file = Path(hms_file)
 

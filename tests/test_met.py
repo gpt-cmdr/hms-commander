@@ -327,7 +327,7 @@ class TestCloneMet:
         assert clone_path.exists()
         assert "Atlas14_CLONE_REGISTERED" in hms_project.met_df["name"].tolist()
         project_text = (tmp_project / "A1000000.hms").read_text(encoding="utf-8")
-        assert "Met: Atlas14_CLONE_REGISTERED" in project_text
+        assert "Precipitation: Atlas14_CLONE_REGISTERED" in project_text
         assert "Filename: Atlas14_CLONE_REGISTERED.met" in project_text
         assert "Met File: Atlas14_CLONE_REGISTERED.met" not in project_text
 
@@ -345,7 +345,7 @@ class TestCloneMet:
         assert clone_path.exists()
         assert "Atlas14_GLOBAL_REGISTERED" in global_project.met_df["name"].tolist()
         project_text = (tmp_project / "A1000000.hms").read_text(encoding="utf-8")
-        assert "Met: Atlas14_GLOBAL_REGISTERED" in project_text
+        assert "Precipitation: Atlas14_GLOBAL_REGISTERED" in project_text
         assert "Filename: Atlas14_GLOBAL_REGISTERED.met" in project_text
 
 

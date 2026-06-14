@@ -216,10 +216,12 @@ HmsUtils.update_project_file(
 ```
 
 For Basin, Met/Meteorology/Precipitation, and Control registrations, HMS
-Commander writes canonical HMS component blocks rather than the older flat
-`* File:` lines. The canonical blocks preserve GUI visibility for cloned
-components and make project dataframes refresh consistently after an initialized
-project is reloaded.
+Commander writes structured HMS component blocks rather than the older flat
+`* File:` lines. The public API accepts `Met` and `Meteorology` as aliases, but
+the `.hms` project file uses the HMS-native `Precipitation:` block header for
+meteorologic model registrations. These blocks preserve GUI visibility for
+cloned components and make project dataframes refresh consistently after an
+initialized project is reloaded.
 
 ```text
 Basin: Proposed Conditions
@@ -229,7 +231,7 @@ Basin: Proposed Conditions
      Last Modified Time: 14:30
 End:
 
-Met: Atlas14 Conditions
+Precipitation: Atlas14 Conditions
      Filename: Atlas14 Conditions.met
      Description:
      Last Modified Date: 28 April 2026
@@ -242,8 +244,13 @@ Control: QAQC Window
 End:
 ```
 
-The registration update is idempotent. If a project already contains the
-canonical block for the component, or contains a legacy flat line such as
+HMS Commander writes `Filename:` consistently for new Basin, Precipitation, and
+Control blocks. HEC-HMS may rewrite some surviving blocks on save, such as
+control registrations using `FileName:`, so parser logic accepts both casing
+variants.
+
+The registration update is idempotent. If a project already contains a
+structured block for the component, or contains a legacy flat line such as
 `Basin File: Proposed Conditions.basin`, HMS Commander treats the component as
 registered and does not append a duplicate block.
 
