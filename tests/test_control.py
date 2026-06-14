@@ -100,6 +100,67 @@ class TestGetControlInfo:
 
 
 # ---------------------------------------------------------------------------
+# create_control
+# ---------------------------------------------------------------------------
+
+class TestCreateControl:
+    def test_create_control_writes_expected_content(self, tmp_path):
+        control_path = tmp_path / "January_Run.control"
+        start = datetime(2024, 1, 1, 6, 30)
+        end = datetime(2024, 1, 2, 18, 45)
+
+        result = HmsControl.create_control(
+            control_path,
+            "January Run",
+            start,
+            end,
+            "30 Minutes",
+        )
+
+        assert result == str(control_path)
+        assert control_path.exists()
+        assert control_path.read_text(encoding="utf-8") == (
+            "Control: January Run\n"
+            "     Description: Created by hms-commander\n"
+            "     Start Date: 01 January 2024\n"
+            "     Start Time: 06:30\n"
+            "     End Date: 02 January 2024\n"
+            "     End Time: 18:45\n"
+            "     Time Interval: 30 Minutes\n"
+            "End:\n"
+        )
+
+    def test_create_control_roundtrips_with_existing_readers(self, tmp_path):
+        control_path = tmp_path / "Roundtrip.control"
+        start = datetime(2025, 5, 12, 0, 15)
+        end = datetime(2025, 5, 13, 23, 0)
+
+        HmsControl.create_control(
+            control_path,
+            "Roundtrip",
+            start,
+            end,
+            60,
+        )
+
+        time_window = HmsControl.get_time_window(control_path)
+        assert time_window["start_date"] == start
+        assert time_window["end_date"] == end
+        assert time_window["start_date_str"] == "12 May 2025"
+        assert time_window["start_time_str"] == "00:15"
+        assert time_window["end_date_str"] == "13 May 2025"
+        assert time_window["end_time_str"] == "23:00"
+
+        assert HmsControl.get_time_interval(control_path) == "1 Hour"
+
+        info = HmsControl.get_control_info(control_path)
+        assert info["Description"] == "Created by hms-commander"
+        assert info["Start Date"] == "12 May 2025"
+        assert info["End Date"] == "13 May 2025"
+        assert info["Time Interval"] == "1 Hour"
+
+
+# ---------------------------------------------------------------------------
 # clone_control
 # ---------------------------------------------------------------------------
 
