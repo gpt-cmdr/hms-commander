@@ -1,6 +1,8 @@
 """Tests for HmsMet — meteorologic model operations."""
 
 import importlib
+import re
+import shutil
 from pathlib import Path
 
 import pandas as pd
@@ -8,6 +10,33 @@ import pytest
 
 from hms_commander.HmsMet import HmsMet
 from hms_commander.HmsPrj import HmsPrj
+
+
+def _write_synthetic_met(
+    path: Path,
+    precipitation_method: str = "None",
+    subbasins=("Upper", "Lower"),
+) -> Path:
+    """Write a minimal HMS-like met file for precipitation write tests."""
+    lines = [
+        "Meteorology: SyntheticMet",
+        "     Description: Synthetic precipitation round-trip fixture",
+        "     Version: 4.13",
+        "     Unit System: English",
+        f"     Precipitation Method: {precipitation_method}",
+        "     Snowmelt Method: None",
+        "End:",
+        "",
+    ]
+    for subbasin in subbasins:
+        lines.extend([
+            f"Subbasin: {subbasin}",
+            "     # Preserve this manual note",
+            "End:",
+            "",
+        ])
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path
 
 
 # ---------------------------------------------------------------------------
@@ -21,8 +50,7 @@ class TestGetPrecipitationMethod:
 
     def test_returns_known_method(self, met_path_33):
         method = HmsMet.get_precipitation_method(met_path_33)
-        assert isinstance(method, str)
-        assert len(method) > 0
+        assert method == "Frequency Based Hypothetical"
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +119,137 @@ class TestSetPrecipitationDepths:
     def test_count_mismatch_raises(self, tmp_met):
         with pytest.raises(ValueError):
             HmsMet.set_precipitation_depths(tmp_met, [1.0, 2.0])  # Wrong count
+
+
+# ---------------------------------------------------------------------------
+# set_precipitation
+# ---------------------------------------------------------------------------
+
+class TestSetPrecipitation:
+    def test_frequency_storm_round_trip_preserves_format(self, tmp_met):
+        original = tmp_met.read_text(encoding="utf-8")
+        original = original.replace(
+            "     Depth: 4.3000",
+            "     # Preserve depth note\n     Depth: 4.3000",
+            1,
+        )
+        tmp_met.write_text(original, encoding="utf-8")
+
+        new_depths = [1.1111, 2.2222, 3.3333, 4.4444, 5.5555, 6.6666,
+                      7.7777, 8.8888, 0.1111, 0.2222, 0.3333, 0.4444]
+
+        summary = HmsMet.set_precipitation(
+            tmp_met,
+            "Frequency Based Hypothetical",
+            {"depths": new_depths},
+        )
+
+        rewritten = tmp_met.read_text(encoding="utf-8")
+        assert summary["depths_written"] == len(new_depths)
+        assert HmsMet.get_precipitation_method(tmp_met) == "Frequency Based Hypothetical"
+        assert HmsMet.get_precipitation_depths(tmp_met) == pytest.approx(new_depths)
+        assert "     # Preserve depth note" in rewritten
+        assert rewritten.index("Precip Method Parameters:") < rewritten.index("Subbasin: A100A")
+        assert re.search(r"^     Depth: 1\.1111$", rewritten, flags=re.MULTILINE)
+
+    def test_gage_assignments_round_trip(self, tmp_path):
+        met_path = _write_synthetic_met(tmp_path / "gage_roundtrip.met")
+
+        summary = HmsMet.set_precipitation(
+            met_path,
+            "Gage Weights",
+            {
+                "gage_assignments": [
+                    {"subbasin": "Upper", "precip_gage": "Rain_Upper", "weight": 0.65},
+                    {"subbasin": "Lower", "precip_gage": "Rain_Lower", "weight": 0.35},
+                ]
+            },
+        )
+
+        assignments = HmsMet.get_gage_assignments(met_path).set_index("subbasin")
+        rewritten = met_path.read_text(encoding="utf-8")
+        assert summary["subbasins_modified"] == 2
+        assert HmsMet.get_precipitation_method(met_path) == "Gage Weights"
+        assert assignments.loc["Upper", "precip_gage"] == "Rain_Upper"
+        assert assignments.loc["Lower", "precip_gage"] == "Rain_Lower"
+        assert assignments.loc["Upper", "weight"] == pytest.approx(0.65)
+        assert "     # Preserve this manual note" in rewritten
+        assert "     Precip Gage: Rain_Upper" in rewritten
+        assert "     Weight: 0.65" in rewritten
+
+    def test_gridded_precipitation_round_trip_with_dss_reference(self, tmp_path):
+        met_path = _write_synthetic_met(tmp_path / "grid_roundtrip.met", subbasins=())
+        dss_pathname = "/AORC/GRID/PRECIP/01JAN2020/1HOUR/OBS/"
+
+        summary = HmsMet.set_precipitation(
+            met_path,
+            "Gridded Precipitation",
+            {
+                "grid_name": "AORC_Test_Grid",
+                "dss_file": "aorc_test.dss",
+                "dss_pathname": dss_pathname,
+            },
+        )
+
+        info = HmsMet.get_met_info(met_path)
+        assert summary["grid_name"] == "AORC_Test_Grid"
+        assert summary["dss_references_written"] == 2
+        assert HmsMet.get_precipitation_method(met_path) == "Gridded Precipitation"
+        assert info["meteorology"]["Precipitation Grid"] == "AORC_Test_Grid"
+        assert info["dss_references"] == [
+            {"dss_file": "aorc_test.dss", "dss_pathname": dss_pathname}
+        ]
+
+    def test_empty_precipitation_round_trip(self, tmp_path):
+        met_path = _write_synthetic_met(
+            tmp_path / "empty_roundtrip.met",
+            precipitation_method="Specified Hyetograph",
+        )
+
+        summary = HmsMet.set_precipitation(met_path, "None")
+
+        assert summary["method"] == "None"
+        assert HmsMet.get_precipitation_method(met_path) == "None"
+        assert "Precip Gage:" not in met_path.read_text(encoding="utf-8")
+
+    def test_missing_gage_reference_raises_without_writing(self, tmp_path):
+        met_path = _write_synthetic_met(tmp_path / "missing_gage.met")
+        original = met_path.read_text(encoding="utf-8")
+
+        with pytest.raises(ValueError, match="empty precipitation gage"):
+            HmsMet.set_precipitation(
+                met_path,
+                "Gage Weights",
+                {"gage_assignments": [{"subbasin": "Upper", "precip_gage": ""}]},
+            )
+
+        assert met_path.read_text(encoding="utf-8") == original
+
+    def test_missing_subbasin_reference_raises_without_writing(self, tmp_path):
+        met_path = _write_synthetic_met(tmp_path / "missing_subbasin.met")
+        original = met_path.read_text(encoding="utf-8")
+
+        with pytest.raises(ValueError, match="missing subbasins"):
+            HmsMet.set_precipitation(
+                met_path,
+                "Specified Hyetograph",
+                {"gage_assignments": [{"subbasin": "NotInMet", "precip_gage": "Rain"}]},
+            )
+
+        assert met_path.read_text(encoding="utf-8") == original
+
+    def test_invalid_gridded_dss_pathname_raises_without_writing(self, tmp_path):
+        met_path = _write_synthetic_met(tmp_path / "bad_grid_ref.met", subbasins=())
+        original = met_path.read_text(encoding="utf-8")
+
+        with pytest.raises(ValueError, match="Invalid DSS pathname"):
+            HmsMet.set_precipitation(
+                met_path,
+                "Gridded Precipitation",
+                {"grid_name": "AORC_Test_Grid", "dss_pathname": "BAD/PATH"},
+            )
+
+        assert met_path.read_text(encoding="utf-8") == original
 
 
 # ---------------------------------------------------------------------------

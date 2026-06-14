@@ -259,13 +259,14 @@ class HmsOutput:
         computation_finished = any(
             n.code in (10185, 15302) for n in notes
         )
-        # Script success if exit code is 0, or if parsing a log file (exit code unavailable = -1)
-        script_success = exit_code == 0 or exit_code == -1
+        # Exit code -1 means the output came from a log source where no process
+        # exit status was available.
+        exit_code_success = exit_code in (0, -1)
         no_errors = len(errors) == 0
 
-        # Success requires: computation finished AND no errors
-        # (script_success is only a factor when exit code is explicitly non-zero)
-        success = computation_finished and no_errors and (exit_code != 1)
+        # Success requires: computation finished, no parsed errors, and no
+        # explicit nonzero process/script exit code.
+        success = computation_finished and no_errors and exit_code_success
 
         return ComputeResult(
             success=success,
@@ -368,6 +369,10 @@ class HmsOutput:
 
         # Check for explicit errors
         if result.errors:
+            return True
+
+        # Any explicit nonzero exit status/code indicates the HMS process failed.
+        if result.exit_code not in (0, -1):
             return True
 
         # Check for specific failure indicators
