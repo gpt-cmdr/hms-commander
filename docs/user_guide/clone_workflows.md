@@ -227,7 +227,7 @@ When a clone method is called with an initialized `HmsPrj` object, or when the
 global `hms` project object is initialized and no explicit project is supplied,
 the new component is registered in the `.hms` project file after the clone is
 created. HMS Commander writes canonical HMS registry blocks for Basin,
-Precipitation, and Control entries so the cloned component is visible in the
+Met, and Control entries so the cloned component is visible in the
 HEC-HMS GUI and in refreshed project dataframes.
 
 For compatibility with older project files, existing flat registry lines such

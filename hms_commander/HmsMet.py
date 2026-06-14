@@ -478,8 +478,9 @@ End:
         from .HmsUtils import HmsUtils
         from .HmsPrj import hms
 
-        hms_obj = hms_object or hms
+        hms_obj = hms_object if hms_object is not None else hms
         template_path = Path(template_met)
+        template_name = template_path.stem
 
         # Try to resolve template path from project
         if not template_path.exists() and hms_obj is not None and hms_obj.initialized:
@@ -489,16 +490,14 @@ End:
             if not matching.empty:
                 template_path = Path(matching.iloc[0]['full_path'])
                 template_name = matching.iloc[0]['name']
-            else:
-                # Try with .met extension
-                potential = Path(template_met)
-                if not potential.suffix:
-                    template_path = potential.with_suffix('.met')
-                    template_name = template_met
-                else:
-                    template_name = template_path.stem
-        else:
-            template_name = template_path.stem
+
+        # Try a same-folder file path with the expected extension when no
+        # project object can resolve the logical component name.
+        if not template_path.exists() and not template_path.suffix:
+            potential = template_path.with_suffix('.met')
+            if potential.exists():
+                template_path = potential
+                template_name = potential.stem
 
         if not template_path.exists():
             raise FileNotFoundError(f"Template met not found: {template_met}")

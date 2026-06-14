@@ -454,6 +454,14 @@ class HmsPrj:
         block_count = sum(len(blocks) for blocks in self._project_blocks.values())
         logger.debug(f"Parsed {block_count} blocks from project file")
 
+    def _get_project_blocks(self, *block_types: str) -> List[Dict[str, str]]:
+        """Return project blocks for one or more equivalent header names."""
+
+        blocks: List[Dict[str, str]] = []
+        for block_type in block_types:
+            blocks.extend(self._project_blocks.get(block_type, []))
+        return blocks
+
     def _build_hms_dataframe(self) -> None:
         """Build the hms_df DataFrame with project-level attributes."""
         # Get project block attributes
@@ -485,7 +493,11 @@ class HmsPrj:
         })
         records.append({
             'key': 'num_met_models',
-            'value': str(len(self._project_blocks.get('Precipitation', []))),
+            'value': str(len(self._get_project_blocks(
+                'Met',
+                'Meteorology',
+                'Precipitation',
+            ))),
             'source': 'computed'
         })
         records.append({
@@ -682,7 +694,11 @@ class HmsPrj:
 
     def _build_met_dataframe(self) -> None:
         """Build the met_df DataFrame with meteorologic model information."""
-        met_blocks = self._project_blocks.get('Precipitation', [])
+        met_blocks = self._get_project_blocks(
+            'Met',
+            'Meteorology',
+            'Precipitation',
+        )
 
         records = []
         for block in met_blocks:

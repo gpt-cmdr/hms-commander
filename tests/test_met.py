@@ -1,5 +1,6 @@
 """Tests for HmsMet — meteorologic model operations."""
 
+import importlib
 import re
 import shutil
 from pathlib import Path
@@ -293,22 +294,27 @@ class TestGetMetInfo:
 # ---------------------------------------------------------------------------
 
 class TestCloneMet:
-    def test_clone_creates_file(self, tmp_path, met_path_33):
-        dest = tmp_path / "clone_test.met"
-        shutil.copy2(met_path_33, dest)
-        # clone_met needs hms_object context normally
-        # Just verify file copy preserves content
-        content = dest.read_text(encoding="utf-8")
+    def test_clone_creates_file_without_project_context(self, tmp_met, monkeypatch):
+        prj_module = importlib.import_module("hms_commander.HmsPrj")
+        monkeypatch.setattr(prj_module, "hms", None)
+
+        clone_path = HmsMet.clone_met(tmp_met, "clone_test")
+
+        assert isinstance(clone_path, Path)
+        content = clone_path.read_text(encoding="utf-8")
         assert "Meteorology:" in content
 
-    def test_clone_preserves_content(self, tmp_path, met_path_33):
-        dest = tmp_path / "clone.met"
-        shutil.copy2(met_path_33, dest)
-        original_method = HmsMet.get_precipitation_method(met_path_33)
-        clone_method = HmsMet.get_precipitation_method(dest)
+    def test_clone_preserves_content_without_project_context(self, tmp_met, monkeypatch):
+        prj_module = importlib.import_module("hms_commander.HmsPrj")
+        monkeypatch.setattr(prj_module, "hms", None)
+
+        clone_path = HmsMet.clone_met(tmp_met, "clone")
+
+        original_method = HmsMet.get_precipitation_method(tmp_met)
+        clone_method = HmsMet.get_precipitation_method(clone_path)
         assert original_method == clone_method
 
-    def test_clone_registers_precipitation_in_initialized_project(self, tmp_project):
+    def test_clone_registers_met_in_initialized_project(self, tmp_project):
         hms_project = HmsPrj().initialize(tmp_project)
 
         clone_path = HmsMet.clone_met(
@@ -317,11 +323,30 @@ class TestCloneMet:
             hms_object=hms_project,
         )
 
+        assert isinstance(clone_path, Path)
         assert clone_path.exists()
         assert "Atlas14_CLONE_REGISTERED" in hms_project.met_df["name"].tolist()
         project_text = (tmp_project / "A1000000.hms").read_text(encoding="utf-8")
-        assert "Precipitation: Atlas14_CLONE_REGISTERED" in project_text
+        assert "Met: Atlas14_CLONE_REGISTERED" in project_text
+        assert "Filename: Atlas14_CLONE_REGISTERED.met" in project_text
         assert "Met File: Atlas14_CLONE_REGISTERED.met" not in project_text
+
+    def test_clone_uses_initialized_global_project_when_no_object_supplied(self, tmp_project, monkeypatch):
+        prj_module = importlib.import_module("hms_commander.HmsPrj")
+        global_project = HmsPrj().initialize(tmp_project)
+        monkeypatch.setattr(prj_module, "hms", global_project)
+
+        clone_path = HmsMet.clone_met(
+            "1%_24HR",
+            "Atlas14_GLOBAL_REGISTERED",
+        )
+
+        assert isinstance(clone_path, Path)
+        assert clone_path.exists()
+        assert "Atlas14_GLOBAL_REGISTERED" in global_project.met_df["name"].tolist()
+        project_text = (tmp_project / "A1000000.hms").read_text(encoding="utf-8")
+        assert "Met: Atlas14_GLOBAL_REGISTERED" in project_text
+        assert "Filename: Atlas14_GLOBAL_REGISTERED.met" in project_text
 
 
 # ---------------------------------------------------------------------------
