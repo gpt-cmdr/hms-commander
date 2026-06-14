@@ -32,19 +32,19 @@ class ProjectComponentSpec:
 _COMPONENT_SPECS: Mapping[str, ProjectComponentSpec] = {
     "basin": ProjectComponentSpec("Basin", "basin", "Filename", ("Basin",)),
     "meteorology": ProjectComponentSpec(
-        "Met",
+        "Precipitation",
         "met",
         "Filename",
         ("Met", "Meteorology", "Precipitation"),
     ),
     "met": ProjectComponentSpec(
-        "Met",
+        "Precipitation",
         "met",
         "Filename",
         ("Met", "Meteorology", "Precipitation"),
     ),
     "precipitation": ProjectComponentSpec(
-        "Met",
+        "Precipitation",
         "met",
         "Filename",
         ("Met", "Meteorology", "Precipitation"),
@@ -106,7 +106,7 @@ def build_project_registry_block(
     filename: str,
     description: str = "",
 ) -> str:
-    """Build a canonical HMS ``.hms`` registry block."""
+    """Build an HMS-compatible ``.hms`` registry block."""
 
     try:
         spec = normalize_component_type(block_type)

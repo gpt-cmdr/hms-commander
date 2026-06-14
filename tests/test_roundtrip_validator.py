@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import json
 import re
+import shutil
+from pathlib import Path
 
 import pytest
 
-from hms_commander import HmsBasinBuilder, HmsJython, HmsRoundTripValidator
+from hms_commander import HmsBasinBuilder, HmsJython, HmsMet, HmsPrj, HmsRoundTripValidator
 
 
 def test_normalize_project_diff_strips_volatile_hms_lines(tmp_path):
@@ -147,6 +148,38 @@ def test_roundtrip_open_save_close_passes_on_cloned_river_bend_example(tmp_river
     assert Path(result["artifact_dir"]).exists()
     assert Path(result["diff_path"]).exists()
     assert Path(result["validation_project_dir"]).exists()
+
+
+@pytest.mark.local_hms
+def test_cloned_met_precipitation_registration_survives_hms_roundtrip(project_dir_411, tmp_path):
+    hms_exe = HmsJython.find_hms_executable(version="4.11")
+    if hms_exe is None:
+        pytest.skip("Local HMS 4.11 installation not available")
+
+    project_dir = tmp_path / "a100_clone_met_roundtrip"
+    shutil.copytree(project_dir_411, project_dir)
+    project = HmsPrj().initialize(project_dir, hms_exe_path=hms_exe)
+    clone_name = "A100_CLB776_MET_RT"
+
+    clone_path = HmsMet.clone_met(
+        "1%_24HR",
+        clone_name,
+        hms_object=project,
+    )
+
+    project_text = (project_dir / "A1000000.hms").read_text(encoding="utf-8")
+    assert clone_path.exists()
+    assert f"Precipitation: {clone_name}" in project_text
+    assert f"Met: {clone_name}" not in project_text
+
+    result = HmsRoundTripValidator.roundtrip_open_save_close(project_dir, hms_exe_path=hms_exe)
+    saved_text = (
+        Path(result["validation_project_dir"]) / "A1000000.hms"
+    ).read_text(encoding="utf-8")
+
+    assert result["headless_success"] is True
+    assert f"Precipitation: {clone_name}" in saved_text
+    assert f"Filename: {clone_name}.met" in saved_text
 
 
 @pytest.mark.requires_gis
