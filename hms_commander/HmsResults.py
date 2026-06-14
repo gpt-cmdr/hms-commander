@@ -38,6 +38,34 @@ class HmsResults:
     """
 
     @staticmethod
+    def _value_series(df: pd.DataFrame) -> pd.Series:
+        """Return the numeric value series from an HmsDss time-series DataFrame."""
+        if "value" in df.columns:
+            return df["value"]
+
+        candidate_columns = [
+            col for col in df.columns
+            if col != "datetime" and pd.api.types.is_numeric_dtype(df[col])
+        ]
+        if candidate_columns:
+            return df[candidate_columns[0]]
+
+        if len(df.columns) == 1:
+            return df.iloc[:, 0]
+
+        raise ValueError("No numeric DSS value column found")
+
+    @staticmethod
+    def _value_frame(df: pd.DataFrame, column_name: str) -> pd.DataFrame:
+        """Return a single-column DataFrame with DSS values renamed."""
+        if df.empty:
+            result = pd.DataFrame(columns=[column_name], index=df.index)
+        else:
+            result = HmsResults._value_series(df).rename(column_name).to_frame()
+        result.attrs.update(df.attrs)
+        return result
+
+    @staticmethod
     @log_call
     def get_outflow_timeseries(
         dss_file: Union[str, Path],
@@ -66,7 +94,7 @@ class HmsResults:
 
         matching_paths = select_result_paths(
             catalog,
-            result_type="flow",
+            result_type="flow-total",
             element_names=[element_name],
             run_name=run_name,
             exclude_tables=True,
@@ -81,8 +109,7 @@ class HmsResults:
         logger.info(f"Reading flow data from: {path}")
 
         df = HmsDss.read_timeseries(dss_file, path)
-        df.columns = ['flow']
-        return df
+        return HmsResults._value_frame(df, 'flow')
 
     @staticmethod
     @log_call
@@ -119,8 +146,7 @@ class HmsResults:
 
         path = matching_paths[0]
         df = HmsDss.read_timeseries(dss_file, path)
-        df.columns = ['precipitation']
-        return df
+        return HmsResults._value_frame(df, 'precipitation')
 
     @staticmethod
     @log_call
@@ -200,7 +226,7 @@ class HmsResults:
 
         flow_paths = select_result_paths(
             flow_paths,
-            result_type="flow",
+            result_type="flow-total",
             run_name=run_name,
             exclude_tables=True,
             result_patterns=HmsDss.HMS_RESULT_PATTERNS,
@@ -227,7 +253,8 @@ class HmsResults:
                 # Calculate volume (trapezoidal integration)
                 # Assuming flow in CFS and time in hours
                 time_diff = df.index.to_series().diff().dt.total_seconds() / 3600  # hours
-                flow_values = df.iloc[:, 0].values
+                flow = HmsResults._value_series(df)
+                flow_values = flow.values
 
                 # Volume in acre-feet (CFS * hours * 0.0413)
                 volume_af = np.trapz(flow_values, dx=time_diff.mean()) * time_diff.mean() * 0.0413
@@ -235,7 +262,7 @@ class HmsResults:
                 records.append({
                     'element': parts['element_name'],
                     'total_volume_af': round(volume_af, 2),
-                    'mean_flow': round(df.iloc[:, 0].mean(), 2),
+                    'mean_flow': round(flow.mean(), 2),
                     'duration_hours': round((df.index[-1] - df.index[0]).total_seconds() / 3600, 2),
                     'run_name': parts['run_name']
                 })
@@ -362,7 +389,7 @@ class HmsResults:
                 # Get flow paths for this file
                 flow_paths = select_result_paths(
                     HmsDss.list_flow_results(dss_file),
-                    result_type="flow",
+                    result_type="flow-total",
                     element_names=[element_name],
                     exclude_tables=True,
                     result_patterns=HmsDss.HMS_RESULT_PATTERNS,
@@ -379,7 +406,7 @@ class HmsResults:
 
                     df = HmsDss.read_timeseries(dss_file, path)
                     if not df.empty:
-                        all_series[key] = df.iloc[:, 0]
+                        all_series[key] = HmsResults._value_series(df)
 
             except Exception as e:
                 logger.warning(f"Could not process {dss_file}: {e}")
@@ -429,7 +456,7 @@ class HmsResults:
                 if df.empty:
                     continue
 
-                precip = df.iloc[:, 0]
+                precip = HmsResults._value_series(df)
 
                 records.append({
                     'element': parts['element_name'],

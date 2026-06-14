@@ -4,6 +4,14 @@ import pandas as pd
 
 from hms_commander.HmsResults import HmsResults
 from hms_commander.dss import HmsDss
+from hms_commander.dss.core import DssCore
+
+
+def test_dss_core_to_1d_array_handles_scalar_values():
+    result = DssCore._to_1d_array(5.0)
+
+    assert result.shape == (1,)
+    assert result.tolist() == [5.0]
 
 
 def test_get_peak_flows_passes_run_filter_to_batched_extractor(monkeypatch, tmp_path):
@@ -60,6 +68,53 @@ def test_get_outflow_timeseries_uses_exact_run_match(monkeypatch, tmp_path):
 
     assert selected["pathname"] == "//J1/FLOW//15MIN/RUN:RUN1/"
     assert result.columns.tolist() == ["flow"]
+
+
+def test_get_outflow_timeseries_uses_value_column_when_datetime_column_present(monkeypatch, tmp_path):
+    catalog = ["//J1/FLOW//15MIN/RUN:RUN1/"]
+    index = pd.date_range("2000-01-01", periods=2, freq="h")
+
+    def fake_read_timeseries(dss_file, pathname):
+        return pd.DataFrame(
+            {
+                "datetime": index,
+                "value": [1.0, 2.0],
+            },
+            index=index,
+        )
+
+    monkeypatch.setattr(HmsDss, "get_catalog", lambda dss_file: catalog)
+    monkeypatch.setattr(HmsDss, "read_timeseries", fake_read_timeseries)
+
+    result = HmsResults.get_outflow_timeseries(tmp_path / "results.dss", "J1")
+
+    assert result.columns.tolist() == ["flow"]
+    assert result["flow"].tolist() == [1.0, 2.0]
+    assert result.index.equals(index)
+
+
+def test_get_outflow_timeseries_ignores_flow_unit_graph(monkeypatch, tmp_path):
+    catalog = [
+        "//J1/FLOW-UNIT GRAPH/TS-PATTERN/1HOUR/RUN:RUN1/",
+        "//J1/FLOW//1HOUR/RUN:RUN1/",
+    ]
+    selected = {}
+
+    def fake_read_timeseries(dss_file, pathname):
+        selected["pathname"] = pathname
+        return pd.DataFrame({"value": [3.0, 4.0]})
+
+    monkeypatch.setattr(HmsDss, "get_catalog", lambda dss_file: catalog)
+    monkeypatch.setattr(HmsDss, "read_timeseries", fake_read_timeseries)
+
+    result = HmsResults.get_outflow_timeseries(
+        tmp_path / "results.dss",
+        "J1",
+        run_name="RUN1",
+    )
+
+    assert selected["pathname"] == "//J1/FLOW//1HOUR/RUN:RUN1/"
+    assert result["flow"].tolist() == [3.0, 4.0]
 
 
 def test_extract_hms_results_filters_exact_run_and_excludes_tables(monkeypatch, tmp_path):
