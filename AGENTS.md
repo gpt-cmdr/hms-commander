@@ -118,6 +118,24 @@ Core areas:
 - Keep notebooks reproducible and free of credentials, local machine paths, and stale outputs.
 - MkDocs documentation lives under `docs/`; update `mkdocs.yml` when adding public docs pages.
 
+## Documentation Site
+
+Docs publish to **https://rascommander.info/hms** on every push to `main` (self-hosted; build infra
+lives in `CLB-Engineering-Corporation/ras-commander-docs`). A broken `mkdocs.yml`, docstring, or
+generator fails the live build — treat the docs as production.
+
+- **Agent-native API surface.** The build introspects this library and publishes machine-readable
+  JSON for LLMs / MCP servers at `/hms/llms/api/` (signatures, enumerated from `__all__`) and
+  `/hms/version.json`. The DataFrame column contracts come from **`hms_commander/schemas.py`** — the
+  single source of truth (frames: `hms_df` / `basin_df` / `subbasin_df` / `met_df` / `control_df` /
+  `run_df` / `gage_df` / `pdata_df`). **If you add, rename, or remove a column on any of these (or
+  add a new public DataFrame on `HmsPrj`), update `schemas.py` in the SAME change** — there is no
+  automated guard for column drift. Keep `__all__` accurate; the surface enumerates it.
+- **Authoring voice (docs & notebooks).** Mechanics-forward: lead with *how to drive the API*; defer
+  method selection, parameter appropriateness, and regulatory / standard-of-care questions to HEC's
+  manuals and the reader's regional/agency references. Examples demonstrate mechanics on real data —
+  they are not endorsed engineering workflows.
+
 ## Testing And Validation
 
 - Use `pytest` for targeted tests.
