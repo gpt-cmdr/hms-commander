@@ -85,6 +85,7 @@ from .HmsRun import HmsRun
 # Execution engine (Phase 3)
 from .HmsJython import HmsJython
 from .HmsCmdr import HmsCmdr
+from .gui import HmsGui
 
 # DSS and Results (Phase 4)
 from .dss import HmsDss, HmsDssGrid, DssCore
@@ -144,6 +145,7 @@ __all__ = [
     # Execution
     "HmsCmdr",
     "HmsJython",
+    "HmsGui",
 
     # DSS and Results
     "DssCore",
