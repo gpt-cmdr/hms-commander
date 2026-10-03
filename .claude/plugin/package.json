@@ -1,0 +1,20 @@
+{
+  "manifest": {
+    "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+    "name": "hms-commander",
+    "version": "0.1.0",
+    "description": "Coordinate HEC-HMS and watershed-to-RAS workflows through current public packages.",
+    "author": {
+      "name": "gpt-cmdr",
+      "url": "https://github.com/gpt-cmdr"
+    },
+    "homepage": "https://rascommander.info/hms/",
+    "repository": "https://github.com/gpt-cmdr/hms-commander",
+    "license": "MIT"
+  },
+  "skills": [
+    "hms-commander",
+    "hms-ras-integration",
+    "hms-cloud-native-gis"
+  ]
+}

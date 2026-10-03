@@ -143,10 +143,13 @@ generator fails the live build — treat the docs as production.
   `run_df` / `gage_df` / `pdata_df`). **If you add, rename, or remove a column on any of these (or
   add a new public DataFrame on `HmsPrj`), update `schemas.py` in the SAME change** — there is no
   automated guard for column drift. Keep `__all__` accurate; the surface enumerates it.
-- **Authoring voice (docs & notebooks).** Mechanics-forward: lead with *how to drive the API*; defer
-  method selection, parameter appropriateness, and regulatory / standard-of-care questions to HEC's
-  manuals and the reader's regional/agency references. Examples demonstrate mechanics on real data —
-  they are not endorsed engineering workflows.
+- **Authoring voice (docs & notebooks).** Mechanics-forward: explain how to drive the public API.
+  State supported HMS Commander capabilities and observations confidently, with their scope and
+  evidence. HEC documentation is primary for its documented terminology, methods, and controls;
+  project recommendations require rationale, not HEC approval. Use passive official citations,
+  maintain an objective independent voice, and do not imply HEC/USACE affiliation or endorsement.
+  Preserve identifiers, values, units, uncertainty, and retained outputs. Repository editorial
+  requirements govern maintained content and contributions, not users' external deliverables.
 
 ## Testing And Validation
 
@@ -168,3 +171,14 @@ generator fails the live build — treat the docs as production.
 - If a change is Claude-only, keep it in `CLAUDE.md`, `.claude/rules/`, `.claude/agents/`, or `.claude/commands/` as appropriate.
 - If a change is Codex-only, keep it in `.agents/native-skills/` or `.codex/` as appropriate.
 - If you change the instruction architecture, also update `docs/development/multi-harness-agent-contract.md`.
+
+## Portable Plugin Maintenance
+
+Canonical selected skills are packaged by `scripts/agent_framework/build_plugin.py` using
+`.claude/plugin/package.json`. Generated distributions contain rebased supporting references
+and source hashes; maintain the canonical sources rather than editing bundles. Read
+[plugin packaging and activation guidance](.claude/plugin/README.md) before preparing a release.
+A skills-only plugin grants no Python/runtime/project access and does not enforce client tool isolation.
+PyPI discovery automation proposes review PRs, not unattended installs or publication.
+Repository writing standards govern repository content and contributions only, including packaged
+instructions; they do not govern external user deliverables produced with these workflows.

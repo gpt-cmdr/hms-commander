@@ -72,6 +72,9 @@ from .Decorators import log_call, standardize_path
 from .HmsGeo import HmsGeo
 from .HmsSqlite import HmsSqlite
 
+# Pure text information (no project initialization)
+from .HmsText import HmsText
+
 # File operations (Phase 2)
 from .HmsBasin import HmsBasin
 from .HmsBasinBuilder import HmsBasinBuilder
@@ -134,6 +137,7 @@ __all__ = [
     "hms",
 
     # File Operations
+    "HmsText",
     "HmsBasin",
     "HmsBasinBuilder",
     "HmsControl",

@@ -15,6 +15,8 @@ MCP queries are bounded informational subagent tasks; heavier work uses public P
 
 | Component | Type | Path |
 |-----------|------|------|
+| `hms-cloud-native-gis` | shared skill | `.claude/skills/hms-cloud-native-gis/SKILL.md` |
+| `hms-ras-integration` | shared skill | `.claude/skills/hms-ras-integration/SKILL.md` |
 | `hms-commander` | shared skill | `.claude/skills/hms-commander/SKILL.md` |
 | `hms_execute_runs` | skill | `.claude/skills/hms_execute_runs/SKILL.md` |
 | `hms_parse_basin-models` | skill | `.claude/skills/hms_parse_basin-models/SKILL.md` |
@@ -89,3 +91,7 @@ MCP queries are bounded informational subagent tasks; heavier work uses public P
 ## Provider-Initiated Legacy Components
 
 Some Claude-native provider orchestration entries, including Gemini-oriented command and agent files, remain for explicit user requests only. They are not part of the shared Claude+Codex contract and must not be exposed through the Codex skill bridge unless a future audited migration explicitly changes that.
+
+## Portable package and release maintenance
+
+The generated skills-only plugin is defined by `.claude/plugin/package.json` and assembled with `scripts/agent_framework/build_plugin.py`. Canonical sources remain `.claude/skills/`. The `hms-ras-workflow-coordinator` adapter and `hms_link_to-ras` skill route through `hms-ras-integration`.

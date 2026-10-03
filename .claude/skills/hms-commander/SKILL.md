@@ -25,10 +25,12 @@ Use the installed public APIs and canonical schemas rather than copied parser lo
 | Meteorology/precipitation | Met specialist; `hms_update_met-models`; relevant storm/data APIs |
 | Controls/run setup/execution | Run specialist and `hms_execute_runs`, with explicit execution scope |
 | Results/DSS | Results/DSS specialist and public HmsResults/HmsDss APIs; optional dependencies only when needed |
-| GIS/archive/export | `hms_export_cloud-native`; current hms2cng help/API and canonical guidance |
-| HMS-to-RAS | Existing `hms-ras-workflow-coordinator` and `hms_link_to-ras`; load RAS guidance for RAS operations |
+| GIS/archive/export | [HMS Cloud Native GIS](../hms-cloud-native-gis/SKILL.md); current hms2cng contracts |
+| HMS-to-RAS | [HMS–RAS Integration](../hms-ras-integration/SKILL.md); load RAS guidance for RAS operations |
 
 Use native specialists/workers available in the harness. Claude roles are thin adapters; Codex does not assume Claude Task syntax. Give workers a focused question, project root, versions, allowed actions, and bounded output. Assign exclusive files for concurrent edits and preserve other workers' changes. Delegate when useful; small Python tasks can be handled directly.
+
+Named repository roles and specialist skills are optional accelerators. A portable package includes only its selected workflows. If a named helper is absent, use the installed public Python API with the same authorization and dependency limits, or report the missing runtime capability. Do not assume a tool or role exists because it appears in a routing table.
 
 ## MCP boundary
 

@@ -1,0 +1,9 @@
+{
+  "packages": [
+    "hms-commander",
+    "hms-commander-mcp",
+    "ras-commander",
+    "hms2cng"
+  ],
+  "snapshot": ".claude/plugin/release-snapshot.json"
+}

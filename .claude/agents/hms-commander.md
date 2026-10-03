@@ -1,7 +1,7 @@
 ---
 name: hms-commander
 description: Entry point for HEC-HMS tasks, using the shared HMS Commander coordinator workflow.
-tools: Read, Grep, Glob, Bash, Task
+tools: Read, Grep, Glob, Bash, Agent
 ---
 
 # HMS Commander
