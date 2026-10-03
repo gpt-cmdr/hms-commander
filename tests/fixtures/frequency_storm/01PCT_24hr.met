@@ -1,0 +1,62 @@
+Meteorology: 01PCT_24hr
+     Last Modified Date: 27 June 2023
+     Last Modified Time: 15:39:26
+     Version: 4.10
+     Unit System: English
+     Set Missing Data to Default: No
+     Precipitation Method: Frequency Based Hypothetical
+     Air Temperature Method: None
+     Atmospheric Pressure Method: None
+     Dew Point Method: None
+     Wind Speed Method: None
+     Shortwave Radiation Method: None
+     Longwave Radiation Method: None
+     Snowmelt Method: None
+     Evapotranspiration Method: No Evapotranspiration
+     Use Basin Model: DBALO
+End:
+
+Precip Method Parameters: Frequency Based Hypothetical
+     Last Modified Date: 20 December 2022
+     Last Modified Time: 18:30:39
+     Storm Type: Hydro-35/TP-40/TP-49
+     Single Hypothetical Storm Size: Yes
+     Convert From Annual Series: Yes
+     Convert to Annual Series: Yes
+     Uniform Depth Duration Curve: No
+     User Specified Storm Area: No
+     Storm Size: 
+     Total Duration: 1440
+     Time Interval: 5
+     Percent of Duration Before Peak Rainfall: 50
+     Depth-Area Reduction Method: No Reduction
+     Depth: 
+     Depth: 
+     Depth: 
+     Depth: 
+     Depth: 
+     Depth: 
+     Depth: 
+     Depth: 
+     Depth: 
+     Depth: 
+     Depth: 
+     Depth: 
+End:
+
+Subbasin: DBALO
+     Last Modified Date: 21 November 2024
+     Last Modified Time: 18:41:57
+     Depth: 1.3000
+     Depth: 2.5800
+     Depth: 5.0200
+     Depth: 7.1700
+     Depth: 8.7400
+     Depth: 11.400
+     Depth: 13.900
+     Depth: 16.400
+     Depth: 
+     Depth: 
+     Depth: 
+     Depth: 
+End:

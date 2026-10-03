@@ -1111,7 +1111,9 @@ End:
     @log_call
     def get_frequency_storm_params(
         met_path: Union[str, Path],
-        hms_object=None
+        hms_object=None,
+        *,
+        subbasin: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Get Frequency Based Hypothetical storm parameters from a met file.
@@ -1121,14 +1123,26 @@ End:
         Args:
             met_path: Path to the .met file
             hms_object: Optional HmsPrj instance
+            subbasin: Select a named subbasin depth curve. Without a selector,
+                ``depths`` retains the global curve; no subbasin is chosen implicitly.
 
         Returns:
-            Dictionary with frequency storm parameters including depth values
+            Dictionary with frequency storm parameters, global ``depths`` and
+            ``subbasin_depths`` keyed by name. A selector replaces ``depths``
+            with that subbasin's curve. Depths retain the file's unit system and
+            ordering; durations are not inferred. Trailing blank subbasin depth
+            slots are omitted; interior blanks remain None to preserve positions.
+            Blank optional numeric settings return None. Storm type, depth-area
+            reduction method and uniform-curve flags describe the source settings.
+
+        Raises:
+            ValueError: A nonblank numeric field is malformed, or the selected
+                subbasin is absent.
 
         Example:
             >>> params = HmsMet.get_frequency_storm_params("1PCT_24HR.met")
             >>> print(f"Duration: {params['total_duration']} min")
-            >>> print(f"Depths (inches): {params['depths']}")
+            >>> print(f"Depths ({params['unit_system']}): {params['depths']}")
         """
         met_path = Path(met_path)
         content = HmsMet._read_met_file(met_path)
@@ -1143,7 +1157,18 @@ End:
             'depths': [],
             'convert_from_annual': False,
             'convert_to_annual': False,
+            'storm_type': None,
+            'depth_area_reduction_method': None,
+            'uniform_depth_duration_curve': None,
+            'single_hypothetical_storm_size': None,
+            'user_specified_storm_area': None,
+            'unit_system': None,
+            'subbasin_depths': {},
         }
+
+        meteorology = HmsFileParser.find_all_blocks(content, 'Meteorology')
+        if meteorology:
+            params['unit_system'] = meteorology[0][2].get('Unit System')
 
         # Find the Precip Method Parameters block
         pattern = r'Precip Method Parameters:\s*(.+?)\n(.*?)(?=Subbasin:|End:)'
@@ -1151,6 +1176,8 @@ End:
 
         if not match:
             logger.warning(f"No Precip Method Parameters block found in {met_path}")
+            if subbasin is not None:
+                raise ValueError(f"Cannot select subbasin {subbasin!r}: no Precip Method Parameters block in {met_path}")
             return params
 
         params['method'] = match.group(1).strip()
@@ -1163,25 +1190,48 @@ End:
                 key = key.strip()
                 value = value.strip()
 
-                if key == 'Exceedence Frequency':
-                    params['exceedance_frequency'] = float(value)
+                if key in ('Exceedence Frequency', 'Exceedance Frequency'):
+                    params['exceedance_frequency'] = float(value) if value else None
                 elif key == 'Storm Size':
-                    params['storm_size'] = float(value)
+                    params['storm_size'] = float(value) if value else None
                 elif key == 'Total Duration':
-                    params['total_duration'] = int(value)
+                    params['total_duration'] = int(value) if value else None
                 elif key == 'Time Interval':
-                    params['time_interval'] = int(value)
+                    params['time_interval'] = int(value) if value else None
                 elif key == 'Percent of Duration Before Peak Rainfall':
-                    params['peak_position'] = int(value)
+                    params['peak_position'] = int(value) if value else None
                 elif key == 'Convert From Annual Series':
                     params['convert_from_annual'] = value.lower() == 'yes'
                 elif key == 'Convert to Annual Series':
                     params['convert_to_annual'] = value.lower() == 'yes'
                 elif key == 'Depth':
-                    try:
+                    if value:
                         params['depths'].append(float(value))
-                    except ValueError:
-                        pass
+                elif key == 'Storm Type':
+                    params['storm_type'] = value or None
+                elif key == 'Depth-Area Reduction Method':
+                    params['depth_area_reduction_method'] = value or None
+                elif key in {
+                    'Uniform Depth Duration Curve', 'Single Hypothetical Storm Size',
+                    'User Specified Storm Area',
+                }:
+                    name = key.lower().replace(' ', '_')
+                    params[name] = value.lower() == 'yes' if value else None
+
+        for section, name, _ in HmsFileParser.find_all_blocks(content, 'Subbasin'):
+            depths = []
+            for line in section.group(3).splitlines():
+                key, separator, value = line.strip().partition(':')
+                if separator and key == 'Depth':
+                    depths.append(float(value.strip()) if value.strip() else None)
+            while depths and depths[-1] is None:
+                depths.pop()
+            params['subbasin_depths'][name] = depths
+
+        if subbasin is not None:
+            if subbasin not in params['subbasin_depths']:
+                raise ValueError(f"Subbasin {subbasin!r} not found in {met_path}")
+            params['depths'] = list(params['subbasin_depths'][subbasin])
 
         logger.info(f"Found {len(params['depths'])} depth values in {met_path.name}")
         return params
