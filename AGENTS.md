@@ -15,6 +15,18 @@ This file is the canonical shared instruction contract for repository-local codi
 - `.claude/settings.json` and `.codex/hooks.json` are thin hook adapters that call shared hook logic under `scripts/agent_hooks/`.
 - Primary first-class harnesses in this repository are Claude Code and Codex.
 
+## HMS Commander Entry Point
+
+- Requests to “Ask HMS Commander” use the shared
+  [.claude/skills/hms-commander/SKILL.md](.claude/skills/hms-commander/SKILL.md) workflow.
+- Claude `hms-commander` and legacy `hms-orchestrator` roles are adapters to that contract.
+  Codex uses the shared skill and its native workers.
+- Project MCP is a bounded subagent-only, read-only text-information tool with non-spatial/
+  non-gridded outputs. Heavy data, execution, and edits use public Python APIs instead.
+- Check installed/released package contracts; prefer current compatible PyPI releases in
+  authorized managed environments while preserving user pins and reporting version gaps.
+- Repository editorial requirements do not govern users' external artifacts.
+
 ## Current Codex Skill Status
 
 - Codex auto-loads `AGENTS.md`.

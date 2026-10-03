@@ -4,10 +4,18 @@ Central registry for Claude-native components in `hms-commander`.
 
 This file is the Claude-side discovery map only. Shared repository behavior lives in the `AGENTS.md` hierarchy, not in `.claude/`.
 
+## Commander Entry Point
+
+The shared `hms-commander` skill is the canonical intake workflow for both harnesses.
+Claude `hms-commander` and legacy `hms-orchestrator` roles load the same skill. GIS uses current
+hms2cng contracts; cross-model work routes to the existing HMS-RAS specialist and RAS guidance.
+MCP queries are bounded informational subagent tasks; heavier work uses public Python APIs.
+
 ## HMS Domain Skills
 
 | Component | Type | Path |
 |-----------|------|------|
+| `hms-commander` | shared skill | `.claude/skills/hms-commander/SKILL.md` |
 | `hms_execute_runs` | skill | `.claude/skills/hms_execute_runs/SKILL.md` |
 | `hms_parse_basin-models` | skill | `.claude/skills/hms_parse_basin-models/SKILL.md` |
 | `hms_update_met-models` | skill | `.claude/skills/hms_update_met-models/SKILL.md` |
@@ -29,6 +37,7 @@ This file is the Claude-side discovery map only. Shared repository behavior live
 
 | Component | Type | Path |
 |-----------|------|------|
+| `hms-commander` | Claude adapter | `.claude/agents/hms-commander.md` |
 | `hms-orchestrator` | agent | `.claude/agents/hms-orchestrator.md` |
 | `basin-model-specialist` | agent | `.claude/agents/basin-model-specialist.md` |
 | `met-model-specialist` | agent | `.claude/agents/met-model-specialist.md` |

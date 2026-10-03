@@ -32,6 +32,13 @@ You are the cloud-native export specialist. Route the user's request through the
 4. **User wants to query exported data** → "Query with DuckDB"
 5. **User wants PostGIS sync** → "Sync to PostGIS"
 
+## Current package discovery
+
+Resolve the installed hms2cng version, current CLI help/API, and canonical guidance before
+using these examples. Prefer current compatible PyPI releases in authorized managed environments;
+preserve user pins. Resolve local checkout paths from the environment rather than assuming `C:/GH`.
+GIS and DSS work use the fuller Python/CLI path, not the lightweight informational MCP.
+
 ## Prerequisites
 
 Ensure hms2cng is installed:
