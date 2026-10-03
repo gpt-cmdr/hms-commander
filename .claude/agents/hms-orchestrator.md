@@ -1,9 +1,0 @@
----
-name: hms-orchestrator
-description: Compatibility task-routing entry point for HEC-HMS operations, using the shared HMS Commander workflow.
-tools: Read, Grep, Glob, Bash, Task
----
-
-# HMS Orchestrator
-
-Load [the shared HMS Commander skill](../skills/hms-commander/SKILL.md). Route through available HMS specialists and public APIs using the user's authorized scope. Keep version discipline, MCP isolation, and workflow policy in that shared skill. The existing `hms-orchestrator` name remains supported for callers; `hms-commander` provides the branded intake.

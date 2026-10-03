@@ -7,7 +7,7 @@ This file is the Claude-side discovery map only. Shared repository behavior live
 ## Commander Entry Point
 
 The shared `hms-commander` skill is the canonical intake workflow for both harnesses.
-Claude `hms-commander` and legacy `hms-orchestrator` roles load the same skill. GIS uses current
+The Claude `hms-commander` role loads this skill. GIS uses current
 hms2cng contracts; cross-model work routes to the existing HMS-RAS specialist and RAS guidance.
 MCP queries are bounded informational subagent tasks; heavier work uses public Python APIs.
 
@@ -38,7 +38,6 @@ MCP queries are bounded informational subagent tasks; heavier work uses public P
 | Component | Type | Path |
 |-----------|------|------|
 | `hms-commander` | Claude adapter | `.claude/agents/hms-commander.md` |
-| `hms-orchestrator` | agent | `.claude/agents/hms-orchestrator.md` |
 | `basin-model-specialist` | agent | `.claude/agents/basin-model-specialist.md` |
 | `met-model-specialist` | agent | `.claude/agents/met-model-specialist.md` |
 | `run-manager-specialist` | agent | `.claude/agents/run-manager-specialist.md` |

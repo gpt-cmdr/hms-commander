@@ -166,7 +166,7 @@ Configure AORC (Analysis of Record for Calibration) gridded precipitation data.
 ├── met-model-specialist.md
 ├── run-manager-specialist.md
 ├── dss-integration-specialist.md
-├── hms-orchestrator.md
+├── hms-commander.md
 └── (additional specialists)
 ```
 

@@ -19,7 +19,7 @@ This file is the canonical shared instruction contract for repository-local codi
 
 - Requests to “Ask HMS Commander” use the shared
   [.claude/skills/hms-commander/SKILL.md](.claude/skills/hms-commander/SKILL.md) workflow.
-- Claude `hms-commander` and legacy `hms-orchestrator` roles are adapters to that contract.
+- The Claude `hms-commander` role is an adapter to that contract.
   Codex uses the shared skill and its native workers.
 - Project MCP is a bounded subagent-only, read-only text-information tool with non-spatial/
   non-gridded outputs. Heavy data, execution, and edits use public Python APIs instead.

@@ -42,7 +42,7 @@ The `.claude/` directory contains the Claude-native hierarchical knowledge frame
 
 | Agent | Domain | When to Use |
 |-------|--------|-------------|
-| **hms-orchestrator.md** | Traffic controller and task classifier | Route tasks to specialists, coordinate multi-domain workflows, handle simple queries |
+| **hms-commander.md** | Traffic controller and task classifier | Route tasks to specialists, coordinate multi-domain workflows, handle simple queries |
 | **basin-model-specialist.md** | Basin files (.basin) | Subbasins, junctions, reaches, loss methods, transform methods, baseflow, routing |
 | **met-model-specialist.md** | Meteorologic models (.met) | Precipitation, gage assignments, Atlas 14 updates, ET, snowmelt |
 | **run-manager-specialist.md** | Run configuration and execution | Run setup, validation, execution, Jython script generation |
@@ -345,7 +345,7 @@ The `.claude/` directory contains the Claude-native hierarchical knowledge frame
 ## Quick Reference
 
 ### Most Used Specialist Agents
-- **hms-orchestrator** - Start here for task routing
+- **hms-commander** - Start here for task routing
 - **basin-model-specialist** - Basin operations
 - **met-model-specialist** - Precipitation updates
 
@@ -394,7 +394,7 @@ The `.claude/` directory contains the Claude-native hierarchical knowledge frame
 **Recent Changes**:
 - Consolidated subagents into `.claude/agents/` folder
 - HMS domain specialists now alongside development agents
-- Orchestrator agent (hms-orchestrator.md)
+- Orchestrator agent (hms-commander.md)
 - Slash commands for common tasks
 
 **See**: `feature_dev_notes/DEVELOPMENT_ROADMAP.md` for cognitive infrastructure roadmap
