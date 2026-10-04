@@ -47,7 +47,7 @@ Usage:
     peaks = HmsResults.get_peak_flows("results.dss")
 """
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 __author__ = "CLB Engineering Corporation"
 
 # Core project management

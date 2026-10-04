@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-04
+
+### Added
+
+- **Read-only text sections** (`HmsText.parse_sections`) parse named sections from caller-supplied `.hms`, `.basin`, `.met`, `.control`, `.run` and `.gage` text without opening files or initializing a project. The hms-commander-mcp server uses this API (#32).
+- **DataFrame schemas** (`hms_commander.schemas`) declare the column contracts of the eight `HmsPrj` project DataFrames (#22).
+- **ScienceBase example projects** (`HmsExamples.list_sciencebase_projects`, `extract_sciencebase_project`) with cached, SHA-256-verified downloads and provenance records (#16).
+- Frequency-storm met reading reports `subbasin_depths`, an explicit keyword-only subbasin selector, storm type, unit system and depth-area reduction method (#31).
+- Shared HMS Commander workflows and a generated skills-only plugin (#30, #32).
+
+### Changed
+
+- `clone_basin`, `clone_met` and `clone_control` return `Path` and use the same explicit project or global fallback. Project registry blocks use canonical `Filename:` casing (#18).
+
+### Fixed
+
+- HMS text block parsing is linear. USACE CWMS basins that end with `Zone Configuration` sections previously took over 60 seconds; an empty-header block no longer absorbs the next block (#34).
+- `HmsResults.get_precipitation_timeseries()` prefers interval rainfall (`PRECIP-INC`) and rejects cumulative or diagnostic quantities instead of returning the first `PRECIP*` match (#33).
+- Blank optional frequency-storm settings return `None` instead of raising `ValueError` (#31).
+- Cloned meteorologic registrations use HMS `Precipitation:` blocks (#20).
+- DSS time-series value handling used by notebooks 05 and 06; workstation-specific notebook paths removed (#21).
+
 ## [0.3.1] - 2026-05-07
 
 ### Added
