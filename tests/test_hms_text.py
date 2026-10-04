@@ -1,4 +1,5 @@
 """Pure text API contracts against unmodified repository HMS text fixtures."""
+import time
 from pathlib import Path
 import pytest
 from hms_commander import HmsText
@@ -26,6 +27,25 @@ def test_control_exact_spelling_and_no_file_access(monkeypatch):
     assert result[0]["name"] == "Control 5"
     assert result[0]["parameters"]["Start Time"] == "24:00"
     assert result[0]["parameters"]["Time Interval"] == "5"
+
+
+def test_unterminated_trailing_sections_parse_in_linear_time():
+    """CWMS basins end with zone sections closed by ``End Zone Configuration:``."""
+    blocks = "".join(f"Subbasin: S{i}\n     Area: {i}\nEnd:\n\n" for i in range(200))
+    zones = "".join(f"Zone Configuration: Z{i}\n" + "     Zone: A\n     End Zone: \n" * 50
+                    + "End Zone Configuration: \n\n" for i in range(50))
+    start = time.perf_counter()
+    result = HmsText.parse_sections(blocks + zones, "basin")
+    assert time.perf_counter() - start < 2
+    assert [row["name"] for row in result] == [f"S{i}" for i in range(200)]
+    assert result[-1]["parameters"] == {"Area": "199"}
+
+
+def test_empty_header_block_does_not_absorb_next_block():
+    from hms_commander._project_registry import iter_project_blocks
+    text = "Basin Spatial Properties:\nEnd:\n\nBasin Schematic Properties:\n     Last View N: 1\nEnd:\n"
+    assert [(kind, attrs) for _, kind, _, attrs in iter_project_blocks(text)] == [
+        ("Basin Spatial Properties", {}), ("Basin Schematic Properties", {"Last View N": "1"})]
 
 
 def test_reject_unsupported_or_binary_and_empty():

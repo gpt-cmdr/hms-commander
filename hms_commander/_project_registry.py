@@ -52,9 +52,12 @@ _COMPONENT_SPECS: Mapping[str, ProjectComponentSpec] = {
     "control": ProjectComponentSpec("Control", "control", "Filename", ("Control",)),
 }
 
+# Consume one body line at a time until the first ``End:`` line. Nested lazy
+# quantifiers backtracked quadratically when headers had no terminating
+# ``End:`` (for example, trailing ``Zone Configuration`` sections in CWMS basins).
 _PROJECT_BLOCK_PATTERN = re.compile(
-    r"^([A-Za-z][A-Za-z0-9 ]*:\s*.*?\n.*?^End:\s*$)",
-    flags=re.MULTILINE | re.DOTALL,
+    r"^([A-Za-z][A-Za-z0-9 ]*:[^\n]*\n(?:(?!End:\s*$)[^\n]*\n)*End:\s*$)",
+    flags=re.MULTILINE,
 )
 
 
