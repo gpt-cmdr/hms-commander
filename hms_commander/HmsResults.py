@@ -119,7 +119,11 @@ class HmsResults:
         run_name: Optional[str] = None
     ) -> pd.DataFrame:
         """
-        Get precipitation time series for a specific element.
+        Get interval precipitation depth for a specific element.
+
+        Prefers the exact DSS C-part ``PRECIP-INC``, with ``PRECIP`` as a
+        legacy fallback. Cumulative precipitation, losses, excess and spatial
+        standard deviation are different quantities and are never substituted.
 
         Args:
             dss_file: Path to the DSS file
@@ -141,10 +145,15 @@ class HmsResults:
             result_patterns=HmsDss.HMS_RESULT_PATTERNS,
         )
 
-        if not matching_paths:
-            raise ValueError(f"No precipitation data found for element '{element_name}'")
+        interval_paths = [path for path in matching_paths
+                          if parse_pathname(path)['C'].upper() == 'PRECIP-INC']
+        if not interval_paths:
+            interval_paths = [path for path in matching_paths
+                              if parse_pathname(path)['C'].upper() == 'PRECIP']
+        if not interval_paths:
+            raise ValueError(f"No interval precipitation data found for element '{element_name}'")
 
-        path = matching_paths[0]
+        path = interval_paths[0]
         df = HmsDss.read_timeseries(dss_file, path)
         return HmsResults._value_frame(df, 'precipitation')
 
