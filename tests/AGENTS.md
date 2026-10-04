@@ -9,6 +9,7 @@ This directory contains pytest tests and HMS fixture projects.
 - Use existing pytest markers for optional capabilities:
   - `requires_hms`
   - `local_hms`
+  - `requires_hms_gui`
   - `requires_java`
   - `requires_gis`
   - `requires_network`
