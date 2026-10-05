@@ -35,19 +35,25 @@ Example:
     >>>
     >>> # HCFCD M3 compatible (all defaults)
     >>> hyeto = FrequencyStorm.generate_hyetograph(13.20)
-    >>> print(f"24hr: {len(hyeto)} time steps, peak={hyeto['incremental_depth'].max():.2f}")
+    >>> print(
+    ...     f"24hr: {len(hyeto)} time steps, "
+    ...     f"peak={hyeto['incremental_depth'].max():.2f}"
+    ... )
     24hr: 289 time steps, peak=1.20
     >>>
     >>> # Variable duration (6-hour storm)
     >>> hyeto_6hr = FrequencyStorm.generate_hyetograph(9.10, total_duration_min=360)
-    >>> print(f"6hr: {len(hyeto_6hr)} time steps, peak={hyeto_6hr['incremental_depth'].max():.2f}")
+    >>> print(
+    ...     f"6hr: {len(hyeto_6hr)} time steps, "
+    ...     f"peak={hyeto_6hr['incremental_depth'].max():.2f}"
+    ... )
     6hr: 73 time steps, peak=1.48
 """
 
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import Optional, Union, List, Tuple
+from typing import List, Optional
 
 from .LoggingConfig import get_logger
 from .Decorators import log_call
@@ -78,6 +84,8 @@ class FrequencyStorm:
         - Peak position is configurable (default 67% as per M3 models)
 
     See Also:
+        - BalancedFrequencyStorm: Faithful HEC-HMS Frequency Storm (balanced/nested,
+          alternating-block) method that uses depths at every duration
         - Atlas14Storm: For Atlas 14 hyetograph generation
         - examples/frequency_storm_validation/FINDINGS.md: Validation details
     """
@@ -119,7 +127,7 @@ class FrequencyStorm:
         total_depth_inches: float,
         total_duration_min: int = 1440,
         time_interval_min: int = 5,
-        peak_position_pct: float = 67.0
+        peak_position_pct: float = 67.0,
     ) -> pd.DataFrame:
         """
         Generate a TP-40/Hydro-35 hyetograph using HCFCD M3 model pattern.
@@ -159,14 +167,20 @@ class FrequencyStorm:
             >>> hyeto = FrequencyStorm.generate_hyetograph(total_depth_inches=13.20)
             >>> print(hyeto.columns.tolist())
             ['hour', 'incremental_depth', 'cumulative_depth']
-            >>> print(f"{len(hyeto)} intervals, total={hyeto['cumulative_depth'].iloc[-1]:.2f} inches")
+            >>> print(
+            ...     f"{len(hyeto)} intervals, "
+            ...     f"total={hyeto['cumulative_depth'].iloc[-1]:.2f} inches"
+            ... )
             289 intervals, total=13.20 inches
 
             >>> # Variable duration (6-hour storm)
             >>> hyeto_6hr = FrequencyStorm.generate_hyetograph(
             ...     total_depth_inches=9.10, total_duration_min=360
             ... )
-            >>> print(f"{len(hyeto_6hr)} intervals, total={hyeto_6hr['cumulative_depth'].iloc[-1]:.2f} inches")
+            >>> print(
+            ...     f"{len(hyeto_6hr)} intervals, "
+            ...     f"total={hyeto_6hr['cumulative_depth'].iloc[-1]:.2f} inches"
+            ... )
             73 intervals, total=9.10 inches
 
         Notes:
@@ -186,13 +200,13 @@ class FrequencyStorm:
 
         # Resample pattern if needed
         if len(pattern) != num_intervals:
-            pattern = FrequencyStorm._resample_pattern(pattern, len(pattern), num_intervals)
+            pattern = FrequencyStorm._resample_pattern(
+                pattern, len(pattern), num_intervals
+            )
 
         # Handle peak position shift if different from 67%
         if abs(peak_position_pct - 67.0) > 0.5:
-            pattern = FrequencyStorm._shift_peak(
-                pattern, 67.0, peak_position_pct
-            )
+            pattern = FrequencyStorm._shift_peak(pattern, 67.0, peak_position_pct)
 
         # Scale to total depth
         incremental = pattern * total_depth_inches
@@ -205,18 +219,14 @@ class FrequencyStorm:
 
     @staticmethod
     def _resample_pattern(
-        pattern: np.ndarray,
-        source_intervals: int,
-        target_intervals: int
+        pattern: np.ndarray, source_intervals: int, target_intervals: int
     ) -> np.ndarray:
         """Resample pattern to different number of intervals."""
         return resample_incremental_pattern(pattern, target_intervals, source_intervals)
 
     @staticmethod
     def _shift_peak(
-        pattern: np.ndarray,
-        current_peak_pct: float,
-        target_peak_pct: float
+        pattern: np.ndarray, current_peak_pct: float, target_peak_pct: float
     ) -> np.ndarray:
         """Shift the peak position of the pattern."""
         return shift_incremental_peak(pattern, current_peak_pct, target_peak_pct)
@@ -227,7 +237,7 @@ class FrequencyStorm:
         depths: List[float],
         durations: Optional[List[int]] = None,
         peak_position_pct: float = 67.0,
-        time_interval_min: int = 5
+        time_interval_min: int = 5,
     ) -> np.ndarray:
         """
         Generate hyetograph from depth-duration-frequency data.
@@ -269,7 +279,7 @@ class FrequencyStorm:
             total_depth_inches=total_depth_inches,
             total_duration_min=durations[-1],
             time_interval_min=time_interval_min,
-            peak_position_pct=peak_position_pct
+            peak_position_pct=peak_position_pct,
         )
 
     @staticmethod
@@ -309,8 +319,7 @@ class FrequencyStorm:
 
     @staticmethod
     def validate_against_ground_truth(
-        hyetograph: np.ndarray,
-        ground_truth: np.ndarray
+        hyetograph: np.ndarray, ground_truth: np.ndarray
     ) -> dict:
         """
         Compare a generated hyetograph against ground truth.
@@ -337,7 +346,7 @@ class FrequencyStorm:
         diff = hyetograph - ground_truth
 
         return {
-            "rmse": np.sqrt(np.mean(diff ** 2)),
+            "rmse": np.sqrt(np.mean(diff**2)),
             "max_diff": np.max(np.abs(diff)),
             "mean_diff": np.mean(diff),
             "correlation": np.corrcoef(hyetograph, ground_truth)[0, 1],

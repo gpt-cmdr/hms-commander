@@ -124,6 +124,9 @@ from .Atlas14Storm import Atlas14Storm, Atlas14Config
 # TP-40 Frequency Storm Hyetograph Generation
 from .FrequencyStorm import FrequencyStorm
 
+# HEC-HMS Frequency Storm (balanced / alternating-block) Hyetograph Generation
+from .BalancedFrequencyStorm import BalancedFrequencyStorm
+
 # SCS Type I, IA, II, III Hyetograph Generation
 from .ScsTypeStorm import ScsTypeStorm
 
@@ -183,6 +186,7 @@ __all__ = [
     "Atlas14Config",
     # TP-40 Frequency Storm
     "FrequencyStorm",
+    "BalancedFrequencyStorm",
     # SCS Type Storms
     "ScsTypeStorm",
     # Texas Dimensionless Hyetographs
@@ -205,4 +209,4 @@ __all__ = [
 ]
 
 # Output Parsing
-from .HmsOutput import HmsOutput, HmsMessage, ComputeResult
+from .HmsOutput import HmsOutput, HmsMessage, ComputeResult  # noqa: F401

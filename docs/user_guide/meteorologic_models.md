@@ -47,6 +47,28 @@ HmsMet.update_tp40_to_atlas14(
 - **Frequency storms** - `get_frequency_storm_params()`, `set_precipitation_depths()`
 - **Clone workflow** - `clone_met()` for QAQC comparisons
 
+## Reproducing the HMS Frequency Storm hyetograph
+
+`BalancedFrequencyStorm.generate_hyetograph()` generates a balanced (nested,
+alternating-block) hyetograph from a depth-duration table, including the supported
+storm-area reduction and partial-to-annual conversion options. It is checked
+against 68 HEC-HMS 4.13 fixture cases to a 0.001-in per-interval and total-depth
+tolerance; this validation does not establish equivalence outside that matrix. The
+older `FrequencyStorm` class is a different, fixed-pattern HCFCD generator. See
+[BalancedFrequencyStorm](../api/balanced_frequency_storm.md) for HEC manual
+references, observed 4.13 differences from the Technical Reference Manual, and
+unvalidated/unsupported HMS options.
+
+```python
+from hms_commander import BalancedFrequencyStorm
+
+hyeto = BalancedFrequencyStorm.generate_hyetograph(
+    {5: 1.17, 10: 1.88, 15: 2.32, 30: 3.2, 60: 4.27, 120: 5.77, 180: 6.82,
+     360: 8.63, 720: 10.3, 1440: 12.1},
+    total_duration_min=1440, time_interval_min=15, peak_position_pct=67,
+    storm_area_sqmi=0)
+```
+
 ## Atlas 14 Updates
 
 HMS Commander includes specialized support for updating precipitation from TP-40 to NOAA Atlas 14:
