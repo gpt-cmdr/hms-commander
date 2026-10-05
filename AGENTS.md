@@ -27,6 +27,16 @@ This file is the canonical shared instruction contract for repository-local codi
   authorized managed environments while preserving user pins and reporting version gaps.
 - Repository editorial requirements do not govern users' external artifacts.
 
+## Defects And Contributions
+
+- When a task exposes a suspected defect or feature gap in HMS Commander, RAS Commander, or their
+  MCP servers, follow the shared
+  [.claude/skills/hms-commander-contributing/SKILL.md](.claude/skills/hms-commander-contributing/SKILL.md) workflow.
+- Protect the user's task first. Push access to the owning `gpt-cmdr` repository selects the
+  maintainer path: fix in a disposable clone, add a regression test, run the checks, and open a PR
+  without merging. Otherwise draft an issue or fork PR and submit it only with the user's approval.
+- Keep private project data out of issues, PRs, and tests. Unsupported scope is not a defect.
+
 ## Current Codex Skill Status
 
 - Codex auto-loads `AGENTS.md`.

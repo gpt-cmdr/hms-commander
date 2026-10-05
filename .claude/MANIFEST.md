@@ -18,6 +18,7 @@ MCP queries are bounded informational subagent tasks; heavier work uses public P
 | `hms-cloud-native-gis` | shared skill | `.claude/skills/hms-cloud-native-gis/SKILL.md` |
 | `hms-ras-integration` | shared skill | `.claude/skills/hms-ras-integration/SKILL.md` |
 | `hms-commander` | shared skill | `.claude/skills/hms-commander/SKILL.md` |
+| `hms-commander-contributing` | shared skill | `.claude/skills/hms-commander-contributing/SKILL.md` |
 | `hms_execute_runs` | skill | `.claude/skills/hms_execute_runs/SKILL.md` |
 | `hms_parse_basin-models` | skill | `.claude/skills/hms_parse_basin-models/SKILL.md` |
 | `hms_update_met-models` | skill | `.claude/skills/hms_update_met-models/SKILL.md` |
