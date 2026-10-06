@@ -30,6 +30,17 @@ MCP queries are bounded informational subagent tasks; heavier work uses public P
 | `hms_query_docs` | skill | `.claude/skills/hms_query_docs/SKILL.md` |
 | `hms_manage_versions` | skill | `.claude/skills/hms_manage_versions/SKILL.md` |
 
+## Review and Standards Skills
+
+| Component | Type | Path |
+|-----------|------|------|
+| `technical-writing-auditor` | shared skill | `.claude/skills/technical-writing-auditor/SKILL.md` |
+| `api-consistency-auditor` | shared skill | `.claude/skills/api-consistency-auditor/SKILL.md` |
+
+- Writing standards: `.claude/references/writing/technical-writing-guide.md` (concise) and `.claude/references/writing/technical-writing-standard.md` (extended); audit protocol in `.claude/skills/technical-writing-auditor/references/audit-protocol.md`.
+- API rules and baseline: `.claude/skills/api-consistency-auditor/references/api-rules.md`; exceptions in root `.auditor.yaml`; report-only checker `.claude/skills/api-consistency-auditor/scripts/check_api_consistency.py`.
+- Codex discovery: existing `sync_codex_skill_bridge.py` bridge. Scope: repository-maintained content and code only, never users' external work.
+
 ## Cross-Harness Adapter Skills
 
 | Component | Type | Path |
@@ -63,6 +74,7 @@ MCP queries are bounded informational subagent tasks; heavier work uses public P
 | `hierarchical-knowledge-curator` | agent | `.claude/agents/hierarchical-knowledge-curator.md` |
 | `claude-code-guide` | agent | `.claude/agents/claude-code-guide.md` |
 | `best-practice-extractor` | agent | `.claude/agents/best-practice-extractor.md` |
+| `api-consistency-auditor` | Claude adapter | `.claude/agents/api-consistency-auditor.md` |
 
 ## Claude Commands
 

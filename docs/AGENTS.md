@@ -10,6 +10,13 @@ This directory contains the MkDocs documentation source.
 - Keep LLM development docs clear about harness boundaries: `.claude/` is Claude-native, `.agents/` is Codex-facing, and `.codex/` is Codex project config.
 - Avoid documenting generated `.agents/skills/` entries as editable source.
 
+## Writing Standards
+
+- Follow [the concise writing guide](../.claude/references/writing/technical-writing-guide.md) and
+  [extended writing standard](../.claude/references/writing/technical-writing-standard.md).
+- Use the shared `technical-writing-auditor` skill for writing reviews. These standards govern this
+  repository's documentation only, not users' external deliverables.
+
 ## Validation
 
 - Run `python -m mkdocs build --strict -q` after documentation or navigation changes.
