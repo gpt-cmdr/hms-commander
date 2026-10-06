@@ -28,6 +28,10 @@ from hms_commander import NewFeature
 result = NewFeature.do_something(basin_file="model.basin", hms_object=hms)
 ```
 
+## API Consistency Criteria
+
+<!-- State pass, fail, or not applicable for each: static class pattern, @log_call, @staticmethod, parameter naming, str/Path inputs, DataFrame returns and schemas.py, library-first engine execution, reusable scope. See CONTRIBUTING.md. -->
+
 ## Alternatives Considered
 
 <!-- Other approaches you've thought about -->

@@ -5,6 +5,8 @@ title: "[Bug] "
 labels: bug
 ---
 
+> Use only public example projects or synthetic data. Remove client names, local paths, coordinates, hostnames, and credentials. Report MCP server defects in `gpt-cmdr/hms-commander-mcp`.
+
 ## Description
 
 <!-- Clear description of the bug -->
@@ -27,7 +29,7 @@ from hms_commander import init_hms_project, HmsCmdr
 
 ## Environment
 
-- **hms-commander version**: <!-- pip show hms-commander -->
+- **hms-commander version**: <!-- python -c "import importlib.metadata as m; print(m.version('hms-commander'))" -->
 - **Python version**: <!-- python --version -->
 - **HEC-HMS version**: <!-- e.g., 4.12 -->
 - **OS**: <!-- e.g., Windows 11 -->
