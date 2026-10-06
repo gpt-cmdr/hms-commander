@@ -28,8 +28,8 @@ Add the HEC-RAS or HEC-HMS version when the engine is involved. Omit hostnames a
 |---|---|---|---|---|
 | Regression test | Every defect fix | `pytest` test under `tests/` | `pytest` test under `tests/` | Repository test suite |
 | Targeted and affected tests | Every change | `python -m pytest <paths>` | `python -m pytest <paths>` | Repository instructions |
-| Technical Writing Auditor | Changed docs, docstrings, messages, skills, release notes | `technical-writing-auditor` skill | `AGENTS.md` authoring rules, reviewed with the `ras-commander` auditor skill when available | Repository instructions |
-| API consistency criteria | New or changed public API | `.claude/agents/api-consistency-auditor.md` and `CONTRIBUTING.md` | `CONTRIBUTING.md` and `STYLE_GUIDE.md` | MCP scope criteria below |
+| Technical Writing Auditor | Changed docs, docstrings, messages, skills, release notes | `technical-writing-auditor` skill | `technical-writing-auditor` skill | Repository instructions |
+| API consistency criteria | New or changed public API | `.claude/agents/api-consistency-auditor.md` and `CONTRIBUTING.md` | `api-consistency-auditor` skill and `.auditor.yaml` | MCP scope criteria below |
 | Plugin contracts | Changed skills or plugin selection | `scripts/agent_framework` tests, bridge `--check`, `build_plugin.py` | Same | Not applicable |
 
 Report each check as passed, failed, or not run, with the reason. Tests that need an installed engine may be unavailable on the host; say so rather than claiming a pass.
