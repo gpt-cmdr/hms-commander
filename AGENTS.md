@@ -161,6 +161,26 @@ generator fails the live build — treat the docs as production.
   Preserve identifiers, values, units, uncertainty, and retained outputs. Repository editorial
   requirements govern maintained content and contributions, not users' external deliverables.
 
+## Technical Writing And API Consistency
+
+These standards apply only to repository-maintained HMS Commander content, code, and intended
+contributions. They do not govern user-created work outside the repository, even when produced
+with HMS Commander or its agents. External writing assistance follows the user's requirements.
+
+- Follow [the concise writing guide](.claude/references/writing/technical-writing-guide.md) for authored
+  technical prose and [the extended standard](.claude/references/writing/technical-writing-standard.md)
+  for HEC-HMS terminology, evidence, citations, and surface-specific styles.
+- HEC documentation is the primary technical source for HEC-HMS terminology, methods, and documented
+  behavior. Library behavior comes from current source, `hms_commander/schemas.py`, and test evidence.
+- Use the shared `technical-writing-auditor` skill
+  ([.claude/skills/technical-writing-auditor/SKILL.md](.claude/skills/technical-writing-auditor/SKILL.md))
+  for requested writing reviews or scoped editorial revisions. A writing audit is not hydrologic approval.
+- Use the shared `api-consistency-auditor` skill
+  ([.claude/skills/api-consistency-auditor/SKILL.md](.claude/skills/api-consistency-auditor/SKILL.md))
+  for public API changes. Its rules are verified against current code; exceptions live in `.auditor.yaml`.
+  The checker is report-only.
+- Codex exposure for both skills uses the existing generated bridge.
+
 ## Testing And Validation
 
 - Use `pytest` for targeted tests.

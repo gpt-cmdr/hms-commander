@@ -1,0 +1,85 @@
+# API Consistency Auditor configuration for hms-commander
+#
+# Documents intentional exceptions to the HMS-API rules so the auditor can
+# distinguish design decisions from violations. Rule definitions live in
+# .claude/skills/api-consistency-auditor/references/api-rules.md.
+#
+# Read by .claude/skills/api-consistency-auditor/scripts/check_api_consistency.py
+# (PyYAML optional; the checker has a fallback parser). Keep each exception's
+# reason specific: an entry records an architectural decision, not a shortcut.
+
+# ============================================================================
+# Classes that hold instance state (exempt from HMS-API-01..04)
+# ============================================================================
+exception_classes:
+  - class_name: HmsPrj
+    module: hms_commander.HmsPrj
+    reason: |
+      Holds per-project state (project folder, hms_df, basin_df, met_df,
+      control_df, run_df, gage_df, pdata_df). Separate instances let callers
+      work with several HEC-HMS projects at once; init_hms_project() fills the
+      global `hms` instance by default. Static classes accept hms_object=None.
+    category: project_management
+    example: |
+      project1 = HmsPrj()
+      init_hms_project(r"C:/Projects/project1", hms_object=project1)
+
+  - class_name: HecMonolithDownloader
+    module: hms_commander.dss._hec_monolith
+    reason: |
+      Internal helper in a private module. Each instance carries its cache
+      directory (default ~/.hms-commander/dss/) for the HEC Monolith Java
+      libraries used by DSS operations. Not exported from hms_commander.
+    category: utilities
+
+# ============================================================================
+# Static classes that use @classmethod for class-level caches (HMS-API-02)
+# ============================================================================
+classmethod_classes:
+  - class_name: HmsExamples
+    module: hms_commander.HmsExamples
+    reason: |
+      Caches installed HEC-HMS versions and the example-project catalog in
+      class attributes (_installed_versions, _project_catalog) and reads
+      class-level metadata tables. Never instantiated; called as
+      HmsExamples.extract_project(...).
+  - class_name: HmsM3Model
+    module: hms_commander.HmsM3Model
+    reason: |
+      Caches the M3 model catalog DataFrame in the class attribute _catalog_df.
+      Never instantiated; called as HmsM3Model.<method>(...).
+
+# ============================================================================
+# Public methods intentionally without @log_call (HMS-API-04)
+# ============================================================================
+# Add entries as `- qualname: Class.method` with a reason. Empty until a
+# maintainer records a decision; existing gaps are reported as baseline findings.
+log_call_exempt: []
+
+# ============================================================================
+# Path-named parameters that intentionally take str (HMS-API-07)
+# ============================================================================
+# Add entries as `- qualname: Class.method.parameter` when the value is a file
+# NAME recorded inside an HMS text file (for example the DSS file name written
+# into a .run file) rather than a filesystem path. Empty until a maintainer
+# records a decision.
+path_str_exempt: []
+
+# ============================================================================
+# Audit scope
+# ============================================================================
+audit_scope:
+  include:
+    - hms_commander/**/*.py
+  exclude:
+    - hms_commander/**/__init__.py   # imports and __all__ only
+    - "**/__pycache__/**"
+  private_modules: |
+    Modules whose path contains a component starting with "_" (for example
+    _parsing.py, dss/_hec_monolith.py) are internal: structural rules
+    HMS-API-01..03 and HMS-API-05 apply, public-API rules HMS-API-04 and
+    06..10 do not unless --include-private is passed.
+
+metadata:
+  created: 2026-10-06
+  adapted_from: gpt-cmdr/ras-commander .auditor.yaml (RAS-only entries removed)

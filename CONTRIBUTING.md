@@ -1,5 +1,10 @@
 # Contributing to hms-commander
 
+Technical prose contributed to this repository follows the [writing guide](.claude/references/writing/technical-writing-guide.md) and
+[extended standard](.claude/references/writing/technical-writing-standard.md). Use relevant HEC documentation
+as the primary source for HEC-HMS content, provide passive references, and maintain the project's
+independent third-party voice. These rules do not govern users' external work. The shared `technical-writing-auditor` skill supports writing reviews.
+
 ## Our Philosophy: Don't Ask Me, Ask a GPT!
 
 hms-commander was **built by LLMs**, is **designed for LLM workflows**, and **welcomes contributions prepared with LLM agent assistance**.
@@ -84,7 +89,11 @@ Have your agent confirm each item before opening a PR.
 
 ## API Consistency: The 5 Critical Rules
 
-Any PR that adds or modifies public API methods must follow these rules:
+Any PR that adds or modifies public API methods must follow these rules. The shared `api-consistency-auditor` skill (`.claude/skills/api-consistency-auditor/SKILL.md`) gives the complete rule catalog with evidence, the `.auditor.yaml` exceptions, and a report-only checker:
+
+```bash
+python .claude/skills/api-consistency-auditor/scripts/check_api_consistency.py hms_commander/YourModule.py
+```
 
 | # | Rule | Violation Example | Correct Pattern |
 |---|------|-------------------|-----------------|
