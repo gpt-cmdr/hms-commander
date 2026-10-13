@@ -146,4 +146,36 @@ class MetadataContracts(unittest.TestCase):
         self.assertFalse((self.repo/'escaped.json').exists())
 
 
+class CanonicalEntrySkillContracts(unittest.TestCase):
+    """Packaged skills must work without reading bundled files from other skills.
+
+    Plugin hosts install skills outside the user's working directory, so a
+    required read of another skill's file triggers a permission prompt on the
+    first task. Route related skills by name and keep runtime guidance inline.
+    """
+    REPO = TOOLS.parents[1]
+
+    def selected_skills(self):
+        config = json.loads((self.REPO / '.claude/plugin/package.json').read_text())
+        return {name: self.REPO / '.claude/skills' / name / 'SKILL.md' for name in config['skills']}
+
+    def test_entry_skill_has_no_local_file_links(self):
+        text = self.selected_skills()['hms-commander'].read_text(encoding='utf-8')
+        local = [m.group(2) for m in build_plugin.markdown_targets(text)
+                 if not build_plugin.link_parts(m.group(2)).scheme and build_plugin.link_parts(m.group(2)).path]
+        self.assertEqual(local, [], 'hms-commander SKILL.md must not require reading bundled files')
+
+    def test_entry_skill_carries_runtime_setup_and_mcp_boundary(self):
+        text = self.selected_skills()['hms-commander'].read_text(encoding='utf-8')
+        self.assertIn('uv pip install "hms-commander', text)
+        self.assertIn('ras-commander:hms-text', text)
+        self.assertIn('Never call HMS/RAS project MCP tools from the main conversation', text)
+
+    def test_no_selected_skill_links_into_a_sibling_skill(self):
+        for name, path in self.selected_skills().items():
+            for match in build_plugin.markdown_targets(path.read_text(encoding='utf-8')):
+                target = build_plugin.link_parts(match.group(2)).path
+                self.assertFalse(target.startswith('../'), f'{name} links into a sibling skill file: {target}')
+
+
 if __name__=='__main__':unittest.main()

@@ -9,7 +9,7 @@ security_review: internal
 
 # HMS–RAS Integration
 
-Identify the HMS source run/outlet, RAS receiving plan/boundary, requested operation, and existing authorization. Read [HMS Commander](../hms-commander/SKILL.md) for package discovery and MCP limits. Load the installed RAS Commander workflow when available; identify the missing integration before dependent work if it is unavailable.
+Identify the HMS source run/outlet, RAS receiving plan/boundary, requested operation, and existing authorization. Follow the `hms-commander` skill for package discovery, runtime setup, and MCP limits. Load the installed RAS Commander workflow when available; identify the missing integration before dependent work if it is unavailable.
 
 ## Discover the actual contracts
 
