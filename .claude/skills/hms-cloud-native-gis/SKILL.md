@@ -9,7 +9,7 @@ security_review: internal
 
 # HMS Cloud Native Export
 
-Identify the HMS project, source component/results, requested format and consumer, output destination, and authorized operations. Read [HMS Commander](../hms-commander/SKILL.md) for current package discovery and MCP limits.
+Identify the HMS project, source component/results, requested format and consumer, output destination, and authorized operations. Follow the `hms-commander` skill for current package discovery, runtime setup, and MCP limits.
 
 Discover the installed `hms2cng` version, public CLI help/signatures, release documentation, and available canonical package guidance before selecting commands. Use released packages for managed installations when authorized, preserve explicit pins, and report available updates. An editable checkout is appropriate only when the task calls for development; resolve its actual location rather than assuming a drive or repository path. Do not install all extras by default.
 
