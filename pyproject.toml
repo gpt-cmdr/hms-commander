@@ -90,7 +90,7 @@ Repository = "https://github.com/gpt-cmdr/hms-commander"
 Issues = "https://github.com/gpt-cmdr/hms-commander/issues"
 
 [tool.setuptools]
-packages = ["hms_commander", "hms_commander.data", "hms_commander.dss"]
+packages = ["hms_commander", "hms_commander.data", "hms_commander.dss", "hms_commander.gui"]
 
 [tool.setuptools.package-data]
 "hms_commander.data" = ["*.npy", "*.csv"]
