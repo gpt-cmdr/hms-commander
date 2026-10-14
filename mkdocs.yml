@@ -25,10 +25,9 @@ theme:
         name: Switch to light mode
   features:
     # navigation.tabs + a lone top-level "Home" left the homepage sidebar empty
-    # (the active "Home" tab has no children). Without tabs, the full section tree
-    # renders in the left sidebar on every page; groups stay collapsible (no
-    # navigation.expand) so the section tree is scannable.
-    - navigation.sections
+    # (the active "Home" tab has no children), so the section tree lives in the
+    # left sidebar. No navigation.sections / navigation.expand: every group is a
+    # collapsed, expandable item (Material auto-opens the current page's path).
     - navigation.top
     - search.suggest
     - search.highlight
