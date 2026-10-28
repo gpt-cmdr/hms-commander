@@ -330,6 +330,11 @@ class HmsDssGrid:
         # Create output directory if needed
         dss_file.parent.mkdir(parents=True, exist_ok=True)
 
+        # Full long absolute path. Monolith caches the native handle under this
+        # exact string; the same string releases it after the writes.
+        from .core import DssCore
+        dss_path = str(dss_file.resolve())
+
         logger.info(f"Writing DSS grid to: {dss_file}")
         logger.info(f"  Pathname: {pathname}")
         logger.info(f"  Grid: {nlat} lat x {nlon} lon = {nlat * nlon} cells")
@@ -373,7 +378,7 @@ class HmsDssGrid:
 
                 # Create GriddedData writer (Vortex DssDataWriter.java lines 294-316)
                 gridded_data = GriddedData()
-                gridded_data.setDSSFileName(str(dss_file))
+                gridded_data.setDSSFileName(dss_path)
                 gridded_data.setPathname(pathname)
 
                 # Set time window
@@ -394,9 +399,14 @@ class HmsDssGrid:
                     logger.info(f"  Wrote {t_idx + 1}/{nt} timesteps")
 
             except Exception as e:
+                DssCore._release_dss_file(dss_path)
                 raise RuntimeError(
                     f"DSS grid write failed at timestep {t_idx} ({timestamp}): {e}"
                 )
+
+        # done() only lowers Monolith's file reference count. Close the native
+        # file so its DSS lock is not held after this method returns.
+        DssCore._release_dss_file(dss_path)
 
         # Final summary
         file_size_mb = dss_file.stat().st_size / (1024 * 1024) if dss_file.exists() else 0

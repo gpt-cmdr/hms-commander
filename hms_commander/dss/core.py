@@ -170,6 +170,37 @@ class DssCore:
         return [str(vector.get(i)) for i in range(vector.size())]
 
     @staticmethod
+    def _release_dss_file(dss_path: str) -> None:
+        """Close HEC Monolith's shared native handle for ``dss_path``.
+
+        ``HecDss.done()`` only lowers Monolith's file-cache reference count.
+        The native file stays open, with its DSS lock words held, until a
+        background timer closes it (or never, if the timer is disabled).
+        ``HecDSSFileAccess.close(path, True)`` closes it now. ``dss_path``
+        must be the exact string that was passed to open the file; callers
+        open with ``str(Path(...).resolve())``, which on Windows also expands
+        8.3 short names (a short name would leave a second handle open). Other
+        ``HecDss`` objects on the same file reopen it on their next access.
+
+        Failures are logged at DEBUG and never raised, so the release cannot
+        mask an exception from the read or write it follows.
+        """
+        try:
+            from jnius import autoclass
+
+            autoclass('hec.heclib.dss.HecDSSFileAccess').close(dss_path, True)
+        except Exception as exc:
+            logger.debug("Could not release DSS file %s: %s", dss_path, exc)
+
+    @staticmethod
+    def _done_and_release(dss, dss_path: str) -> None:
+        """Call ``dss.done()``, then release the native file in all cases."""
+        try:
+            dss.done()
+        finally:
+            DssCore._release_dss_file(dss_path)
+
+    @staticmethod
     def _ensure_monolith():
         """Ensure HEC Monolith is downloaded and available."""
         if DssCore._monolith is not None:
@@ -374,7 +405,7 @@ class DssCore:
             return paths
 
         finally:
-            dss.done()
+            DssCore._done_and_release(dss, dss_file)
 
     @staticmethod
     def read_timeseries(
@@ -505,7 +536,7 @@ class DssCore:
             return df
 
         finally:
-            dss.done()
+            DssCore._done_and_release(dss, dss_file)
 
     @staticmethod
     def _hec_time_to_datetime(
@@ -581,8 +612,10 @@ class DssCore:
             logger.warning(f"DSS file not found: {dss_file}")
             return None
 
+        dss_file = str(dss_file.resolve())
+
         # Open DSS file
-        dss = HecDss.open(str(dss_file.resolve()))
+        dss = HecDss.open(dss_file)
 
         # Suppress DSS library verbose output (ZREAD messages)
         # Note: DSS Fortran library writes directly to stdout and cannot be suppressed
@@ -663,7 +696,7 @@ class DssCore:
             return None
 
         finally:
-            dss.done()
+            DssCore._done_and_release(dss, dss_file)
 
     @staticmethod
     def read_multiple_timeseries(
@@ -926,7 +959,7 @@ class DssCore:
 
         except Exception as e:
             logger.error(f"Error writing paired data to {pathname}: {e}")
-            dss.done()
+            DssCore._done_and_release(dss, dss_file)
             return False
 
         try:
@@ -934,7 +967,7 @@ class DssCore:
                 DssCore._cataloged_pathnames(dss), [pathname]
             )
         finally:
-            dss.done()
+            DssCore._done_and_release(dss, dss_file)
 
         if missing:
             raise RuntimeError(
@@ -1061,7 +1094,7 @@ class DssCore:
             )
 
         finally:
-            dss.done()
+            DssCore._done_and_release(dss, dss_file)
 
         if missing:
             raise RuntimeError(
@@ -1118,8 +1151,10 @@ class DssCore:
             logger.warning(f"DSS file not found: {dss_file}")
             return None
 
+        dss_file = str(dss_file.resolve())
+
         # Open DSS file
-        dss = HecDss.open(str(dss_file.resolve()))
+        dss = HecDss.open(dss_file)
 
         # Suppress DSS library verbose output
         try:
@@ -1174,7 +1209,7 @@ class DssCore:
             return None
 
         finally:
-            dss.done()
+            DssCore._done_and_release(dss, dss_file)
 
     @staticmethod
     def shutdown_jvm():

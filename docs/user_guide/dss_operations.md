@@ -121,6 +121,36 @@ path = HmsDss.create_dss_pathname(
 - **Extract** - `extract_hms_results()`
 - **Pathname** - `parse_dss_pathname()`, `create_dss_pathname()`
 
+## File Handles and Locks
+
+Each `HmsDss`, `DssCore` and `HmsDssGrid` call closes the DSS file before it
+returns, including when it raises. HEC-HMS or another program can write, rename
+or delete the file as soon as the call returns, while the Python process and its
+Java VM keep running.
+
+HEC Monolith's `HecDss.done()` does not close the file by itself; it lowers a
+shared reference count, and a background timer closes the file a few seconds
+later. hms-commander therefore calls `HecDSSFileAccess.close(path, True)` with
+the full absolute path it used to open the file. Code that calls the HEC
+Monolith Java API directly through pyjnius needs the same call:
+
+```python
+from jnius import autoclass
+
+HecDss = autoclass("hec.heclib.dss.HecDss")
+HecDSSFileAccess = autoclass("hec.heclib.dss.HecDSSFileAccess")
+
+path = r"C:\Projects\Basin\results.dss"  # full long path, not an 8.3 short name
+dss = HecDss.open(path)
+try:
+    catalog = dss.getCatalogedPathnames()
+finally:
+    dss.done()
+    HecDSSFileAccess.close(path, True)  # same string that was passed to open()
+```
+
+Other `HecDss` objects on the same file reopen it on their next access.
+
 ## Related Topics
 
 - [API Reference: HmsDss](../api/hms_dss.md) - Complete method documentation
