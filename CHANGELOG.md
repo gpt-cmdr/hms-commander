@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- DSS reads, writes and catalog calls (`DssCore`, the `HmsDss`/`HmsResults` methods built on it, and `HmsDssGrid.write_grid_timeseries()`) close the DSS file before returning, including when they raise. Through pyjnius, HEC Monolith's `HecDss.done()` only lowers a file-cache reference count, so the native file and its DSS locks stayed held for about 6 seconds, or longer if another object held the file. During that time HEC-HMS and other tools could not write the file, and on Windows it could not be renamed or deleted. hms-commander now calls `HecDSSFileAccess.close(path, True)` with the full long absolute path it opened (Windows 8.3 short names are expanded first). A failed close is logged at DEBUG and does not replace the original error.
 - DSS time-series stamps (`DssCore.read_timeseries`, `DssCore.get_peak_value` and the `HmsDss`/`HmsResults` readers built on them) use the container's base date and time granularity. Second-granularity records, such as 15-second data, previously came back in January 1900. `attrs['interval']` is in minutes, with a float below one minute (0.25 for 15 seconds).
 - `DssCore.get_peak_value()` excludes HEC missing values (-901, -902, -3.4028e38) and NaN from `peak_flow`, `min_value` and `mean_value`; ties return the first maximum.
 - `DssCore.read_timeseries()` applies its documented `start_date`/`end_date` window (inclusive); the arguments were ignored.
