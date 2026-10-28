@@ -33,6 +33,14 @@ from .catalog import create_pathname, filter_catalog, parse_pathname
 
 logger = logging.getLogger(__name__)
 
+# HEC time epoch: TimeSeriesContainer times count from December 31, 1899 00:00.
+_HEC_EPOCH = pd.Timestamp('1899-12-31 00:00:00')
+
+# HEC missing-value markers. -901 and -902 are the classic heclib markers;
+# HEC Monolith reports undefined values as -Float.MAX_VALUE (about -3.4028e38).
+_HEC_MISSING_MARKERS = (-901.0, -902.0)
+_HEC_UNDEFINED_THRESHOLD = -3.4e38
+
 
 class DssCore:
     """
@@ -71,6 +79,95 @@ class DssCore:
             array = array.reshape(1)
 
         return array.ravel()
+
+    @staticmethod
+    def _tsc_granularity_seconds(tsc) -> int:
+        """Seconds per unit of ``TimeSeriesContainer.times`` (60 when not reported)."""
+        getter = getattr(tsc, 'getTimeGranularitySeconds', None)
+        try:
+            value = int(getter()) if getter is not None else 60
+        except Exception:
+            value = 60
+        return value if value > 0 else 60
+
+    @staticmethod
+    def _tsc_julian_base_date(tsc) -> int:
+        """Days from the HEC epoch to the container's time base (0 when absent)."""
+        try:
+            return int(getattr(tsc, 'julianBaseDate', 0) or 0)
+        except Exception:
+            return 0
+
+    @staticmethod
+    def _tsc_interval_minutes(tsc, granularity: int) -> Optional[Union[int, float]]:
+        """Regular interval in minutes; 0 for irregular data; float below one minute.
+
+        ``TimeSeriesContainer.interval`` is counted in the container's time
+        granularity, so a 15-second series reports 15 with granularity 1.
+        """
+        if not hasattr(tsc, 'interval'):
+            return None
+        seconds = int(tsc.interval) * int(granularity)
+        if seconds % 60 == 0:
+            return seconds // 60
+        return seconds / 60
+
+    @staticmethod
+    def _hec_times_to_datetimes(
+        times,
+        granularity_seconds: int = 60,
+        julian_base_date: int = 0,
+    ) -> pd.DatetimeIndex:
+        """Convert ``TimeSeriesContainer.times`` to a DatetimeIndex.
+
+        HEC stores each time as a count of ``granularity_seconds`` (60 for
+        minutes, 1 for seconds) after ``julian_base_date`` days past the HEC
+        epoch (December 31, 1899 00:00). Containers that report minutes from the
+        epoch use granularity 60 and base 0.
+        """
+        counts = np.asarray(times, dtype=np.int64)
+        seconds = (counts * np.int64(granularity_seconds)).astype('timedelta64[s]')
+        base = np.datetime64('1899-12-31T00:00:00', 'ns') + np.timedelta64(
+            int(julian_base_date), 'D'
+        )
+        return pd.DatetimeIndex(base + seconds.astype('timedelta64[ns]'))
+
+    @staticmethod
+    def _valid_value_mask(values) -> np.ndarray:
+        """True where a value is finite and not an HEC missing marker."""
+        values = np.asarray(values, dtype=np.float64)
+        return (
+            np.isfinite(values)
+            & ~np.isin(values, _HEC_MISSING_MARKERS)
+            & (values > _HEC_UNDEFINED_THRESHOLD)
+        )
+
+    @staticmethod
+    def _check_pathname_format(pathname: str) -> None:
+        """Raise ValueError unless ``pathname`` has exactly six parts (/A/B/C/D/E/F/).
+
+        heclib does not reject a pathname with extra slashes. It stores the
+        record under the first six parts and drops the rest without a warning.
+        """
+        if not isinstance(pathname, str):
+            raise ValueError(f"DSS pathname must be a string, got {type(pathname).__name__}")
+        if not (pathname.startswith('/') and pathname.endswith('/')) or pathname.count('/') != 7:
+            raise ValueError(
+                "DSS pathname must have exactly six parts (/A/B/C/D/E/F/, seven slashes); "
+                f"got {pathname!r} with {pathname.count('/')} slashes"
+            )
+
+    @staticmethod
+    def _missing_pathnames(catalog: List[str], pathnames: List[str]) -> List[str]:
+        """Return the pathnames that do not appear in ``catalog`` (case-insensitive)."""
+        stored = {str(path).upper() for path in catalog}
+        return [path for path in pathnames if path.upper() not in stored]
+
+    @staticmethod
+    def _cataloged_pathnames(dss) -> List[str]:
+        """List the pathnames of an open HecDss handle."""
+        vector = dss.getCatalogedPathnames()
+        return [str(vector.get(i)) for i in range(vector.size())]
 
     @staticmethod
     def _ensure_monolith():
@@ -292,8 +389,9 @@ class DssCore:
         Args:
             dss_file: Path to DSS file
             pathname: DSS pathname (e.g., "/BASIN/LOC/FLOW//1HOUR/OBS/")
-            start_date: Optional start date filter
-            end_date: Optional end date filter
+            start_date: Optional inclusive lower bound on the returned stamps
+                (any value ``pandas.Timestamp`` accepts)
+            end_date: Optional inclusive upper bound on the returned stamps
 
         Returns:
             pandas DataFrame with:
@@ -301,6 +399,16 @@ class DssCore:
             - 'datetime' column for plotting (same as index)
             - 'value' column with time series data
             - Metadata via df.attrs: pathname, units, type, interval, dss_file
+
+            Stamps come from the container's base date and time granularity,
+            so second-granularity records (for example 15-second data) get
+            their stored dates. ``attrs['interval']`` is in minutes: an int
+            for whole minutes, a float below one minute, and 0 for irregular
+            data. A window that matches no stamps returns an empty DataFrame.
+
+        Raises:
+            ValueError: If the pathname has no data, or ``start_date`` is
+                after ``end_date``.
 
         Example:
             df = DssCore.read_timeseries("file.dss", "/BASIN/LOC/FLOW//1HOUR/OBS/")
@@ -312,6 +420,13 @@ class DssCore:
             ax.plot(df['datetime'], df['value'])    # Using datetime column
             df.plot(y='value')                      # Pandas automatic
         """
+        window_start = pd.Timestamp(start_date) if start_date is not None else None
+        window_end = pd.Timestamp(end_date) if end_date is not None else None
+        if window_start is not None and window_end is not None and window_start > window_end:
+            raise ValueError(
+                f"start_date ({window_start}) is after end_date ({window_end})"
+            )
+
         # Configure JVM (must be before first jnius import)
         DssCore._configure_jvm()
 
@@ -358,24 +473,22 @@ class DssCore:
                     f"Mismatched array lengths: {values.size} values, {times.size} times"
                 )
 
-            # Convert HEC time to numpy datetime64
-            # HEC epoch: December 31, 1899 00:00:00
-            HEC_EPOCH = np.datetime64('1899-12-31T00:00:00')
-
-            # Convert times (minutes since epoch) to timedelta
-            # Handle potential invalid/missing times
-            times_minutes = times.astype('int64')  # Ensure integer type
-            time_deltas = pd.to_timedelta(times_minutes, unit='m')
-
-            # Add to epoch to get actual datetimes
-            datetimes = pd.DatetimeIndex(
-                [HEC_EPOCH.astype('datetime64[ns]') + td for td in time_deltas]
+            # Times are counts of the container's granularity after its base
+            # date, not always minutes from the HEC epoch.
+            granularity = DssCore._tsc_granularity_seconds(tsc)
+            datetimes = DssCore._hec_times_to_datetimes(
+                times, granularity, DssCore._tsc_julian_base_date(tsc)
             )
 
             # Create DataFrame with DatetimeIndex for time series operations
             df = pd.DataFrame({
                 'value': values
             }, index=datetimes)
+
+            if window_start is not None:
+                df = df[df.index >= window_start]
+            if window_end is not None:
+                df = df[df.index <= window_end]
 
             # Also add datetime as a column for easier plotting
             # Users can do: ax.plot(df['datetime'], df['value'])
@@ -386,9 +499,7 @@ class DssCore:
             df.attrs['pathname'] = pathname
             df.attrs['units'] = str(tsc.units) if tsc.units else ""
             df.attrs['type'] = str(tsc.type) if tsc.type else ""
-            df.attrs['interval'] = (
-                int(tsc.interval) if hasattr(tsc, 'interval') else None
-            )
+            df.attrs['interval'] = DssCore._tsc_interval_minutes(tsc, granularity)
             df.attrs['dss_file'] = dss_file
 
             return df
@@ -397,18 +508,28 @@ class DssCore:
             dss.done()
 
     @staticmethod
-    def _hec_time_to_datetime(hec_time_minutes: int) -> 'pd.Timestamp':
+    def _hec_time_to_datetime(
+        hec_time: int,
+        granularity_seconds: int = 60,
+        julian_base_date: int = 0,
+    ) -> 'pd.Timestamp':
         """
-        Convert HEC time (minutes since 1899-12-31) to Python datetime.
+        Convert one HEC container time to a pandas Timestamp.
 
         Args:
-            hec_time_minutes: Minutes since HEC epoch (1899-12-31 00:00:00)
+            hec_time: Count of ``granularity_seconds`` after the base date
+            granularity_seconds: Seconds per count (default 60, minutes)
+            julian_base_date: Days from the HEC epoch (1899-12-31 00:00) to the
+                base date (default 0)
 
         Returns:
             pandas Timestamp
         """
-        HEC_EPOCH = pd.Timestamp('1899-12-31 00:00:00')
-        return HEC_EPOCH + pd.Timedelta(minutes=int(hec_time_minutes))
+        return (
+            _HEC_EPOCH
+            + pd.Timedelta(days=int(julian_base_date))
+            + pd.Timedelta(seconds=int(hec_time) * int(granularity_seconds))
+        )
 
     @staticmethod
     def get_peak_value(
@@ -428,12 +549,16 @@ class DssCore:
         Returns:
             Dictionary with:
                 - peak_flow: Maximum value (float)
-                - peak_time: Time of maximum (datetime)
+                - peak_time: Time of maximum (datetime); the first maximum
+                  when values tie
                 - units: Engineering units (str)
-                - count: Number of timesteps (int)
+                - count: Number of timesteps, including missing values (int)
                 - min_value: Minimum value (float)
                 - mean_value: Mean value (float)
-            Returns None if path doesn't exist or read fails
+            peak_flow, min_value and mean_value exclude HEC missing values
+            (-901, -902 and -3.4028e38) and NaN.
+            Returns None if path doesn't exist, read fails, or every value is
+            missing
 
         Memory: ~200 bytes vs ~70 KB for full time series
 
@@ -494,17 +619,31 @@ class DssCore:
                 )
                 return None
 
-            # Calculate statistics immediately in NumPy - no DataFrame overhead
-            peak_idx = int(np.argmax(values))
-            peak_value = float(values[peak_idx])
-            peak_time_minutes = int(times[peak_idx])
+            # Exclude HEC missing markers (-901, -902, -Float.MAX) and NaN
+            # before computing statistics.
+            values = values.astype(np.float64)
+            valid = DssCore._valid_value_mask(values)
+            if not valid.any():
+                logger.warning(f"Only missing values in time series for pathname: {pathname}")
+                return None
+            valid_values = values[valid]
+            valid_times = times[valid]
 
-            # Convert peak time to datetime
-            peak_time = DssCore._hec_time_to_datetime(peak_time_minutes)
+            # Calculate statistics immediately in NumPy - no DataFrame overhead.
+            # np.argmax returns the first maximum when values tie.
+            peak_idx = int(np.argmax(valid_values))
+            peak_value = float(valid_values[peak_idx])
+
+            # Convert peak time with the container's base date and granularity
+            peak_time = DssCore._hec_time_to_datetime(
+                int(valid_times[peak_idx]),
+                DssCore._tsc_granularity_seconds(tsc),
+                DssCore._tsc_julian_base_date(tsc),
+            )
 
             # Calculate additional statistics
-            min_value = float(np.min(values))
-            mean_value = float(np.mean(values))
+            min_value = float(np.min(valid_values))
+            mean_value = float(np.mean(valid_values))
             count = int(values.size)
 
             # Extract units from container
@@ -704,7 +843,8 @@ class DssCore:
 
         Args:
             dss_file: Path to DSS file (created if doesn't exist)
-            pathname: DSS pathname (e.g., "//TX_R3/FIRST-QUARTILE/24HR///50%/")
+            pathname: DSS pathname with exactly six parts
+                (e.g., "//TX_R3/FIRST-QUARTILE/24HR//50%/")
             x_values: X coordinates (e.g., time in hours)
             y_values: Y coordinates (e.g., cumulative fraction 0-1)
             x_units: Units for X values (default: "HOURS")
@@ -713,22 +853,31 @@ class DssCore:
             y_label: Label for Y axis (default: "CUMULATIVE")
 
         Returns:
-            True if write succeeded, False otherwise
+            True if the record was written and found in the file catalog,
+            False if the HEC library raised an error during the write
+
+        Raises:
+            ValueError: If ``pathname`` does not have exactly six parts
+                (seven slashes). heclib would otherwise drop the extra part.
+            RuntimeError: If the write returned without error but the record
+                is not in the file catalog afterwards
 
         Example:
             >>> x = np.linspace(0, 24, 49)  # 0 to 24 hours
             >>> y = np.linspace(0, 1, 49)   # 0 to 100% cumulative
             >>> DssCore.write_paired_data(
             ...     "temporal.dss",
-            ...     "//TX_R3/ALL-CASES/24HR///50%/",
+            ...     "//TX_R3/ALL-CASES/24HR//50%/",
             ...     x, y
             ... )
         """
+        DssCore._check_pathname_format(pathname)
+
         # Configure JVM (must be before first jnius import)
         DssCore._configure_jvm()
 
         # Import Java classes via pyjnius (lazy)
-        from jnius import autoclass
+        from jnius import autoclass, cast
 
         HecDss = autoclass('hec.heclib.dss.HecDss')
         PairedDataContainer = autoclass('hec.io.PairedDataContainer')
@@ -770,18 +919,31 @@ class DssCore:
             container.setNumberOrdinates(len(x_values))
             container.setNumberCurves(1)
 
-            # Write to DSS file
-            dss.put(container)
-
-            logger.info(f"Wrote paired data to {pathname}")
-            return True
+            # Write to DSS file. HecDss.put has DataContainer and
+            # DataContainerTransformer overloads; without the cast pyjnius
+            # can select the wrong one and nothing is written.
+            dss.put(cast('hec.io.DataContainer', container))
 
         except Exception as e:
             logger.error(f"Error writing paired data to {pathname}: {e}")
+            dss.done()
             return False
 
+        try:
+            missing = DssCore._missing_pathnames(
+                DssCore._cataloged_pathnames(dss), [pathname]
+            )
         finally:
             dss.done()
+
+        if missing:
+            raise RuntimeError(
+                f"Paired data write reported no error, but {pathname} is not in "
+                f"the catalog of {dss_file}"
+            )
+
+        logger.info(f"Wrote paired data to {pathname}")
+        return True
 
     @staticmethod
     def write_multiple_paired_data(
@@ -806,20 +968,41 @@ class DssCore:
                 - y_label: (optional) Y label
 
         Returns:
-            Dict mapping pathname to success status (True/False)
+            Dict mapping pathname to success status. True means the record was
+            written and found in the file catalog; False means the HEC
+            library raised an error for that record.
+
+        Raises:
+            ValueError: If any pathname does not have exactly six parts, or
+                two records share a pathname (the later record would overwrite
+                the earlier one). Nothing is written in either case.
+            RuntimeError: If a write reported no error but its record is not
+                in the file catalog afterwards
 
         Example:
             >>> records = [
-            ...     {"pathname": "//A/B/C///D/", "x_values": x1, "y_values": y1},
-            ...     {"pathname": "//A/E/C///D/", "x_values": x2, "y_values": y2},
+            ...     {"pathname": "//A/B/C//D/", "x_values": x1, "y_values": y1},
+            ...     {"pathname": "//A/E/C//D/", "x_values": x2, "y_values": y2},
             ... ]
             >>> results = DssCore.write_multiple_paired_data("file.dss", records)
         """
+        seen = {}
+        for record in paired_data_records:
+            pathname = record['pathname']
+            DssCore._check_pathname_format(pathname)
+            key = pathname.upper()
+            if key in seen:
+                raise ValueError(
+                    f"Duplicate paired-data pathname {pathname!r} (also {seen[key]!r}); "
+                    "the later record would overwrite the earlier one"
+                )
+            seen[key] = pathname
+
         # Configure JVM (must be before first jnius import)
         DssCore._configure_jvm()
 
         # Import Java classes via pyjnius (lazy)
-        from jnius import autoclass
+        from jnius import autoclass, cast
 
         HecDss = autoclass('hec.heclib.dss.HecDss')
         PairedDataContainer = autoclass('hec.io.PairedDataContainer')
@@ -862,19 +1045,31 @@ class DssCore:
                     container.setNumberOrdinates(len(x_values))
                     container.setNumberCurves(1)
 
-                    # Write to DSS
-                    dss.put(container)
+                    # Write to DSS. The cast selects the DataContainer
+                    # overload of HecDss.put (see write_paired_data).
+                    dss.put(cast('hec.io.DataContainer', container))
                     results[pathname] = True
 
                 except Exception as e:
                     logger.error(f"Error writing {pathname}: {e}")
                     results[pathname] = False
 
-            logger.info(f"Wrote {sum(results.values())}/{len(results)} paired data records")
+            written = [path for path, ok in results.items() if ok]
+            missing = (
+                DssCore._missing_pathnames(DssCore._cataloged_pathnames(dss), written)
+                if written else []
+            )
 
         finally:
             dss.done()
 
+        if missing:
+            raise RuntimeError(
+                f"{len(missing)} paired data write(s) reported no error but are not in "
+                f"the catalog of {dss_file}: {missing}"
+            )
+
+        logger.info(f"Wrote {sum(results.values())}/{len(results)} paired data records")
         return results
 
     @staticmethod

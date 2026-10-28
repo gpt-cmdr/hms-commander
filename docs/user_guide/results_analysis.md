@@ -26,6 +26,10 @@ volumes = HmsResults.get_volume_summary("results.dss")
 print(volumes)
 ```
 
+Volumes integrate the total-flow record (C-part `FLOW`) with the trapezoidal rule over
+the stored stamps and convert CFS-hours to acre-feet (1 CFS-hour = 3600/43560 acre-feet).
+Flow is assumed to be in CFS.
+
 ### Get Hydrograph Time Series
 
 ```python
@@ -54,17 +58,17 @@ print(comparison)
 # Get detailed statistics
 stats = HmsResults.get_hydrograph_statistics(
     dss_file="results.dss",
-    element="Outlet"
+    element_name="Outlet"
 )
 print(f"Peak: {stats['peak_flow']} CFS")
-print(f"Time to peak: {stats['time_to_peak']}")
-print(f"Total volume: {stats['volume']} ac-ft")
+print(f"Time to peak: {stats['time_to_peak_hours']} hours")
+print(f"Total volume: {stats['total_volume_af']} ac-ft")
 ```
 
 ## Precipitation Analysis
 
 ```python
-# Get precipitation summary
+# Get precipitation summary (interval depth, one row per subbasin and run)
 precip = HmsResults.get_precipitation_summary("results.dss")
 print(precip)
 

@@ -132,7 +132,7 @@ y_cumulative = np.linspace(0, 1, 49)  # Cumulative fraction (0-1)
 
 HmsDss.write_paired_data(
     dss_file="temporal.dss",
-    pathname="//TX_R3/ALL-CASES/24HR///50%/",
+    pathname="//TX_R3/ALL-CASES/24HR//50%/",
     x_values=x_hours,
     y_values=y_cumulative,
     x_units="HOURS",
@@ -154,12 +154,12 @@ HmsDss.write_paired_data(
 ```python
 records = [
     {
-        "pathname": "//TX_R3/FIRST-QUARTILE/24HR///50%/",
+        "pathname": "//TX_R3/FIRST-QUARTILE/24HR//50%/",
         "x_values": hours,
         "y_values": first_quartile_50,
     },
     {
-        "pathname": "//TX_R3/FIRST-QUARTILE/24HR///90%/",
+        "pathname": "//TX_R3/FIRST-QUARTILE/24HR//90%/",
         "x_values": hours,
         "y_values": first_quartile_90,
     },
@@ -195,7 +195,7 @@ peak_info = DssCore.get_peak_value("file.dss", pathname)
 # Write paired data (low-level)
 DssCore.write_paired_data(
     dss_file="file.dss",
-    pathname="//A/B/C///D/",
+    pathname="//A/B/C//D/",
     x_values=x_array,
     y_values=y_array
 )

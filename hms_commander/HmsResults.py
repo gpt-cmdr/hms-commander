@@ -16,9 +16,12 @@ import numpy as np
 from .LoggingConfig import get_logger
 from .Decorators import log_call
 from .dss import HmsDss
-from .dss.catalog import parse_pathname, select_result_paths
+from .dss.catalog import parse_pathname, select_interval_precip_paths, select_result_paths
 
 logger = get_logger(__name__)
+
+# One cubic foot per second for one hour, in acre-feet (3600 ft3 / 43560 ft3).
+_ACRE_FEET_PER_CFS_HOUR = 3600.0 / 43560.0
 
 
 class HmsResults:
@@ -36,6 +39,18 @@ class HmsResults:
         >>> peaks = HmsResults.get_peak_flows("results.dss")
         >>> print(peaks)
     """
+
+    @staticmethod
+    def _volume_acre_feet(index: pd.DatetimeIndex, flow_cfs) -> float:
+        """Trapezoidal runoff volume in acre-feet for a flow series in CFS.
+
+        Integrates over the actual stamps, so irregular spacing is honoured.
+        """
+        hours = np.asarray((index - index[0]).total_seconds(), dtype=np.float64) / 3600.0
+        flow = np.asarray(flow_cfs, dtype=np.float64)
+        # np.trapezoid is the NumPy 2 name; np.trapz is the NumPy 1 name.
+        trapezoid = getattr(np, "trapezoid", None) or getattr(np, "trapz")
+        return float(trapezoid(flow, x=hours)) * _ACRE_FEET_PER_CFS_HOUR
 
     @staticmethod
     def _value_series(df: pd.DataFrame) -> pd.Series:
@@ -217,6 +232,11 @@ class HmsResults:
         """
         Get runoff volume summary for all elements.
 
+        Volumes are the trapezoidal integral of the total flow (C-part
+        ``FLOW``) over the record stamps, converted from CFS-hours to
+        acre-feet (1 CFS-hour = 3600/43560 acre-feet). Flow is assumed to be
+        in CFS.
+
         Args:
             dss_file: Path to the DSS file
             run_name: Optional run name filter
@@ -259,14 +279,9 @@ class HmsResults:
                 if df.empty:
                     continue
 
-                # Calculate volume (trapezoidal integration)
-                # Assuming flow in CFS and time in hours
-                time_diff = df.index.to_series().diff().dt.total_seconds() / 3600  # hours
+                # Volume in acre-feet by trapezoidal integration (flow in CFS)
                 flow = HmsResults._value_series(df)
-                flow_values = flow.values
-
-                # Volume in acre-feet (CFS * hours * 0.0413)
-                volume_af = np.trapz(flow_values, dx=time_diff.mean()) * time_diff.mean() * 0.0413
+                volume_af = HmsResults._volume_acre_feet(df.index, flow.values)
 
                 records.append({
                     'element': parts['element_name'],
@@ -336,11 +351,9 @@ class HmsResults:
             'centroid_time': None,
         }
 
-        # Calculate volume (acre-feet)
-        time_diff_hours = df.index.to_series().diff().dt.total_seconds() / 3600
+        # Calculate volume (acre-feet, flow in CFS)
         stats['total_volume_af'] = round(
-            np.trapz(flow.values, dx=time_diff_hours.mean()) * time_diff_hours.mean() * 0.0413,
-            2
+            HmsResults._volume_acre_feet(df.index, flow.values), 2
         )
 
         # Time to peak from start
@@ -438,6 +451,11 @@ class HmsResults:
         """
         Get precipitation summary for all subbasins.
 
+        Summarizes the interval precipitation depth (C-part ``PRECIP-INC``,
+        with ``PRECIP`` as a legacy fallback), one row per element and run.
+        Cumulative series (``PRECIP-CUM``), losses, excess and spatial
+        standard deviation are different quantities and are not summarized.
+
         Args:
             dss_file: Path to the DSS file
             run_name: Optional run name filter
@@ -448,13 +466,13 @@ class HmsResults:
         dss_file = Path(dss_file)
         precip_paths = HmsDss.list_precipitation_data(dss_file)
 
-        precip_paths = select_result_paths(
+        precip_paths = select_interval_precip_paths(select_result_paths(
             precip_paths,
             result_type="precipitation",
             run_name=run_name,
             exclude_tables=True,
             result_patterns=HmsDss.HMS_RESULT_PATTERNS,
-        )
+        ))
 
         records = []
         for path in precip_paths:
