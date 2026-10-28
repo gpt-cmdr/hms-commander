@@ -18,6 +18,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - The 160 mi2 warning applies to the empirical method only (SIR 2004-5075; HDM p. 4-77).
   - Docs state the HDM recommendation (`quartile="all"`, `duration_class="0-72"`), the HDM Table 4-16 8.70 vs SIR 6.37 value at 2.5 percent, the added (0, 0) and (100, 100) end points, and that `nws_hourly` durations of 12-13 hr, 24-25 hr and under 5 hr are unsupported.
 - `BalancedFrequencyStorm` - HEC-HMS Frequency Storm (balanced/alternating-block) hyetograph generator validated against HEC-HMS 4.13 output. Existing `FrequencyStorm` is unchanged.
+- `HmsDss.read_timeseries()` accepts optional `start_date` and `end_date`, passed to `DssCore.read_timeseries()`.
+
+### Fixed
+
+- DSS time-series stamps (`DssCore.read_timeseries`, `DssCore.get_peak_value` and the `HmsDss`/`HmsResults` readers built on them) use the container's base date and time granularity. Second-granularity records, such as 15-second data, previously came back in January 1900. `attrs['interval']` is in minutes, with a float below one minute (0.25 for 15 seconds).
+- `DssCore.get_peak_value()` excludes HEC missing values (-901, -902, -3.4028e38) and NaN from `peak_flow`, `min_value` and `mean_value`; ties return the first maximum.
+- `DssCore.read_timeseries()` applies its documented `start_date`/`end_date` window (inclusive); the arguments were ignored.
+- `write_paired_data()`, `write_multiple_paired_data()` and `import_atlas14_temporal()` write records again. With pyjnius 1.7.0 and 1.9.0 (both tested), `HecDss.put()` resolved to the wrong overload and nothing was written. Writes now confirm each record is in the file catalog and raise `RuntimeError` when it is not.
+- Paired-data writers raise `ValueError` for pathnames without exactly six parts, and for duplicate pathnames in one batch. heclib silently dropped the extra part.
+- `import_atlas14_temporal()` writes each probability to its own record, `//{region}/{QUARTILE}/{duration}HR//{probability}/`. The previous eight-slash pathname put every probability of a quartile on one record.
+- `HmsResults.get_volume_summary()` and `get_hydrograph_statistics()` compute acre-feet as the trapezoidal integral of CFS over hours times 3600/43560. The previous formula multiplied by the time step twice, and it failed on NumPy 2 (`np.trapz` removed), where the summary was empty.
+- `HmsResults.get_precipitation_summary()` and `HmsDss.get_total_precipitation()` total the interval depth (`PRECIP-INC`, legacy `PRECIP`) once per element and run. They previously summed every `PRECIP*` record, including cumulative `PRECIP-CUM`.
+- `HmsDss.get_peak_flows()` reads total flow (`FLOW`) only; it could report `FLOW-CUMULATIVE` volumes as peak flows.
 
 ## [0.4.0] - 2026-10-04
 

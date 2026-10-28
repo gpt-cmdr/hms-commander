@@ -152,6 +152,36 @@ def select_result_paths(
     return selected
 
 
+def select_interval_precip_paths(paths: Sequence[str]) -> List[str]:
+    """Pick one interval precipitation-depth path per element and run.
+
+    Prefers the C-part ``PRECIP-INC`` and falls back to the legacy ``PRECIP``.
+    Cumulative depth (``PRECIP-CUM``), losses, excess and spatial standard
+    deviation are different quantities and are never selected. Output follows
+    the first-seen order of each element and run.
+    """
+
+    chosen: Dict[tuple, str] = {}
+    rank: Dict[tuple, int] = {}
+    order: List[tuple] = []
+    for path in paths:
+        parts = parse_pathname(path)
+        c_part = parts["C"].upper()
+        if c_part == "PRECIP-INC":
+            priority = 0
+        elif c_part == "PRECIP":
+            priority = 1
+        else:
+            continue
+        key = (parts["element_name"].upper(), parts["run_name"].upper())
+        if key not in chosen:
+            order.append(key)
+        if key not in chosen or priority < rank[key]:
+            chosen[key] = path
+            rank[key] = priority
+    return [chosen[key] for key in order]
+
+
 def unique_elements(paths: Sequence[str]) -> List[str]:
     """Return unique B-parts in first-seen order."""
 

@@ -27,3 +27,5 @@ jobs:
         run: python -m pip install -e . pytest
       - name: Check read-only text API contract
         run: python -m pytest tests/test_hms_text.py -q
+      - name: Check DSS read and write contracts without Java
+        run: python -m pytest tests/test_dss_java_fixes.py -m "not requires_java" -q

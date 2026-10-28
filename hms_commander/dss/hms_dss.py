@@ -29,6 +29,7 @@ from .catalog import (
     create_pathname,
     filter_catalog,
     parse_pathname,
+    select_interval_precip_paths,
     select_result_paths,
 )
 
@@ -148,7 +149,9 @@ class HmsDss:
     @log_call
     def read_timeseries(
         dss_file: Union[str, Path],
-        pathname: str
+        pathname: str,
+        start_date: Optional[Any] = None,
+        end_date: Optional[Any] = None
     ) -> pd.DataFrame:
         """
         Read a time series from a DSS file.
@@ -156,6 +159,8 @@ class HmsDss:
         Args:
             dss_file: Path to the DSS file
             pathname: DSS pathname to read
+            start_date: Optional inclusive lower bound on the returned stamps
+            end_date: Optional inclusive upper bound on the returned stamps
 
         Returns:
             DataFrame with:
@@ -188,7 +193,7 @@ class HmsDss:
                 "Install with: pip install pyjnius"
             )
 
-        return DssCore.read_timeseries(dss_file, pathname)
+        return DssCore.read_timeseries(dss_file, pathname, start_date, end_date)
 
     @staticmethod
     @log_call
@@ -526,6 +531,10 @@ class HmsDss:
             get_peak_flows_batched() instead to avoid memory issues. That method
             processes elements in batches with garbage collection between batches.
 
+        Uses the total-flow records (C-part ``FLOW``) only. Component and
+        derived records such as ``FLOW-BASE`` or ``FLOW-CUMULATIVE`` (a volume)
+        are not peak flows.
+
         Args:
             dss_file: Path to the DSS file
             element_names: Optional list of element names to filter
@@ -540,7 +549,7 @@ class HmsDss:
         See Also:
             get_peak_flows_batched: Memory-efficient version for large files
         """
-        results = HmsDss.extract_hms_results(dss_file, element_names, result_type="flow")
+        results = HmsDss.extract_hms_results(dss_file, element_names, result_type="flow-total")
 
         records = []
         for element_name, df in results.items():
@@ -678,6 +687,11 @@ class HmsDss:
         """
         Calculate total precipitation for all elements.
 
+        Sums the interval precipitation depth (C-part ``PRECIP-INC``, with
+        ``PRECIP`` as a legacy fallback), one row per element and run.
+        Cumulative series (``PRECIP-CUM``), losses, excess and spatial
+        standard deviation are different quantities and are not summed.
+
         Args:
             dss_file: Path to the DSS file
             element_names: Optional list of element names to filter
@@ -689,15 +703,27 @@ class HmsDss:
             >>> precip = HmsDss.get_total_precipitation("results.dss")
             >>> print(precip)
         """
-        results = HmsDss.extract_hms_results(
-            dss_file, element_names, result_type="precipitation"
+        catalog = HmsDss.get_catalog(dss_file)
+        paths = select_interval_precip_paths(
+            select_result_paths(
+                catalog,
+                result_type="precipitation",
+                element_names=element_names,
+                exclude_tables=True,
+                result_patterns=HmsDss.HMS_RESULT_PATTERNS,
+            )
         )
 
         records = []
-        for element_name, df in results.items():
+        for path in paths:
+            try:
+                df = HmsDss.read_timeseries(dss_file, path)
+            except Exception as e:
+                logger.warning(f"Could not read {path}: {e}")
+                continue
             if df is not None and not df.empty:
                 records.append({
-                    'element': element_name,
+                    'element': parse_pathname(path)['element_name'],
                     'total_precip': df['value'].sum(),
                     'units': df.attrs.get('units', ''),
                     'num_intervals': len(df)
@@ -725,7 +751,8 @@ class HmsDss:
 
         Args:
             dss_file: Path to DSS file (created if doesn't exist)
-            pathname: DSS pathname (e.g., "//TX_R3/FIRST-QUARTILE/24HR///50%/")
+            pathname: DSS pathname with exactly six parts
+                (e.g., "//TX_R3/FIRST-QUARTILE/24HR//50%/")
             x_values: X coordinates (e.g., time in hours) - numpy array or list
             y_values: Y coordinates (e.g., cumulative fraction 0-1) - numpy array or list
             x_units: Units for X values (default: "HOURS")
@@ -734,7 +761,13 @@ class HmsDss:
             y_label: Label for Y axis (default: "CUMULATIVE")
 
         Returns:
-            True if write succeeded, False otherwise
+            True if the record was written and found in the file catalog,
+            False if the HEC library raised an error during the write
+
+        Raises:
+            ValueError: If ``pathname`` does not have exactly six parts
+            RuntimeError: If the write reported no error but the record is not
+                in the file catalog afterwards
 
         Example:
             >>> import numpy as np
@@ -742,7 +775,7 @@ class HmsDss:
             >>> y = np.linspace(0, 1, 49)   # 0 to 100% cumulative
             >>> HmsDss.write_paired_data(
             ...     "temporal.dss",
-            ...     "//TX_R3/ALL-CASES/24HR///50%/",
+            ...     "//TX_R3/ALL-CASES/24HR//50%/",
             ...     x, y
             ... )
         """
@@ -789,13 +822,20 @@ class HmsDss:
                 - y_label: (optional) Y label
 
         Returns:
-            Dict mapping pathname to success status (True/False)
+            Dict mapping pathname to success status. True means the record was
+            written and found in the file catalog.
+
+        Raises:
+            ValueError: If a pathname does not have exactly six parts, or two
+                records share a pathname. Nothing is written in either case.
+            RuntimeError: If a write reported no error but its record is not
+                in the file catalog afterwards
 
         Example:
             >>> records = [
-            ...     {"pathname": "//TX_R3/FIRST-QUARTILE/24HR///50%/",
+            ...     {"pathname": "//TX_R3/FIRST-QUARTILE/24HR//50%/",
             ...      "x_values": hours, "y_values": fractions_50},
-            ...     {"pathname": "//TX_R3/FIRST-QUARTILE/24HR///90%/",
+            ...     {"pathname": "//TX_R3/FIRST-QUARTILE/24HR//90%/",
             ...      "x_values": hours, "y_values": fractions_90},
             ... ]
             >>> results = HmsDss.write_multiple_paired_data("temporal.dss", records)
@@ -829,7 +869,10 @@ class HmsDss:
         Import Atlas 14 temporal distributions to DSS file.
 
         Convenience method specifically for Atlas 14 temporal data.
-        Creates proper DSS pathnames and writes all quartiles and probabilities.
+        Writes one paired-data record per quartile and probability column with
+        the pathname ``//{region_code}/{QUARTILE}/{duration}HR//{probability}/``.
+        For example, the 50% curve of the first quartile for region ``TX_R3``
+        is ``//TX_R3/FIRST-QUARTILE/24HR//50%/``.
 
         Args:
             dss_file: Output DSS file path
@@ -843,6 +886,13 @@ class HmsDss:
 
         Returns:
             Dict mapping pathname to success status
+
+        Raises:
+            ValueError: If a generated pathname is invalid (for example a
+                region code that contains ``/``) or two columns produce the
+                same pathname
+            RuntimeError: If a write reported no error but its record is not
+                in the file catalog afterwards
 
         Example:
             >>> # Parse temporal CSV
@@ -885,8 +935,10 @@ class HmsDss:
             x_values = np.array(df.index)  # Hours
 
             for prob_col in df.columns:
-                # Generate pathname
-                pathname = f"//{region_code}/{dss_quartile}/{duration_str}///{prob_col}/"
+                # A=blank, B=region, C=quartile, D=duration, E=blank,
+                # F=probability. Seven slashes: heclib drops any extra part,
+                # which would put every probability on one record.
+                pathname = f"//{region_code}/{dss_quartile}/{duration_str}//{prob_col}/"
 
                 # Convert percentage to fraction
                 y_values = df[prob_col].values / 100.0
