@@ -1445,8 +1445,12 @@ class DssCore:
         DssCore._configure_jvm()
         from jnius import autoclass
 
-        version = int(autoclass('hec.heclib.dss.HecDataManager').getDssFileVersion(
-            str(Path(dss_file).resolve())))
+        resolved = str(Path(dss_file).resolve())
+        try:
+            version = int(autoclass('hec.heclib.dss.HecDataManager').getDssFileVersion(
+                resolved))
+        finally:
+            DssCore._release_dss_file(resolved)
         if version not in (6, 7):
             raise ValueError(f"File is not a DSS6 or DSS7 file: {dss_file}")
         return version
