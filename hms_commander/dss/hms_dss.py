@@ -35,6 +35,8 @@ from .catalog import (
 
 logger = get_logger(__name__)
 
+from . import _backend
+
 # Import standalone DSS core from same subpackage
 try:
     from .core import DssCore
@@ -55,10 +57,21 @@ class HmsDss:
 
     All methods are static - no instantiation required.
 
+    Backends:
+        ``HmsDss.backend`` selects how DSS files are read and written (the
+        environment variable ``HMS_COMMANDER_DSS_BACKEND`` overrides it):
+
+        - ``"java"`` (default): HEC Monolith through pyjnius.
+        - ``"native"``: the optional ``ras_commander_fast_dss`` engine; no Java.
+        - ``"shadow"``: runs Java and returns its result, repeats the call
+          natively and logs every difference (never raises).
+
+        See ``docs/user_guide/dss_native_backend.md``.
+
     Dependencies:
-        - pyjnius (pip install pyjnius)
-        - Java 8+ (JRE or JDK)
-        - HEC Monolith libraries (auto-downloaded on first use)
+        - Java backend: pyjnius, Java 8+ (JRE or JDK), HEC Monolith libraries
+          (auto-downloaded on first use)
+        - Native backend: the ``ras-commander-fast-dss`` wheel (not on PyPI)
 
     Example:
         >>> from hms_commander import HmsDss
@@ -66,6 +79,15 @@ class HmsDss:
         >>> ts = HmsDss.read_timeseries("results.dss", "/BASIN/OUTLET/FLOW//15MIN/RUN:RUN1/")
         >>> print(f"Units: {ts.attrs['units']}")
     """
+
+    #: DSS backend: ``"java"`` (default when None), ``"native"`` or ``"shadow"``.
+    #: The environment variable ``HMS_COMMANDER_DSS_BACKEND`` overrides it.
+    backend: Optional[str] = None
+
+    #: Shadow writes copy an existing target file up to this size (MB) to repeat the
+    #: write natively; larger files skip the comparison. The environment variable
+    #: ``HMS_COMMANDER_DSS_SHADOW_COPY_LIMIT_MB`` overrides it.
+    shadow_copy_limit_mb: float = _backend.SHADOW_COPY_LIMIT_MB_DEFAULT
 
     # Common HMS DSS path patterns (C-part matching)
     # HMS uses formats like FLOW, FLOW-OBSERVED, FLOW-DIRECT, FLOW-BASE, etc.
@@ -95,12 +117,76 @@ class HmsDss:
     }
 
     @staticmethod
+    @log_call
+    def get_backend() -> str:
+        """
+        DSS backend for the next call: ``"java"``, ``"native"`` or ``"shadow"``.
+
+        ``HMS_COMMANDER_DSS_BACKEND`` overrides ``HmsDss.backend``. ``shadow``
+        without the engine runs Java only and logs one warning.
+
+        Raises:
+            ValueError: If the backend name is invalid
+            ImportError: If ``native`` is requested and ras_commander_fast_dss is
+                not installed (or fails to load)
+
+        Example:
+            >>> HmsDss.backend = "native"
+            >>> HmsDss.get_backend()
+            'native'
+        """
+        return DssCore.get_backend()
+
+    @staticmethod
+    @log_call
+    def get_capabilities() -> pd.DataFrame:
+        """
+        Backend support per DSS operation.
+
+        Returns:
+            DataFrame with columns ``operation``, ``java``, ``native``, ``shadow``
+            and ``note``. Values: ``yes``; ``gated`` (needs a qualified or
+            writer-capable engine). ``attrs`` report ``requested_backend``,
+            ``native_available``, ``native_writes_available``,
+            ``native_grid_qualified`` and ``engine_features``.
+        """
+        df = pd.DataFrame(list(_backend.CAPABILITIES),
+                          columns=["operation", "java", "native", "shadow", "note"])
+        try:
+            requested = _backend.requested_backend(HmsDss.backend)
+        except ValueError as exc:
+            requested = f"invalid: {exc}"
+        df.attrs.update(
+            requested_backend=requested,
+            native_available=_backend.native_available(),
+            native_writes_available=_backend.native_writes_available(),
+            native_grid_qualified=_backend.native_grid_qualified(),
+            engine_features=sorted(_backend.engine_features()),
+        )
+        return df
+
+    @staticmethod
+    @log_call
+    def get_shadow_summary(reset: bool = False) -> Dict[str, int]:
+        """
+        Counts of shadow comparisons as ``{"operation|outcome|label": n}``.
+
+        Args:
+            reset: Clear the counters and records after reading them
+        """
+        result = _backend.summary()
+        if reset:
+            _backend.reset_shadow_stats()
+        return result
+
+    @staticmethod
     def is_available() -> bool:
         """
         Check if full DSS functionality is available.
 
         Returns:
-            True if pyjnius can be imported and DSS operations will work
+            True if the selected backend can run: ``native`` needs the
+            ras_commander_fast_dss engine; ``java`` and ``shadow`` need pyjnius
 
         Example:
             >>> if HmsDss.is_available():
@@ -874,6 +960,11 @@ class HmsDss:
         For example, the 50% curve of the first quartile for region ``TX_R3``
         is ``//TX_R3/FIRST-QUARTILE/24HR//50%/``.
 
+        Units are ``HOURS``/``FRACTION`` and the axis types ``TIME`` and
+        ``CUMULATIVE``. A DSS6 file stores at most 8 characters per type, so on
+        DSS6 the Y type is ``CUMULATI``: the value HEC Monolith stores there for
+        ``CUMULATIVE``. Both backends write the same record. New files are DSS7.
+
         Args:
             dss_file: Output DSS file path
             temporal_distributions: Dict mapping quartile names to DataFrames
@@ -925,6 +1016,12 @@ class HmsDss:
 
         duration_str = f"{duration_hours}HR"
         records = []
+        # DSS6 stores at most 8 characters per type; "CUMULATI" is what HEC
+        # Monolith stores for "CUMULATIVE" there (the native writer refuses a
+        # longer string rather than truncate it).
+        y_type = "CUMULATIVE"
+        if dss_file.exists() and DssCore.get_file_version(dss_file) == 6:
+            y_type = "CUMULATIVE"[:DssCore.DSS6_TEXT_LIMIT]
 
         for quartile_name, df in temporal_distributions.items():
             dss_quartile = quartile_dss_names.get(quartile_name)
@@ -950,7 +1047,7 @@ class HmsDss:
                     'x_units': 'HOURS',
                     'y_units': 'FRACTION',
                     'x_label': 'TIME',
-                    'y_label': 'CUMULATIVE'
+                    'y_label': y_type
                 })
 
         logger.info(f"Importing {len(records)} temporal distributions to {dss_file}")
@@ -1004,3 +1101,99 @@ class HmsDss:
             )
 
         return DssCore.read_paired_data(dss_file, pathname)
+
+    @staticmethod
+    @log_call
+    def get_file_version(dss_file: Union[str, Path]) -> int:
+        """
+        HEC-DSS version of an existing file: 6 or 7.
+
+        Args:
+            dss_file: Path to an existing DSS file
+
+        Returns:
+            6 or 7
+
+        Raises:
+            FileNotFoundError: If the file does not exist
+            ValueError: If the file is not a DSS6 or DSS7 file
+
+        Example:
+            >>> HmsDss.get_file_version("results.dss")
+            6
+        """
+        return DssCore.get_file_version(dss_file)
+
+    @staticmethod
+    @log_call
+    def read_grid(
+        dss_file: Union[str, Path],
+        pathname: str
+    ) -> Dict[str, Any]:
+        """
+        Read one grid record (HRAP, Albers/SHG or specified) from a DSS file.
+
+        Args:
+            dss_file: Path to the DSS file
+            pathname: Full grid pathname, including its D and E parts
+
+        Returns:
+            Dictionary with ``data`` (float32, shape ``(ny, nx)``, row 0 south,
+            missing cells NaN), ``pathname``, ``dss_file``, ``shape``, ``units``,
+            ``data_type``, ``grid_type``, ``cell_size``, ``lower_left_cell``,
+            ``cell_zero``, ``origin``, ``crs``, ``start_time`` and ``end_time``.
+            See ``DssCore.read_grid``.
+
+        Raises:
+            FileNotFoundError: If the file does not exist
+            ValueError: If the record does not exist or is not a grid
+            DssCapabilityError: With the native backend, when the engine does not
+                advertise qualified grid CRS strings
+
+        Example:
+            >>> paths = HmsDss.get_catalog("hrap.dss")
+            >>> grid = HmsDss.read_grid("hrap.dss", paths[0])
+            >>> print(grid["grid_type"], grid["shape"], grid["units"])
+        """
+        return DssCore.read_grid(dss_file, pathname)
+
+    @staticmethod
+    @log_call
+    def write_timeseries(
+        dss_file: Union[str, Path],
+        pathname: str,
+        times,
+        values,
+        units: str = "CFS",
+        data_type: str = "INST-VAL",
+        dss_version: Optional[int] = None,
+    ) -> Path:
+        """
+        Write a regular-interval time series (for example an observed flow gage).
+
+        Args:
+            dss_file: Path to the DSS file (created as DSS7 unless ``dss_version``
+                is 6)
+            pathname: ``/A/B/C/D/E/F/`` with a regular E part (``15MIN``, ``1HOUR``,
+                ``1DAY``, ...); D may be empty
+            times: One naive end-of-period stamp per value, whole minutes, strictly
+                increasing and regular for the E part
+            values: Numeric values; ``NaN`` is stored as HEC's missing value
+            units: HEC units (default ``CFS``)
+            data_type: ``INST-VAL`` (default), ``PER-AVER``, ``PER-CUM`` or ``INST-CUM``
+            dss_version: 6 or 7 for a new file; for an existing file it must match
+
+        Returns:
+            Path to the DSS file
+
+        Raises:
+            ValueError: Invalid pathname, times or values, or a version mismatch
+
+        Example:
+            >>> import pandas as pd
+            >>> times = pd.date_range("2020-01-01 01:00", periods=3, freq="h")
+            >>> HmsDss.write_timeseries("obs.dss", "//GAGE 1/FLOW//1HOUR/OBS/",
+            ...                         times, [10.0, 12.5, 11.0])
+        """
+        return DssCore.write_timeseries(dss_file, pathname, times, values, units,
+                                        data_type, dss_version)

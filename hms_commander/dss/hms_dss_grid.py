@@ -68,6 +68,8 @@ import logging
 
 from ..LoggingConfig import get_logger
 from ..Decorators import log_call
+from . import _backend
+from .core import DssCore
 
 logger = get_logger(__name__)
 
@@ -142,7 +144,6 @@ class HmsDssGrid:
         Uses hms-commander's local DssCore infrastructure for HEC Monolith
         download and JVM configuration.
         """
-        from .core import DssCore
         DssCore._ensure_monolith()
 
         if not HmsDssGrid._jvm_configured:
@@ -208,9 +209,12 @@ class HmsDssGrid:
         Raises
         ------
         ImportError
-            If pyjnius not installed.
+            If pyjnius (Java backend) or ras_commander_fast_dss (native backend)
+            is not installed.
         ValueError
-            If array dimensions don't match.
+            If array dimensions don't match. The native backend also refuses
+            PER-CUM and PER-AVER grids (one time per grid gives equal start and
+            end times) and unknown data types, before anything is written.
         RuntimeError
             If DSS write operation fails.
 
@@ -244,16 +248,19 @@ class HmsDssGrid:
         - Grid origin is set to lower-left corner
         - Uses SpecifiedGridInfo (not AlbersInfo) for lat/lon grids
         - Implementation mirrors HEC-Vortex DssDataWriter.java
+        - Each grid's D part is its timestamp and its E part the same time
+          (midnight as the previous day's 2400), as HEC Monolith stores them
+        - ``HmsDss.backend`` selects HEC Monolith (``java``, default), the
+          ras_commander_fast_dss engine (``native``) or ``shadow``; the native
+          writer stores the same specified-grid records as Monolith
 
         See Also
         --------
         HmsAorc.convert_to_dss_grid : Convenience method for AORC conversion
         """
-        _check_dss_dependencies()
-
         import numpy as np
-        import pandas as pd
 
+        grid_data = np.asarray(grid_data)
         dss_file = Path(dss_file)
 
         # Validate array dimensions
@@ -282,6 +289,29 @@ class HmsDssGrid:
                 f"grid_data time dimension ({nt})"
             )
 
+        backend = DssCore.get_backend()
+        if backend == "native":
+            return HmsDssGrid._write_grid_timeseries_native(
+                dss_file, pathname, grid_data, lat_coords, lon_coords, timestamps,
+                units, data_type)
+        if backend == "shadow":
+            return HmsDssGrid._write_grid_timeseries_shadow(
+                dss_file, pathname, grid_data, lat_coords, lon_coords, timestamps,
+                units, data_type)
+        return HmsDssGrid._write_grid_timeseries_java(
+            dss_file, pathname, grid_data, lat_coords, lon_coords, timestamps,
+            units, data_type)
+
+    @staticmethod
+    def _write_grid_timeseries_java(dss_file, pathname, grid_data, lat_coords,
+                                    lon_coords, timestamps, units, data_type) -> Path:
+        """``write_grid_timeseries`` through HEC Monolith (``GriddedData``)."""
+        _check_dss_dependencies()
+        import numpy as np
+
+        dss_file = Path(dss_file)
+        nt, nlat, nlon = grid_data.shape
+
         # Ensure HEC Monolith is ready
         logger.info("Configuring HEC Monolith for DSS grid writing...")
         HmsDssGrid._ensure_monolith()
@@ -301,22 +331,9 @@ class HmsDssGrid:
                 "Ensure pyjnius is properly installed with Java 8+."
             )
 
-        # Calculate grid parameters
-        lat_coords = np.asarray(lat_coords, dtype=np.float64)
-        lon_coords = np.asarray(lon_coords, dtype=np.float64)
-
-        # Cell size (average of lat and lon spacing)
-        dlat = abs(lat_coords[1] - lat_coords[0]) if nlat > 1 else 0.01
-        dlon = abs(lon_coords[1] - lon_coords[0]) if nlon > 1 else 0.01
-        cell_size = float((dlat + dlon) / 2.0)
-
-        # Grid origin (lower-left corner)
-        lat_min = float(lat_coords.min())
-        lon_min = float(lon_coords.min())
-
-        # Grid coordinates (origin / cellSize, per Vortex DssUtil.java line 156-157)
-        min_x = int(round(lon_min / cell_size))
-        min_y = int(round(lat_min / cell_size))
+        # Grid parameters (shared with the native writer)
+        cell_size, min_x, min_y, lon_min, lat_min = HmsDssGrid._grid_geometry(
+            lat_coords, lon_coords)
 
         # Map data_type string to DssDataType enum
         data_type_map = {
@@ -332,7 +349,6 @@ class HmsDssGrid:
 
         # Full long absolute path. Monolith caches the native handle under this
         # exact string; the same string releases it after the writes.
-        from .core import DssCore
         dss_path = str(dss_file.resolve())
 
         logger.info(f"Writing DSS grid to: {dss_file}")
@@ -415,6 +431,168 @@ class HmsDssGrid:
         logger.info(f"  Total cells: {nt * nlat * nlon:,}")
 
         return dss_file
+
+    @staticmethod
+    def _grid_geometry(lat_coords, lon_coords):
+        """Cell size, lower-left cell indexes and origin, as the Java path computes them.
+
+        The cell size is the average of the first latitude and longitude spacings and
+        the lower-left cell is ``round(min / cell_size)`` from a (0, 0) cell zero.
+        """
+        import numpy as np
+
+        lat_coords = np.asarray(lat_coords, dtype=np.float64)
+        lon_coords = np.asarray(lon_coords, dtype=np.float64)
+        dlat = abs(lat_coords[1] - lat_coords[0]) if len(lat_coords) > 1 else 0.01
+        dlon = abs(lon_coords[1] - lon_coords[0]) if len(lon_coords) > 1 else 0.01
+        cell_size = float((dlat + dlon) / 2.0)
+        lat_min = float(lat_coords.min())
+        lon_min = float(lon_coords.min())
+        # Grid coordinates (origin / cellSize, per Vortex DssUtil.java line 156-157)
+        return (cell_size, int(round(lon_min / cell_size)), int(round(lat_min / cell_size)),
+                lon_min, lat_min)
+
+    #: Period data types: HEC needs an end time after the start time for these.
+    _PERIOD_TYPES = ("PER-CUM", "PER-AVER")
+    _MONTHS = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT",
+               "NOV", "DEC")
+
+    @staticmethod
+    def _grid_pathname(pathname: str, timestamp) -> str:
+        """The pathname HEC Monolith stores for one timestep: D is the time
+        (``DDMMMYYYY:HHMM``, midnight ``0000``), E the same time with midnight as the
+        previous day's ``2400``; A, B, C and F as given."""
+        import pandas as pd
+
+        parts = pathname.split("/")
+        if len(parts) != 8 or parts[0] or parts[7]:
+            raise ValueError(
+                f"DSS pathname must have exactly six parts (/A/B/C/D/E/F/); got {pathname!r}")
+        t = pd.Timestamp(timestamp)
+        if t.tzinfo is not None:
+            raise ValueError(f"timestamp {t} is time-zone aware; DSS grid times are naive")
+        if t.second or t.microsecond or t.nanosecond:
+            raise ValueError(f"timestamp {t} is not a whole minute (grid pathnames store minutes)")
+
+        def fmt(day, hhmm):
+            return f"{day.day:02d}{HmsDssGrid._MONTHS[day.month - 1]}{day.year:04d}:{hhmm}"
+
+        d_part = fmt(t, f"{t.hour:02d}{t.minute:02d}")
+        if t.hour == 0 and t.minute == 0:
+            e_part = fmt(t - pd.Timedelta(days=1), "2400")
+        else:
+            e_part = d_part
+        parts[4], parts[5] = d_part, e_part
+        return "/".join(parts)
+
+    @staticmethod
+    def _native_grid_writes(pathname, grid_data, timestamps, data_type):
+        """Per-timestep ``(pathname, cells)`` for the native writer, checked before
+        anything is written."""
+        import numpy as np
+
+        if str(data_type).upper() in HmsDssGrid._PERIOD_TYPES:
+            raise ValueError(
+                f"The native DSS writer refuses {data_type} grids whose start and end "
+                "times are equal (HEC period data needs an end time after the start "
+                "time). write_grid_timeseries stores one time per grid, as the Java "
+                "path does; use the Java backend for period grids, or INST-VAL / "
+                "INST-CUM data."
+            )
+        return [(HmsDssGrid._grid_pathname(pathname, t),
+                 np.ascontiguousarray(grid_data[i], dtype=np.float32))
+                for i, t in enumerate(timestamps)]
+
+    @staticmethod
+    def _write_grid_timeseries_native(dss_file, pathname, grid_data, lat_coords,
+                                      lon_coords, timestamps, units, data_type) -> Path:
+        """``write_grid_timeseries`` through ras_commander_fast_dss (no JVM).
+
+        Mirrors the Java path's records: a specified (WGS 84 WKT) grid per timestep,
+        cell size and lower-left cell from ``_grid_geometry``, cell zero (0, 0),
+        rows as given (row 0 of each ``grid_data[t]`` is stored as the southern row),
+        HEC Monolith's D/E parts and ``is_interval`` true. Refuses PER-CUM and
+        PER-AVER (equal start and end times) and unknown data types.
+        """
+        writes = HmsDssGrid._native_grid_writes(pathname, grid_data, timestamps, data_type)
+        cell_size, min_x, min_y, _, _ = HmsDssGrid._grid_geometry(lat_coords, lon_coords)
+        dc = _backend.require_native_writes()
+        target, version, existed, created = DssCore._native_write_target(dss_file)
+        with DssCore._native_new_file(dc, target, version, existed, created):
+            for path_t, cells in writes:
+                dc.write_grid(
+                    str(target), path_t, cells, grid_type="specified",
+                    cell_size=cell_size, lower_left_cell=(min_x, min_y),
+                    cell_zero=(0.0, 0.0), units=units, data_type=str(data_type).upper(),
+                    srs_definition=HmsDssGrid.WKT_WGS84, srs_name="WGS 84",
+                    is_interval=True, version=version,
+                )
+        logger.info(f"DSS grid write complete (native): {target} ({len(writes)} grids)")
+        return Path(dss_file)
+
+    @staticmethod
+    def _write_grid_timeseries_shadow(dss_file, pathname, grid_data, lat_coords,
+                                      lon_coords, timestamps, units, data_type) -> Path:
+        """Java write (its result and errors are returned); the native writer repeats
+        it on a temporary copy and the native read-backs of every grid are compared."""
+        args = (pathname, grid_data, lat_coords, lon_coords, timestamps, units, data_type)
+
+        def native_call(copy, existed):
+            HmsDssGrid._write_grid_timeseries_native(copy, *args)
+
+        def compare(copy):
+            dc = _backend.import_native()
+            diffs = []
+            for t in timestamps:
+                path_t = HmsDssGrid._grid_pathname(pathname, t)
+                java = dc.read_grid(str(Path(dss_file).resolve()), path_t, missing="raw")
+                native = dc.read_grid(str(copy), path_t, missing="raw")
+                diffs += [f"{path_t}:{d}" for d in HmsDssGrid._compare_written(java, native)]
+            return diffs
+
+        return DssCore._shadow_write(
+            "write_grid_timeseries", dss_file, pathname,
+            lambda: HmsDssGrid._write_grid_timeseries_java(dss_file, *args),
+            native_call, compare,
+        )
+
+    #: Grid attributes compared after a shadow write (both files read natively).
+    _WRITTEN_GRID_KEYS = (
+        "pathname", "record_type", "grid_type", "nx", "ny", "cell_size",
+        "lower_left_cell_x", "lower_left_cell_y", "x_coord_of_grid_cell_zero",
+        "y_coord_of_grid_cell_zero", "srs_name", "srs_definition_type", "srs_definition",
+        "data_units", "data_type", "start_time", "end_time", "min_value", "max_value",
+        "mean_value", "null_value",
+    )
+    _WRITTEN_GRID_METADATA = ("compression_method", "time_zone_id", "time_zone_raw_offset",
+                              "is_interval")
+
+    @staticmethod
+    def _compare_written(java, native) -> List[str]:
+        """Differences between the native read-backs of a Java- and a native-written
+        grid: stored cell bits, header fields and the range table. The compressed bytes
+        and ZLIB's unused scale/base words are not compared."""
+        import numpy as np
+
+        diffs = []
+        for key in HmsDssGrid._WRITTEN_GRID_KEYS:
+            jv, nv = getattr(java, key), getattr(native, key)
+            same = (jv is None and nv is None) or (
+                jv is not None and nv is not None and np.array_equal(
+                    np.asarray(jv), np.asarray(nv), equal_nan=isinstance(jv, float)))
+            if not same:
+                diffs.append(key)
+        for key in HmsDssGrid._WRITTEN_GRID_METADATA:
+            if java.metadata.get(key) != native.metadata.get(key):
+                diffs.append(f"metadata.{key}")
+        jd = np.ascontiguousarray(java.data, dtype=np.float32)
+        nd = np.ascontiguousarray(native.data, dtype=np.float32)
+        if jd.shape != nd.shape or not np.array_equal(jd.view(np.int32), nd.view(np.int32)):
+            diffs.append("cells_bits")
+        for key in ("range_limit_table", "range_counts"):
+            if not np.array_equal(np.asarray(getattr(java, key)), np.asarray(getattr(native, key))):
+                diffs.append(key)
+        return diffs
 
     @staticmethod
     def get_info() -> dict:

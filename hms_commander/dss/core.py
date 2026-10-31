@@ -21,14 +21,17 @@ Lazy Loading:
 import sys
 import os
 from pathlib import Path
-from typing import List, Dict, Optional, Union, Any
+from typing import List, Dict, Optional, Tuple, Union, Any
 import logging
 import re
+import time
+from contextlib import contextmanager
 
 # Lazy imports - these are always needed for type hints and basic operations
 import pandas as pd
 import numpy as np
 
+from . import _backend
 from .catalog import create_pathname, filter_catalog, parse_pathname
 
 logger = logging.getLogger(__name__)
@@ -40,6 +43,12 @@ _HEC_EPOCH = pd.Timestamp('1899-12-31 00:00:00')
 # HEC Monolith reports undefined values as -Float.MAX_VALUE (about -3.4028e38).
 _HEC_MISSING_MARKERS = (-901.0, -902.0)
 _HEC_UNDEFINED_THRESHOLD = -3.4e38
+# HEC's DSS7 missing value as a double (-Float.MAX_VALUE widened).
+_HEC_UNDEFINED_DOUBLE = float(-np.finfo(np.float32).max)
+# Last stamp a datetime64[ns] index can hold (pattern records sit in year 3000).
+_NS_MAX = np.datetime64(pd.Timestamp.max.floor('s').to_datetime64(), 's')
+# HEC Monolith grid-info classes and the grid_type names read_grid reports.
+_GRID_TYPE_NAMES = {'AlbersInfo': 'albers', 'SpecifiedGridInfo': 'specified', 'HrapInfo': 'hrap'}
 
 
 class DssCore:
@@ -346,33 +355,57 @@ class DssCore:
     @staticmethod
     def is_available() -> bool:
         """
-        Check if DSS functionality is available.
+        Check if DSS functionality is available for the selected backend.
+
+        The ``native`` backend needs the ``ras_commander_fast_dss`` engine and no
+        Java; ``java`` and ``shadow`` need pyjnius (``shadow`` returns the Java
+        result). An invalid backend name counts as unavailable.
 
         Returns:
-            True if pyjnius can be imported
+            True if the selected backend can run
         """
         try:
-            import jnius_config
+            backend = _backend.requested_backend(DssCore._backend_attribute())
+        except ValueError:
+            return False
+        if backend == "native":
+            return _backend.native_available()
+        return DssCore.java_available()
+
+    @staticmethod
+    def java_available() -> bool:
+        """True if pyjnius can be imported (the Java backend's Python dependency)."""
+        try:
+            import jnius_config  # noqa: F401
             return True
         except ImportError:
             return False
 
     @staticmethod
-    def get_catalog(dss_file: Union[str, Path]) -> List[str]:
+    def _backend_attribute() -> Any:
+        """``HmsDss.backend`` (the single class attribute that selects the backend)."""
+        from .hms_dss import HmsDss
+
+        return getattr(HmsDss, "backend", None)
+
+    @staticmethod
+    def get_backend() -> str:
         """
-        Get list of all data paths in DSS file.
+        DSS backend for the next call: ``"java"``, ``"native"`` or ``"shadow"``.
 
-        Args:
-            dss_file: Path to DSS file
+        The environment variable ``HMS_COMMANDER_DSS_BACKEND``, when set, overrides
+        ``HmsDss.backend``. ``native`` without the ``ras_commander_fast_dss`` engine
+        raises ``ImportError``; ``shadow`` without it runs Java only (one warning).
 
-        Returns:
-            List of DSS path strings
-
-        Example:
-            paths = DssCore.get_catalog("sample.dss")
-            for path in paths:
-                print(path)
+        Raises:
+            ValueError: If the backend name is not one of the three
+            ImportError: If ``native`` is requested and the engine is missing
         """
+        return _backend.effective_backend(DssCore._backend_attribute())
+
+    @staticmethod
+    def _get_catalog_java(dss_file: Union[str, Path]) -> List[str]:
+        """Catalog pathnames through HEC Monolith (Java backend)."""
         # Configure JVM (must be before first jnius import)
         DssCore._configure_jvm()
 
@@ -408,49 +441,13 @@ class DssCore:
             DssCore._done_and_release(dss, dss_file)
 
     @staticmethod
-    def read_timeseries(
+    def _read_timeseries_java(
         dss_file: Union[str, Path],
         pathname: str,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None
     ) -> pd.DataFrame:
-        """
-        Read time series from DSS file.
-
-        Args:
-            dss_file: Path to DSS file
-            pathname: DSS pathname (e.g., "/BASIN/LOC/FLOW//1HOUR/OBS/")
-            start_date: Optional inclusive lower bound on the returned stamps
-                (any value ``pandas.Timestamp`` accepts)
-            end_date: Optional inclusive upper bound on the returned stamps
-
-        Returns:
-            pandas DataFrame with:
-            - DatetimeIndex for time series operations
-            - 'datetime' column for plotting (same as index)
-            - 'value' column with time series data
-            - Metadata via df.attrs: pathname, units, type, interval, dss_file
-
-            Stamps come from the container's base date and time granularity,
-            so second-granularity records (for example 15-second data) get
-            their stored dates. ``attrs['interval']`` is in minutes: an int
-            for whole minutes, a float below one minute, and 0 for irregular
-            data. A window that matches no stamps returns an empty DataFrame.
-
-        Raises:
-            ValueError: If the pathname has no data, or ``start_date`` is
-                after ``end_date``.
-
-        Example:
-            df = DssCore.read_timeseries("file.dss", "/BASIN/LOC/FLOW//1HOUR/OBS/")
-            print(df.head())
-            print(f"Units: {df.attrs['units']}")
-
-            # Plotting options:
-            ax.plot(df.index, df['value'])          # Using DatetimeIndex
-            ax.plot(df['datetime'], df['value'])    # Using datetime column
-            df.plot(y='value')                      # Pandas automatic
-        """
+        """``read_timeseries`` through HEC Monolith (Java backend)."""
         window_start = pd.Timestamp(start_date) if start_date is not None else None
         window_end = pd.Timestamp(end_date) if end_date is not None else None
         if window_start is not None and window_end is not None and window_start > window_end:
@@ -563,40 +560,11 @@ class DssCore:
         )
 
     @staticmethod
-    def get_peak_value(
+    def _get_peak_value_java(
         dss_file: Union[str, Path],
         pathname: str
     ) -> Optional[Dict[str, Any]]:
-        """
-        Extract ONLY peak value from DSS without loading full time series.
-
-        Uses HecDss API to read values array, calculates statistics immediately
-        in NumPy, and returns only peak metadata. This avoids DataFrame overhead.
-
-        Args:
-            dss_file: Path to DSS file
-            pathname: DSS pathname to read
-
-        Returns:
-            Dictionary with:
-                - peak_flow: Maximum value (float)
-                - peak_time: Time of maximum (datetime); the first maximum
-                  when values tie
-                - units: Engineering units (str)
-                - count: Number of timesteps, including missing values (int)
-                - min_value: Minimum value (float)
-                - mean_value: Mean value (float)
-            peak_flow, min_value and mean_value exclude HEC missing values
-            (-901, -902 and -3.4028e38) and NaN.
-            Returns None if path doesn't exist, read fails, or every value is
-            missing
-
-        Memory: ~200 bytes vs ~70 KB for full time series
-
-        Example:
-            >>> peak_info = DssCore.get_peak_value("results.dss", "//OUTLET/FLOW/.../")
-            >>> print(f"Peak: {peak_info['peak_flow']} {peak_info['units']}")
-        """
+        """``get_peak_value`` through HEC Monolith (Java backend)."""
         # Configure JVM (must be before first jnius import)
         DssCore._configure_jvm()
 
@@ -858,7 +826,7 @@ class DssCore:
         return filter_catalog(catalog, pattern, data_type, element)
 
     @staticmethod
-    def write_paired_data(
+    def _write_paired_data_java(
         dss_file: Union[str, Path],
         pathname: str,
         x_values: np.ndarray,
@@ -868,42 +836,7 @@ class DssCore:
         x_label: str = "TIME",
         y_label: str = "CUMULATIVE"
     ) -> bool:
-        """
-        Write paired data (X-Y curve) to DSS file.
-
-        This is used for Atlas 14 temporal distributions, rating curves,
-        and other X-Y relationships.
-
-        Args:
-            dss_file: Path to DSS file (created if doesn't exist)
-            pathname: DSS pathname with exactly six parts
-                (e.g., "//TX_R3/FIRST-QUARTILE/24HR//50%/")
-            x_values: X coordinates (e.g., time in hours)
-            y_values: Y coordinates (e.g., cumulative fraction 0-1)
-            x_units: Units for X values (default: "HOURS")
-            y_units: Units for Y values (default: "FRACTION")
-            x_label: Label for X axis (default: "TIME")
-            y_label: Label for Y axis (default: "CUMULATIVE")
-
-        Returns:
-            True if the record was written and found in the file catalog,
-            False if the HEC library raised an error during the write
-
-        Raises:
-            ValueError: If ``pathname`` does not have exactly six parts
-                (seven slashes). heclib would otherwise drop the extra part.
-            RuntimeError: If the write returned without error but the record
-                is not in the file catalog afterwards
-
-        Example:
-            >>> x = np.linspace(0, 24, 49)  # 0 to 24 hours
-            >>> y = np.linspace(0, 1, 49)   # 0 to 100% cumulative
-            >>> DssCore.write_paired_data(
-            ...     "temporal.dss",
-            ...     "//TX_R3/ALL-CASES/24HR//50%/",
-            ...     x, y
-            ... )
-        """
+        """``write_paired_data`` through HEC Monolith (Java backend)."""
         DssCore._check_pathname_format(pathname)
 
         # Configure JVM (must be before first jnius import)
@@ -979,46 +912,11 @@ class DssCore:
         return True
 
     @staticmethod
-    def write_multiple_paired_data(
+    def _write_multiple_paired_data_java(
         dss_file: Union[str, Path],
         paired_data_records: List[Dict[str, Any]]
     ) -> Dict[str, bool]:
-        """
-        Write multiple paired data records to DSS file.
-
-        More efficient than calling write_paired_data repeatedly as it
-        keeps the DSS file open for all writes.
-
-        Args:
-            dss_file: Path to DSS file
-            paired_data_records: List of dicts with keys:
-                - pathname: DSS pathname
-                - x_values: numpy array of X values
-                - y_values: numpy array of Y values
-                - x_units: (optional) X units
-                - y_units: (optional) Y units
-                - x_label: (optional) X label
-                - y_label: (optional) Y label
-
-        Returns:
-            Dict mapping pathname to success status. True means the record was
-            written and found in the file catalog; False means the HEC
-            library raised an error for that record.
-
-        Raises:
-            ValueError: If any pathname does not have exactly six parts, or
-                two records share a pathname (the later record would overwrite
-                the earlier one). Nothing is written in either case.
-            RuntimeError: If a write reported no error but its record is not
-                in the file catalog afterwards
-
-        Example:
-            >>> records = [
-            ...     {"pathname": "//A/B/C//D/", "x_values": x1, "y_values": y1},
-            ...     {"pathname": "//A/E/C//D/", "x_values": x2, "y_values": y2},
-            ... ]
-            >>> results = DssCore.write_multiple_paired_data("file.dss", records)
-        """
+        """``write_multiple_paired_data`` through HEC Monolith (Java backend)."""
         seen = {}
         for record in paired_data_records:
             pathname = record['pathname']
@@ -1106,36 +1004,11 @@ class DssCore:
         return results
 
     @staticmethod
-    def read_paired_data(
+    def _read_paired_data_java(
         dss_file: Union[str, Path],
         pathname: str
     ) -> Optional[Dict[str, Any]]:
-        """
-        Read paired data (X-Y curve) from DSS file.
-
-        Args:
-            dss_file: Path to DSS file
-            pathname: DSS pathname for paired data
-
-        Returns:
-            Dictionary with:
-                - x_values: numpy array of X values
-                - y_values: numpy array of Y values
-                - x_units: X axis units
-                - y_units: Y axis units
-                - x_label: X axis label
-                - y_label: Y axis label
-                - pathname: Original pathname
-            Returns None if read fails
-
-        Example:
-            >>> data = DssCore.read_paired_data(
-            ...     "file.dss",
-            ...     "//ELEMENT/FLOW-DIVERSION///TABLE/"
-            ... )
-            >>> print(f"X: {data['x_values']}")
-            >>> print(f"Y: {data['y_values']}")
-        """
+        """``read_paired_data`` through HEC Monolith (Java backend)."""
         # Configure JVM (must be before first jnius import)
         DssCore._configure_jvm()
 
@@ -1210,6 +1083,1083 @@ class DssCore:
 
         finally:
             DssCore._done_and_release(dss, dss_file)
+
+    # ------------------------------------------------------------------
+    # Public dispatch (java / native / shadow)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _shadow_read(operation: str, dss_file: Any, pathname: Optional[str],
+                     java_call, native_call, classify):
+        """Run ``java_call`` (its result or error is what the caller gets), then
+        ``native_call``, classify the pair and record it. The comparison never raises."""
+        java_result, java_exc = None, None
+        t0 = time.perf_counter()
+        try:
+            java_result = java_call()
+        except Exception as exc:
+            java_exc = exc
+        java_s = time.perf_counter() - t0
+        try:
+            native_result, native_exc = None, None
+            t1 = time.perf_counter()
+            try:
+                native_result = native_call()
+            except Exception as exc:
+                native_exc = exc
+            native_s = time.perf_counter() - t1
+            outcome, label, diffs = classify(java_result, java_exc, native_result, native_exc)
+            _backend.record(
+                operation, outcome, label, dss_file=dss_file, pathname=pathname, diffs=diffs,
+                java_seconds=java_s, native_seconds=native_s, java_error=java_exc,
+                native_error=native_exc,
+            )
+        except Exception as exc:  # the comparison must never break the read
+            logger.debug("DSS shadow %s comparison failed: %s", operation, exc)
+        if java_exc is not None:
+            raise java_exc
+        return java_result
+
+    @staticmethod
+    def get_catalog(dss_file: Union[str, Path]) -> List[str]:
+        """
+        Get list of all data paths in DSS file.
+
+        Args:
+            dss_file: Path to DSS file
+
+        Returns:
+            List of DSS pathnames in HEC catalog order
+
+        Example:
+            paths = DssCore.get_catalog("sample.dss")
+            for path in paths:
+                print(path)
+        """
+        backend = DssCore.get_backend()
+        if backend == "native":
+            return DssCore._get_catalog_native(dss_file)
+        if backend == "shadow":
+            def classify(j, je, n, ne):
+                if ne is not None and je is None:
+                    return "unexpected", "native catalog error", []
+                if ne is not None:
+                    return "expected", "error on both backends", []
+                return _backend.classify_catalog(j, je, n)
+
+            return DssCore._shadow_read(
+                "get_catalog", dss_file, None,
+                lambda: DssCore._get_catalog_java(dss_file),
+                lambda: DssCore._get_catalog_native(dss_file),
+                classify,
+            )
+        return DssCore._get_catalog_java(dss_file)
+
+    @staticmethod
+    def _get_catalog_native(dss_file: Union[str, Path]) -> List[str]:
+        """Catalog pathnames through ras_commander_fast_dss (no JVM)."""
+        dc = _backend.import_native()
+        catalog = dc.get_catalog(str(Path(dss_file).resolve()))
+        return [str(path) for path in catalog["pathname"].tolist()]
+
+    @staticmethod
+    def _check_window(start_date, end_date):
+        window_start = pd.Timestamp(start_date) if start_date is not None else None
+        window_end = pd.Timestamp(end_date) if end_date is not None else None
+        if window_start is not None and window_end is not None and window_start > window_end:
+            raise ValueError(f"start_date ({window_start}) is after end_date ({window_end})")
+        return window_start, window_end
+
+    @staticmethod
+    def read_timeseries(
+        dss_file: Union[str, Path],
+        pathname: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
+    ) -> pd.DataFrame:
+        """
+        Read time series from DSS file.
+
+        Args:
+            dss_file: Path to DSS file
+            pathname: DSS pathname (e.g., "/BASIN/LOC/FLOW//1HOUR/OBS/"). The D part
+                is ignored; the whole dataset is read.
+            start_date: Optional inclusive lower bound on the returned stamps
+                (any value ``pandas.Timestamp`` accepts)
+            end_date: Optional inclusive upper bound on the returned stamps
+
+        Returns:
+            pandas DataFrame with:
+            - DatetimeIndex for time series operations
+            - 'datetime' column for plotting (same as index)
+            - 'value' column with time series data
+            - Metadata via df.attrs: pathname, units, type, interval, dss_file
+
+            Stamps come from the record's base date and time granularity, so
+            second-granularity records (for example 15-second data) get their
+            stored dates. ``attrs['interval']`` is in minutes: an int for whole
+            minutes, a float below one minute, and 0 for irregular data. A
+            window that matches no stamps returns an empty DataFrame. The window
+            is the same inclusive stamp filter on every backend.
+
+            Missing values: the Java backend returns HEC's missing markers as
+            stored (-901, -902, -3.4028e38); the native backend returns NaN.
+
+        Raises:
+            ValueError: If the pathname has no data, or ``start_date`` is
+                after ``end_date``.
+
+        Example:
+            df = DssCore.read_timeseries("file.dss", "/BASIN/LOC/FLOW//1HOUR/OBS/")
+            print(df.head())
+            print(f"Units: {df.attrs['units']}")
+        """
+        DssCore._check_window(start_date, end_date)
+        backend = DssCore.get_backend()
+        if backend == "native":
+            return DssCore._read_timeseries_native(dss_file, pathname, start_date, end_date)
+        if backend == "shadow":
+            return DssCore._shadow_read(
+                "read_timeseries", dss_file, pathname,
+                lambda: DssCore._read_timeseries_java(dss_file, pathname, start_date, end_date),
+                lambda: DssCore._read_timeseries_native(dss_file, pathname, start_date, end_date),
+                lambda j, je, n, ne: _backend.classify_timeseries(pathname, j, je, n, ne),
+            )
+        return DssCore._read_timeseries_java(dss_file, pathname, start_date, end_date)
+
+    @staticmethod
+    def _read_timeseries_native(
+        dss_file: Union[str, Path],
+        pathname: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> pd.DataFrame:
+        """``read_timeseries`` through ras_commander_fast_dss (no JVM).
+
+        Reads the whole dataset (HEC's ``get(path, True)`` semantics, leading and
+        trailing missing values trimmed) and then applies the same inclusive stamp
+        window as the Java path, so both backends return the same rows.
+        """
+        window_start, window_end = DssCore._check_window(start_date, end_date)
+        dc = _backend.import_native()
+        resolved = str(Path(dss_file).resolve())
+        native = dc.read_timeseries(resolved, pathname)
+        stamps = native.index.to_numpy(dtype="datetime64[s]")
+        if len(stamps) == 0 or stamps.max() <= _NS_MAX:
+            index = pd.DatetimeIndex(stamps.astype("datetime64[ns]"))
+        else:  # pattern records (year 3000) do not fit nanoseconds
+            index = pd.DatetimeIndex(stamps)
+        df = pd.DataFrame({'value': native['value'].to_numpy(dtype=np.float64)}, index=index)
+        if window_start is not None:
+            df = df[df.index >= window_start]
+        if window_end is not None:
+            df = df[df.index <= window_end]
+        df.insert(0, 'datetime', df.index)
+        df.attrs['pathname'] = pathname
+        df.attrs['units'] = native.attrs.get('units', "")
+        df.attrs['type'] = native.attrs.get('type', "")
+        df.attrs['interval'] = native.attrs.get('interval')
+        df.attrs['dss_file'] = resolved
+        return df
+
+    @staticmethod
+    def get_peak_value(
+        dss_file: Union[str, Path],
+        pathname: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Extract ONLY peak value from DSS without loading full time series.
+
+        Args:
+            dss_file: Path to DSS file
+            pathname: DSS pathname to read
+
+        Returns:
+            Dictionary with:
+                - peak_flow: Maximum value (float)
+                - peak_time: Time of maximum (datetime); the first maximum
+                  when values tie
+                - units: Engineering units (str)
+                - count: Number of timesteps, including missing values (int)
+                - min_value: Minimum value (float)
+                - mean_value: Mean value (float)
+            peak_flow, min_value and mean_value exclude HEC missing values
+            (-901, -902 and -3.4028e38) and NaN.
+            Returns None if path doesn't exist, read fails, or every value is
+            missing
+
+        Example:
+            >>> peak_info = DssCore.get_peak_value("results.dss", "//OUTLET/FLOW/.../")
+            >>> print(f"Peak: {peak_info['peak_flow']} {peak_info['units']}")
+        """
+        backend = DssCore.get_backend()
+        if backend == "native":
+            return DssCore._get_peak_value_native(dss_file, pathname)
+        if backend == "shadow":
+            def classify(j, je, n, ne):
+                if _backend.java_unavailable(je):
+                    return "skipped", "java unavailable", []
+                diffs = _backend.compare_peak(j, n)
+                if diffs:
+                    return "unexpected", "peak difference", diffs
+                return "identical", "identical", []
+
+            return DssCore._shadow_read(
+                "get_peak_value", dss_file, pathname,
+                lambda: DssCore._get_peak_value_java(dss_file, pathname),
+                lambda: DssCore._get_peak_value_native(dss_file, pathname),
+                classify,
+            )
+        return DssCore._get_peak_value_java(dss_file, pathname)
+
+    @staticmethod
+    def _get_peak_value_native(
+        dss_file: Union[str, Path], pathname: str
+    ) -> Optional[Dict[str, Any]]:
+        """``get_peak_value`` through ras_commander_fast_dss (no JVM)."""
+        dss_path = Path(dss_file)
+        if not dss_path.exists():
+            logger.warning(f"DSS file not found: {dss_path}")
+            return None
+        dc = _backend.import_native()
+        not_found = getattr(dc, "DssPathnameNotFoundError", None) or ()
+        try:
+            # raw=True keeps the stored markers so ``count`` matches the Java path.
+            df = dc.read_timeseries(str(dss_path.resolve()), pathname, raw=True)
+        except not_found:
+            logger.warning(f"No data found for pathname: {pathname}")
+            return None
+        except Exception as e:
+            logger.error(f"Error reading DSS pathname {pathname}: {e}")
+            return None
+        values = df['value'].to_numpy(dtype=np.float64)
+        valid = DssCore._valid_value_mask(values)
+        if not valid.any():
+            logger.warning(f"Only missing values in time series for pathname: {pathname}")
+            return None
+        valid_values = values[valid]
+        valid_stamps = df.index.to_numpy(dtype="datetime64[s]")[valid]
+        peak_idx = int(np.argmax(valid_values))  # first maximum when values tie
+        return {
+            'peak_flow': float(valid_values[peak_idx]),
+            'peak_time': pd.Timestamp(valid_stamps[peak_idx]),
+            'units': str(df.attrs.get('units', "") or ""),
+            'count': int(values.size),
+            'min_value': float(np.min(valid_values)),
+            'mean_value': float(np.mean(valid_values)),
+        }
+
+    @staticmethod
+    def read_paired_data(
+        dss_file: Union[str, Path],
+        pathname: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Read paired data (X-Y curve) from DSS file.
+
+        Args:
+            dss_file: Path to DSS file
+            pathname: DSS pathname for paired data. The D part is ignored when the
+                exact pathname is not found.
+
+        Returns:
+            Dictionary with:
+                - x_values: numpy array of X values (float64)
+                - y_values: numpy array of Y values, first curve only (float64)
+                - x_units: X axis units
+                - y_units: Y axis units
+                - x_label: X axis type as stored (for example ``UNT``)
+                - y_label: Y axis type as stored
+                - pathname: Original pathname
+            Returns None if read fails
+
+        Example:
+            >>> data = DssCore.read_paired_data(
+            ...     "file.dss",
+            ...     "//ELEMENT/FLOW-DIVERSION///TABLE/"
+            ... )
+            >>> print(f"X: {data['x_values']}")
+            >>> print(f"Y: {data['y_values']}")
+        """
+        backend = DssCore.get_backend()
+        if backend == "native":
+            return DssCore._read_paired_data_native(dss_file, pathname)
+        if backend == "shadow":
+            return DssCore._shadow_read(
+                "read_paired_data", dss_file, pathname,
+                lambda: DssCore._read_paired_data_java(dss_file, pathname),
+                lambda: DssCore._read_paired_data_native(dss_file, pathname),
+                _backend.classify_paired_data,
+            )
+        return DssCore._read_paired_data_java(dss_file, pathname)
+
+    @staticmethod
+    def _read_paired_data_native(
+        dss_file: Union[str, Path], pathname: str
+    ) -> Optional[Dict[str, Any]]:
+        """``read_paired_data`` through ras_commander_fast_dss (no JVM).
+
+        The engine's ``read_paired_data_compat`` returns exactly the Java dict:
+        curve 0 only, axis types under the ``*_label`` keys, None on any failure.
+        """
+        dc = _backend.import_native()
+        dss_path = Path(dss_file)
+        if not dss_path.exists():
+            logger.warning(f"DSS file not found: {dss_path}")
+            return None
+        return dc.read_paired_data_compat(str(dss_path.resolve()), pathname)
+
+    @staticmethod
+    def get_file_version(dss_file: Union[str, Path]) -> int:
+        """
+        HEC-DSS version of an existing file: 6 or 7.
+
+        Args:
+            dss_file: Path to an existing DSS file
+
+        Returns:
+            6 or 7
+
+        Raises:
+            FileNotFoundError: If the file does not exist
+            ValueError: If the file is not a DSS6 or DSS7 file
+        """
+        dss_path = Path(dss_file)
+        if not dss_path.is_file():
+            raise FileNotFoundError(f"DSS file not found: {dss_path}")
+        backend = DssCore.get_backend()
+        if backend == "native":
+            return DssCore._get_file_version_native(dss_path)
+        if backend == "shadow":
+            return DssCore._shadow_read(
+                "get_file_version", dss_path, None,
+                lambda: DssCore._get_file_version_java(dss_path),
+                lambda: DssCore._get_file_version_native(dss_path),
+                _backend.classify_file_version,
+            )
+        return DssCore._get_file_version_java(dss_path)
+
+    @staticmethod
+    def _get_file_version_java(dss_file: Union[str, Path]) -> int:
+        """File version through HEC Monolith (``HecDataManager.getDssFileVersion``)."""
+        DssCore._configure_jvm()
+        from jnius import autoclass
+
+        resolved = str(Path(dss_file).resolve())
+        try:
+            version = int(autoclass('hec.heclib.dss.HecDataManager').getDssFileVersion(
+                resolved))
+        finally:
+            DssCore._release_dss_file(resolved)
+        if version not in (6, 7):
+            raise ValueError(f"File is not a DSS6 or DSS7 file: {dss_file}")
+        return version
+
+    @staticmethod
+    def _get_file_version_native(dss_file: Union[str, Path]) -> int:
+        """File version through ras_commander_fast_dss (no JVM)."""
+        dc = _backend.import_native()
+        try:
+            version = int(dc.file_signature(str(Path(dss_file).resolve()))["version"])
+        except Exception as exc:
+            raise ValueError(f"File is not a DSS6 or DSS7 file: {dss_file} ({exc})") from exc
+        if version not in (6, 7):
+            raise ValueError(f"File is not a DSS6 or DSS7 file: {dss_file}")
+        return version
+
+    # -- grids -----------------------------------------------------------------
+
+    @staticmethod
+    def _parse_grid_time(part: str) -> Optional[pd.Timestamp]:
+        """``DDMMMYYYY:HHMM`` (``2400`` is the next day's 00:00) or None."""
+        match = re.fullmatch(r"(\d{2}[A-Za-z]{3}\d{4}):?(\d{2})(\d{2})", (part or "").strip())
+        if not match:
+            return None
+        day = pd.Timestamp(pd.to_datetime(match.group(1), format="%d%b%Y"))
+        return day + pd.Timedelta(hours=int(match.group(2)), minutes=int(match.group(3)))
+
+    @staticmethod
+    def read_grid(dss_file: Union[str, Path], pathname: str) -> Dict[str, Any]:
+        """
+        Read one grid record (HRAP, Albers/SHG or specified) by its full pathname.
+
+        Args:
+            dss_file: Path to an existing DSS file
+            pathname: Full grid pathname, including its D and E parts
+
+        Returns:
+            Dictionary with:
+                - data: float32 array shaped ``(ny, nx)``; row 0 is the southern row
+                  (HEC order); missing cells are NaN
+                - pathname, dss_file
+                - shape: ``(ny, nx)``
+                - units, data_type (``PER-CUM``, ``PER-AVER``, ``INST-VAL``, ``INST-CUM``)
+                - grid_type: ``hrap``, ``albers`` or ``specified``
+                - cell_size: cell size in CRS units
+                - lower_left_cell: ``(x, y)`` cell indexes of the lower-left cell
+                - cell_zero: CRS coordinates of the lower-left corner of cell (0, 0)
+                - origin: CRS coordinates of the grid's lower-left corner
+                - crs: spatial reference (WKT) as HEC Monolith reports it
+                - start_time, end_time: from the D and E parts (``pandas.Timestamp``)
+                  or None
+
+        Raises:
+            FileNotFoundError: If the file does not exist
+            ValueError: If the pathname is malformed, or the record does not exist
+                or is not a grid
+            hms_commander.dss.DssCapabilityError: With the native backend, when the
+                engine does not advertise qualified grid CRS strings
+
+        Example:
+            >>> grid = DssCore.read_grid("hrap.dss",
+            ...     "/HRAP/ABRFC/PRECIP/18JAN1996:0600/18JAN1996:0700//")
+            >>> grid["data"].shape
+        """
+        dss_path = Path(dss_file)
+        if not dss_path.is_file():
+            raise FileNotFoundError(f"DSS file not found: {dss_path}")
+        DssCore._check_pathname_format(pathname)
+        backend = DssCore.get_backend()
+        if backend == "native":
+            return DssCore._read_grid_native(dss_path, pathname)
+        if backend == "shadow":
+            return DssCore._shadow_read(
+                "read_grid", dss_path, pathname,
+                lambda: DssCore._read_grid_java(dss_path, pathname),
+                lambda: DssCore._read_grid_native(dss_path, pathname),
+                _backend.classify_grid,
+            )
+        return DssCore._read_grid_java(dss_path, pathname)
+
+    @staticmethod
+    def _read_grid_java(dss_file: Union[str, Path], pathname: str) -> Dict[str, Any]:
+        """``read_grid`` through HEC Monolith (``HecDss.get`` -> ``GridContainer``)."""
+        DssCore._configure_jvm()
+        from jnius import autoclass, cast
+
+        HecDss = autoclass('hec.heclib.dss.HecDss')
+        GridInfo = autoclass('hec.heclib.grid.GridInfo')
+        resolved = str(Path(dss_file).resolve())
+        dss = HecDss.open(resolved)
+        try:
+            dss.setMessageLevel(0)
+        except Exception:
+            pass
+        try:
+            if not dss.recordExists(pathname):
+                raise ValueError(f"No data found for pathname: {pathname}")
+            container = dss.get(pathname)
+            if container is None:
+                raise ValueError(f"No data found for pathname: {pathname}")
+            class_name = str(container.getClass().getName())
+            if class_name != "hec.io.GridContainer":
+                raise ValueError(f"Not a grid record: {pathname} ({class_name})")
+            grid_data = cast('hec.io.GridContainer', container).getGridData()
+            info_base = grid_data.getGridInfo()
+            info_class = str(info_base.getClass().getName())
+            info = cast(info_class, info_base)
+            nx, ny = int(info.getNumberOfCellsX()), int(info.getNumberOfCellsY())
+            values = np.asarray(grid_data.getData(), dtype=np.float32)
+            if values.size != nx * ny:
+                raise RuntimeError(
+                    f"Grid {pathname} returned {values.size} cells for {ny}x{nx}")
+            values = values.reshape((ny, nx)).copy()
+            values[values == np.float32(GridInfo.getGridNodataValue())] = np.nan
+            short = info_class.rsplit('.', 1)[-1]
+            cell_size = float(info.getCellSize())
+            lower_left = (int(info.getLowerLeftCellX()), int(info.getLowerLeftCellY()))
+            if short in ("AlbersInfo", "SpecifiedGridInfo"):
+                cell_zero = (float(info.getXCoordOfGridCellZero()),
+                             float(info.getYCoordOfGridCellZero()))
+            else:
+                cell_zero = (0.0, 0.0)
+            parts = pathname.split('/')
+            return {
+                'dss_file': resolved,
+                'pathname': pathname,
+                'data': values,
+                'shape': (ny, nx),
+                'units': str(info.getDataUnits()),
+                'data_type': str(info.getDataTypeName()),
+                'grid_type': _GRID_TYPE_NAMES.get(short, short),
+                'cell_size': cell_size,
+                'lower_left_cell': lower_left,
+                'cell_zero': cell_zero,
+                'origin': (cell_zero[0] + lower_left[0] * cell_size,
+                           cell_zero[1] + lower_left[1] * cell_size),
+                'crs': str(info.getSpatialReferenceSystem()),
+                'start_time': DssCore._parse_grid_time(parts[4]),
+                'end_time': DssCore._parse_grid_time(parts[5]),
+            }
+        finally:
+            DssCore._done_and_release(dss, resolved)
+
+    @staticmethod
+    def _read_grid_native(dss_file: Union[str, Path], pathname: str) -> Dict[str, Any]:
+        """``read_grid`` through ras_commander_fast_dss (no JVM). Gated on the engine's
+        ``grid_srs_monolith_parity`` feature."""
+        dc = _backend.require_native_grid_reads()
+        resolved = str(Path(dss_file).resolve())
+        grid = dc.read_grid(resolved, pathname)
+        cell_size = float(grid.cell_size)
+        lower_left = (int(grid.lower_left_cell_x), int(grid.lower_left_cell_y))
+        cell_zero = (float(grid.x_coord_of_grid_cell_zero),
+                     float(grid.y_coord_of_grid_cell_zero))
+        parts = pathname.split('/')
+        return {
+            'dss_file': resolved,
+            'pathname': pathname,
+            'data': np.asarray(grid.data, dtype=np.float32),
+            'shape': (int(grid.ny), int(grid.nx)),
+            'units': str(grid.data_units),
+            'data_type': grid.data_type_name,
+            'grid_type': str(grid.grid_type),
+            'cell_size': cell_size,
+            'lower_left_cell': lower_left,
+            'cell_zero': cell_zero,
+            'origin': (cell_zero[0] + lower_left[0] * cell_size,
+                       cell_zero[1] + lower_left[1] * cell_size),
+            'crs': str(grid.srs_definition),
+            'start_time': DssCore._parse_grid_time(parts[4]),
+            'end_time': DssCore._parse_grid_time(parts[5]),
+        }
+
+    # ------------------------------------------------------------------
+    # Writers
+    # ------------------------------------------------------------------
+
+    #: DSS version a new file gets when no version is requested. It is the Java
+    #: path's default: HEC Monolith 3.3.27 creates DSS7 files.
+    NEW_FILE_VERSION = 7
+
+    #: Longest unit or type string a DSS6 paired-data record stores.
+    DSS6_TEXT_LIMIT = 8
+
+    @staticmethod
+    def _validate_dss_version(dss_version: Optional[int]) -> Optional[int]:
+        if dss_version is None:
+            return None
+        if isinstance(dss_version, bool) or dss_version not in (6, 7):
+            raise ValueError(f"dss_version must be 6, 7 or None, not {dss_version!r}")
+        return int(dss_version)
+
+    @staticmethod
+    def _target_version(dss_file: Union[str, Path], dss_version: Optional[int] = None) -> int:
+        """Version a write will use: the existing file's (it must match an explicit
+        ``dss_version``), else ``dss_version`` or ``NEW_FILE_VERSION``."""
+        dss_version = DssCore._validate_dss_version(dss_version)
+        dss_path = Path(dss_file)
+        if dss_path.exists():
+            if not dss_path.is_file():
+                raise IsADirectoryError(f"DSS path is not a file: {dss_path}")
+            version = DssCore.get_file_version(dss_path)
+            if dss_version is not None and version != dss_version:
+                raise ValueError(
+                    f"Existing DSS file is version {version}, not requested version "
+                    f"{dss_version}: {dss_path}"
+                )
+            return version
+        return dss_version if dss_version is not None else DssCore.NEW_FILE_VERSION
+
+    @staticmethod
+    def _native_write_target(
+        dss_file: Union[str, Path], dss_version: Optional[int] = None
+    ) -> Tuple[Path, int, bool, List[Path]]:
+        """Resolved target, its DSS version, whether it existed, and the parent
+        directories created for it (deepest first), for a native write."""
+        dss_version = DssCore._validate_dss_version(dss_version)
+        dss_path = Path(dss_file)
+        existed = dss_path.exists()
+        created: List[Path] = []
+        if existed:
+            if not dss_path.is_file():
+                raise IsADirectoryError(f"DSS path is not a file: {dss_path}")
+            version = DssCore._get_file_version_native(dss_path)
+            if dss_version is not None and version != dss_version:
+                raise ValueError(
+                    f"Existing DSS file is version {version}, not requested version "
+                    f"{dss_version}: {dss_path}"
+                )
+        else:
+            created = _backend.make_parents(dss_path)
+            version = dss_version if dss_version is not None else DssCore.NEW_FILE_VERSION
+        return dss_path.resolve(), int(version), existed, created
+
+    @staticmethod
+    @contextmanager
+    def _native_new_file(dc: Any, target: Path, version: int, existed: bool,
+                         created_dirs: Optional[List[Path]] = None):
+        """Create ``target`` when it did not exist, and remove it (and the empty parent
+        directories made for it) if the write inside the block raises, so a refused
+        native write leaves no new file or directory."""
+        try:
+            if not existed:
+                dc.create(str(target), version)
+            yield
+        except BaseException:
+            if not existed and target.exists():
+                try:
+                    target.unlink()
+                except OSError as exc:
+                    logger.warning("Could not remove %s after a failed native write: %s",
+                                   target, exc)
+            _backend.remove_created_dirs(created_dirs or [])
+            raise
+
+    @staticmethod
+    def _readback_pathname(pathname: str, version: int) -> str:
+        """Dataset pathname for a read-back: D part blank; on DSS6 upper case with the
+        DSS6 interval names (``1Minute`` -> ``1MIN``, ``1Month`` -> ``1MON``)."""
+        parts = pathname.split("/")
+        if len(parts) == 8:
+            parts[4] = ""
+        if version != 6:
+            return "/".join(parts)
+        parts = [part.upper() for part in parts]
+        if len(parts) == 8:
+            parts[5] = re.sub(r"^(\d+)MINUTES?$", r"\1MIN", parts[5])
+            parts[5] = re.sub(r"^(\d+)MONTHS?$", r"\1MON", parts[5])
+        return "/".join(parts)
+
+    @staticmethod
+    def _shadow_write(operation: str, dss_file: Any, pathname: Optional[str],
+                      java_call, native_call, compare):
+        """Shadow write: snapshot the target, run ``java_call`` (its result or error is
+        what the caller gets), repeat the write natively with ``native_call(copy,
+        existed)`` on the snapshot, then ``compare(copy)`` the native read-backs.
+        The comparison never raises."""
+        from .hms_dss import HmsDss
+
+        limit = getattr(HmsDss, "shadow_copy_limit_mb", _backend.SHADOW_COPY_LIMIT_MB_DEFAULT)
+        ctx = _backend.shadow_snapshot(dss_file, limit)
+        try:
+            t0 = time.perf_counter()
+            result = java_call()
+            java_s = time.perf_counter() - t0
+            try:
+                if ctx.get("skip"):
+                    _backend.record(operation, "skipped", ctx["skip"], dss_file=dss_file,
+                                    pathname=pathname, java_seconds=java_s)
+                else:
+                    native_exc, diffs = None, []
+                    t1 = time.perf_counter()
+                    try:
+                        native_call(ctx["copy"], ctx["existed"])
+                    except Exception as exc:
+                        native_exc = exc
+                    native_s = time.perf_counter() - t1
+                    if native_exc is None:
+                        diffs = compare(ctx["copy"])
+                    outcome, label, diffs = _backend.classify_write(native_exc, diffs)
+                    _backend.record(operation, outcome, label, dss_file=dss_file,
+                                    pathname=pathname, diffs=diffs, java_seconds=java_s,
+                                    native_seconds=native_s, native_error=native_exc)
+            except Exception as exc:  # the comparison must never break the write
+                logger.warning("DSS shadow %s comparison failed for %s: %s",
+                               operation, dss_file, exc)
+            return result
+        finally:
+            _backend.shadow_cleanup(ctx)
+
+    # -- time series ---------------------------------------------------------
+
+    @staticmethod
+    def _prepare_timeseries(pathname, times, values):
+        """Shared argument checks for ``write_timeseries``; returns ``(stamps, values)``
+        with stamps as ``datetime64[s]`` and values as float64."""
+        DssCore._check_pathname_format(pathname)
+        e_part = pathname.split('/')[5]
+        if e_part.upper().startswith('IR-'):
+            raise ValueError(
+                "write_timeseries writes regular-interval data only; the E part "
+                f"{e_part!r} names an irregular series")
+        values = np.asarray(values, dtype=np.float64)
+        if values.ndim != 1:
+            raise ValueError("values must be one-dimensional")
+        try:
+            index = pd.DatetimeIndex(times)
+        except Exception as exc:
+            raise ValueError(f"times must be dates or times: {exc}") from exc
+        if index.tz is not None:
+            raise ValueError("times are time-zone aware; DSS stamps are naive")
+        if len(index) != len(values):
+            raise ValueError(
+                f"times ({len(index)}) and values ({len(values)}) must have same length")
+        if len(values) == 0:
+            raise ValueError("times and values must not be empty")
+        if index.hasnans:
+            raise ValueError("times contain NaT")
+        stamps = index.to_numpy(dtype="datetime64[ns]")
+        if np.any(stamps.astype(np.int64) % 60_000_000_000):
+            raise ValueError("times must be whole minutes (HEC time-series stamps)")
+        if len(stamps) > 1 and np.any(np.diff(stamps.astype(np.int64)) <= 0):
+            raise ValueError("times must be strictly increasing")
+        if np.isinf(values).any():
+            first = int(np.flatnonzero(np.isinf(values))[0])
+            raise ValueError(f"value {first} is infinite; HEC-DSS has no infinity convention")
+        return stamps.astype("datetime64[s]"), values
+
+    @staticmethod
+    def write_timeseries(
+        dss_file: Union[str, Path],
+        pathname: str,
+        times,
+        values,
+        units: str = "CFS",
+        data_type: str = "INST-VAL",
+        dss_version: Optional[int] = None,
+    ) -> Path:
+        """
+        Write a regular-interval time series to a DSS file (created if missing).
+
+        Args:
+            dss_file: Path to the DSS file. A missing file is created as DSS7
+                unless ``dss_version`` is 6.
+            pathname: ``/A/B/C/D/E/F/`` with a regular E part (``15MIN``, ``1HOUR``,
+                ``1Hour``, ``1DAY``, ...). D may be empty; HEC sets it per block.
+            times: One naive stamp per value (end-of-period stamps), whole minutes,
+                strictly increasing and regular for the E part
+            values: Numeric values, stored as doubles. ``NaN`` is stored as HEC's
+                missing value (-3.4028e38 on DSS7, -901 on DSS6); infinity is refused.
+            units: HEC units (default ``CFS``)
+            data_type: HEC type: ``INST-VAL``, ``PER-AVER``, ``PER-CUM`` or ``INST-CUM``
+            dss_version: 6 or 7 for a new file; for an existing file it must match
+
+        Returns:
+            Path to the DSS file
+
+        Raises:
+            ValueError: Invalid pathname, times or values, or a version mismatch.
+                The native backend also refuses stamps that are not regular for the
+                E part.
+            RuntimeError: If HEC Monolith reports a failed write
+
+        Example:
+            >>> times = pd.date_range("2020-01-01 01:00", periods=24, freq="h")
+            >>> DssCore.write_timeseries("obs.dss", "//GAGE 1/FLOW//1HOUR/OBS/",
+            ...                          times, flows)
+        """
+        DssCore._prepare_timeseries(pathname, times, values)
+        DssCore._validate_dss_version(dss_version)
+        backend = DssCore.get_backend()
+        if backend == "native":
+            return DssCore._write_timeseries_native(
+                dss_file, pathname, times, values, units, data_type, dss_version)
+        if backend == "shadow":
+            def native_call(copy, existed):
+                version = DssCore._get_file_version_native(dss_file)
+                DssCore._write_timeseries_native(copy, pathname, times, values, units,
+                                                 data_type, None if existed else version)
+
+            def compare(copy):
+                version = DssCore._get_file_version_native(dss_file)
+                readback = DssCore._readback_pathname(pathname, version)
+                java_df = DssCore._read_timeseries_native(dss_file, readback)
+                native_df = DssCore._read_timeseries_native(copy, readback)
+                return _backend.compare_frames(java_df, native_df, skip_attrs=("dss_file",))
+
+            return DssCore._shadow_write(
+                "write_timeseries", dss_file, pathname,
+                lambda: DssCore._write_timeseries_java(
+                    dss_file, pathname, times, values, units, data_type, dss_version),
+                native_call, compare,
+            )
+        return DssCore._write_timeseries_java(
+            dss_file, pathname, times, values, units, data_type, dss_version)
+
+    @staticmethod
+    def _write_timeseries_java(dss_file, pathname, times, values, units, data_type,
+                               dss_version) -> Path:
+        """``write_timeseries`` through HEC Monolith (``TimeSeriesContainer``)."""
+        stamps, values = DssCore._prepare_timeseries(pathname, times, values)
+        dss_path = Path(dss_file)
+        existed = dss_path.exists()
+        version = DssCore._target_version(dss_path, dss_version)
+        values = values.copy()
+        values[np.isnan(values)] = -901.0 if version == 6 else _HEC_UNDEFINED_DOUBLE
+        minutes = ((stamps - np.datetime64('1899-12-31T00:00:00', 's'))
+                   .astype('timedelta64[m]').astype(np.int64))
+        interval = int(np.median(np.diff(minutes))) if len(minutes) > 1 else 0
+
+        DssCore._configure_jvm()
+        from jnius import autoclass, cast
+
+        HecDss = autoclass('hec.heclib.dss.HecDss')
+        tsc = autoclass('hec.io.TimeSeriesContainer')()
+        tsc.fullName = pathname
+        tsc.units = units
+        tsc.type = data_type
+        tsc.interval = interval
+        tsc.setStoreAsDoubles(True)
+        status_t = tsc.setTimes(autoclass('hec.heclib.util.HecTimeArray')(
+            [int(m) for m in minutes]))
+        status_v = tsc.setValues(values.tolist())
+        if status_t != 0 or status_v != 0:
+            raise RuntimeError(
+                f"HEC time-series container rejected input: times={status_t}, "
+                f"values={status_v}")
+        tsc.numberValues = len(values)
+
+        if not existed:
+            dss_path.parent.mkdir(parents=True, exist_ok=True)
+        resolved = str(dss_path.resolve())
+        dss = HecDss.open(resolved, version) if not existed else HecDss.open(resolved)
+        try:
+            try:
+                dss.setMessageLevel(0)
+            except Exception:
+                pass
+            dss.put(cast('hec.io.DataContainer', tsc))
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to write time series {pathname} to {resolved}: {exc}") from exc
+        finally:
+            DssCore._done_and_release(dss, resolved)
+        logger.info(f"Wrote {len(values)} values to {pathname}")
+        return Path(resolved)
+
+    @staticmethod
+    def _write_timeseries_native(dss_file, pathname, times, values, units, data_type,
+                                 dss_version) -> Path:
+        """``write_timeseries`` through ras_commander_fast_dss (no JVM). Values are
+        stored as doubles, as the Java path stores them."""
+        stamps, values = DssCore._prepare_timeseries(pathname, times, values)
+        dc = _backend.require_native_writes()
+        target, version, existed, created = DssCore._native_write_target(dss_file, dss_version)
+        with DssCore._native_new_file(dc, target, version, existed, created):
+            dc.write_timeseries(str(target), pathname, values, times=stamps, units=units,
+                                data_type=data_type, version=version, value_type="double")
+        logger.info(f"Wrote {len(values)} values to {pathname}")
+        return target
+
+    # -- paired data -----------------------------------------------------------
+
+    @staticmethod
+    def _check_paired_data_records(paired_data_records: List[Dict[str, Any]]) -> None:
+        seen = {}
+        for record in paired_data_records:
+            pathname = record['pathname']
+            DssCore._check_pathname_format(pathname)
+            key = pathname.upper()
+            if key in seen:
+                raise ValueError(
+                    f"Duplicate paired-data pathname {pathname!r} (also {seen[key]!r}); "
+                    "the later record would overwrite the earlier one"
+                )
+            seen[key] = pathname
+
+    @staticmethod
+    def write_paired_data(
+        dss_file: Union[str, Path],
+        pathname: str,
+        x_values: np.ndarray,
+        y_values: np.ndarray,
+        x_units: str = "HOURS",
+        y_units: str = "FRACTION",
+        x_label: str = "TIME",
+        y_label: str = "CUMULATIVE"
+    ) -> bool:
+        """
+        Write paired data (X-Y curve) to DSS file.
+
+        This is used for Atlas 14 temporal distributions, rating curves,
+        and other X-Y relationships. The record is stored as float32 paired
+        data (HEC record type PD), as HEC Monolith stores it.
+
+        Args:
+            dss_file: Path to DSS file (created as DSS7 if it doesn't exist)
+            pathname: DSS pathname with exactly six parts
+                (e.g., "//TX_R3/FIRST-QUARTILE/24HR//50%/")
+            x_values: X coordinates (e.g., time in hours)
+            y_values: Y coordinates (e.g., cumulative fraction 0-1)
+            x_units: Units for X values (default: "HOURS")
+            y_units: Units for Y values (default: "FRACTION")
+            x_label: Stored as the X axis type (default: "TIME")
+            y_label: Stored as the Y axis type (default: "CUMULATIVE")
+
+        Returns:
+            True if the record was written and found in the file catalog,
+            False if the DSS library raised an error during the write
+
+        Raises:
+            ValueError: If ``pathname`` does not have exactly six parts
+                (seven slashes). With the native backend, also if a unit or type
+                string is longer than 8 characters for a DSS6 file (HEC Monolith
+                silently truncates it there). Nothing is written in either case.
+            RuntimeError: If the write returned without error but the record
+                is not in the file catalog afterwards
+
+        Example:
+            >>> x = np.linspace(0, 24, 49)  # 0 to 24 hours
+            >>> y = np.linspace(0, 1, 49)   # 0 to 100% cumulative
+            >>> DssCore.write_paired_data(
+            ...     "temporal.dss",
+            ...     "//TX_R3/ALL-CASES/24HR//50%/",
+            ...     x, y
+            ... )
+        """
+        DssCore._check_pathname_format(pathname)
+        record = {'pathname': pathname, 'x_values': x_values, 'y_values': y_values,
+                  'x_units': x_units, 'y_units': y_units, 'x_label': x_label,
+                  'y_label': y_label}
+
+        def java_call():
+            return DssCore._write_paired_data_java(
+                dss_file, pathname, x_values, y_values, x_units, y_units, x_label, y_label)
+
+        backend = DssCore.get_backend()
+        if backend == "native":
+            return DssCore._write_paired_data_native(dss_file, [record])[pathname]
+        if backend == "shadow":
+            return DssCore._shadow_write_paired_data(
+                "write_paired_data", dss_file, [record], java_call)
+        return java_call()
+
+    @staticmethod
+    def write_multiple_paired_data(
+        dss_file: Union[str, Path],
+        paired_data_records: List[Dict[str, Any]]
+    ) -> Dict[str, bool]:
+        """
+        Write multiple paired data records to DSS file.
+
+        Args:
+            dss_file: Path to DSS file (created as DSS7 if it doesn't exist)
+            paired_data_records: List of dicts with keys:
+                - pathname: DSS pathname
+                - x_values: numpy array of X values
+                - y_values: numpy array of Y values
+                - x_units: (optional) X units
+                - y_units: (optional) Y units
+                - x_label: (optional) X axis type
+                - y_label: (optional) Y axis type
+
+        Returns:
+            Dict mapping pathname to success status. True means the record was
+            written and found in the file catalog; False means the DSS library
+            raised an error for that record.
+
+        Raises:
+            ValueError: If any pathname does not have exactly six parts, or two
+                records share a pathname (the later record would overwrite the
+                earlier one). With the native backend, also if a unit or type
+                string is longer than 8 characters for a DSS6 file. Nothing is
+                written in these cases.
+            RuntimeError: If a write reported no error but its record is not
+                in the file catalog afterwards
+
+        Example:
+            >>> records = [
+            ...     {"pathname": "//A/B/C//D/", "x_values": x1, "y_values": y1},
+            ...     {"pathname": "//A/E/C//D/", "x_values": x2, "y_values": y2},
+            ... ]
+            >>> results = DssCore.write_multiple_paired_data("file.dss", records)
+        """
+        DssCore._check_paired_data_records(paired_data_records)
+
+        def java_call():
+            return DssCore._write_multiple_paired_data_java(dss_file, paired_data_records)
+
+        backend = DssCore.get_backend()
+        if backend == "native":
+            return DssCore._write_paired_data_native(dss_file, paired_data_records)
+        if backend == "shadow":
+            return DssCore._shadow_write_paired_data(
+                "write_multiple_paired_data", dss_file, paired_data_records, java_call)
+        return java_call()
+
+    @staticmethod
+    def _paired_data_specs(paired_data_records: List[Dict[str, Any]], version: int):
+        """Normalized records; refuses DSS6 unit/type strings over 8 characters."""
+        specs = []
+        for record in paired_data_records:
+            spec = {
+                'pathname': record['pathname'],
+                'x': np.asarray(record['x_values'], dtype=np.float64),
+                'y': np.asarray(record['y_values'], dtype=np.float64),
+                'x_units': record.get('x_units', 'HOURS'),
+                'y_units': record.get('y_units', 'FRACTION'),
+                'x_type': record.get('x_label', 'TIME'),
+                'y_type': record.get('y_label', 'CUMULATIVE'),
+            }
+            if version == 6:
+                for key in ('x_units', 'x_type', 'y_units', 'y_type'):
+                    text = str(spec[key])
+                    if len(text) > DssCore.DSS6_TEXT_LIMIT:
+                        raise ValueError(
+                            f"{record['pathname']}: {key} {text!r} is {len(text)} "
+                            f"characters; a DSS6 file stores at most "
+                            f"{DssCore.DSS6_TEXT_LIMIT} (HEC Monolith would silently store "
+                            f"{text[:DssCore.DSS6_TEXT_LIMIT]!r}). Pass a string of "
+                            f"{DssCore.DSS6_TEXT_LIMIT} characters or fewer, or write to a "
+                            "DSS7 file."
+                        )
+            specs.append(spec)
+        return specs
+
+    @staticmethod
+    def _write_paired_data_native(
+        dss_file: Union[str, Path], paired_data_records: List[Dict[str, Any]]
+    ) -> Dict[str, bool]:
+        """Paired-data writes through ras_commander_fast_dss (no JVM).
+
+        Mirrors the Java path: float32 (PD) records, the ``*_label`` arguments stored
+        as axis types, no curve labels, one result per record (False when the engine
+        raised for that record), then a catalog check. DSS6 unit/type strings over 8
+        characters are refused before anything is written.
+        """
+        DssCore._check_paired_data_records(paired_data_records)
+        dc = _backend.require_native_writes()
+        target, version, existed, created = DssCore._native_write_target(dss_file)
+        try:
+            specs = DssCore._paired_data_specs(paired_data_records, version)
+        except Exception:
+            _backend.remove_created_dirs(created)
+            raise
+        results: Dict[str, bool] = {}
+        with DssCore._native_new_file(dc, target, version, existed, created):
+            for spec in specs:
+                pathname = spec['pathname']
+                try:
+                    dc.write_paired_data(
+                        str(target), pathname, spec['x'], spec['y'],
+                        x_units=spec['x_units'], x_type=spec['x_type'],
+                        y_units=spec['y_units'], y_type=spec['y_type'],
+                        value_type="float", version=version,
+                    )
+                    results[pathname] = True
+                except Exception as e:
+                    logger.error(f"Error writing paired data to {pathname}: {e}")
+                    results[pathname] = False
+        written = [path for path, ok in results.items() if ok]
+        missing = (DssCore._missing_pathnames(DssCore._get_catalog_native(target), written)
+                   if written else [])
+        if missing:
+            raise RuntimeError(
+                f"{len(missing)} paired data write(s) reported no error but are not in "
+                f"the catalog of {target}: {missing}"
+            )
+        logger.info(f"Wrote {sum(results.values())}/{len(results)} paired data records")
+        return results
+
+    @staticmethod
+    def _shadow_write_paired_data(operation, dss_file, records, java_call):
+        def native_call(copy, existed):
+            DssCore._write_paired_data_native(copy, records)
+
+        def compare(copy):
+            diffs = []
+            for record in records:
+                pathname = record['pathname']
+                java = DssCore._read_paired_data_native(dss_file, pathname)
+                native = DssCore._read_paired_data_native(copy, pathname)
+                diffs += [f"{pathname}:{d}"
+                          for d in _backend.compare_paired_data(java, native)]
+            return diffs
+
+        pathname = records[0]['pathname'] if len(records) == 1 else None
+        return DssCore._shadow_write(operation, dss_file, pathname, java_call,
+                                     native_call, compare)
 
     @staticmethod
     def shutdown_jvm():

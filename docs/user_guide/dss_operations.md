@@ -62,23 +62,30 @@ precip_paths = HmsDss.list_precipitation_data("results.dss")
 
 ### Write Time-Series
 
+`write_timeseries` writes a regular-interval series, creating the file (DSS7, or DSS6
+with `dss_version=6`) when it does not exist. Stamps are naive end-of-period times in
+whole minutes; `NaN` is stored as HEC's missing value.
+
 ```python
 import pandas as pd
 
-# Create time series
-data = pd.DataFrame({
-    'datetime': pd.date_range('2020-01-01', periods=24, freq='H'),
-    'value': [1.0, 1.2, 0.8, ...]
-})
+times = pd.date_range("2020-01-01 01:00", periods=3, freq="h")
 
-# Write to DSS
 HmsDss.write_timeseries(
     dss_file="output.dss",
-    pathname="/BASIN/LOCATION/FLOW/01JAN2020/1HOUR/SIMULATED/",
-    data=data,
-    units="CFS"
+    pathname="/BASIN/LOCATION/FLOW//1HOUR/SIMULATED/",
+    times=times,
+    values=[10.0, 12.5, 11.0],
+    units="CFS",
+    data_type="INST-VAL",
 )
 ```
+
+### Choose a DSS backend
+
+DSS calls use HEC Monolith (Java) by default. `HmsDss.backend = "native"` uses the
+optional `ras_commander_fast_dss` engine without Java, and `"shadow"` compares both.
+See [Native DSS Backend](dss_native_backend.md).
 
 ## DSS Pathname Structure
 
@@ -116,7 +123,10 @@ path = HmsDss.create_dss_pathname(
 
 ## Key Operations
 
-- **Read/Write** - `read_timeseries()`, `write_timeseries()`
+- **Read/Write** - `read_timeseries()`, `write_timeseries()`, `read_paired_data()`,
+  `write_paired_data()`, `read_grid()`
+- **File** - `get_file_version()`, `get_info()`
+- **Backend** - `get_backend()`, `get_capabilities()`, `get_shadow_summary()`
 - **Catalog** - `get_catalog()`, `list_flow_results()`, `list_precipitation_data()`
 - **Extract** - `extract_hms_results()`
 - **Pathname** - `parse_dss_pathname()`, `create_dss_pathname()`
@@ -154,6 +164,7 @@ Other `HecDss` objects on the same file reopen it on their next access.
 ## Related Topics
 
 - [API Reference: HmsDss](../api/hms_dss.md) - Complete method documentation
+- [Native DSS Backend](dss_native_backend.md) - Java, native and shadow backends
 - [Results Analysis](results_analysis.md) - Processing HMS results
 - [Time-Series Gages](gages.md) - Linking DSS data to models
 - [Data Formats: DSS Integration](../data_formats/dss_integration.md) - DSS file format

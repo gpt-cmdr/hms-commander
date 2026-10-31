@@ -127,7 +127,10 @@ Core areas:
 
 - HMS project discovery starts from `.hms` project files, not RAS `.prj` files.
 - HMS primary editable text files are `.hms`, `.basin`, `.met`, `.control`, `.gage`, and `.run`.
-- HMS results are DSS-based. `hms-commander` uses `ras-commander` DSS infrastructure rather than duplicating DSS tooling.
+- HMS results are DSS-based. `hms_commander/dss/` reads and writes them through HEC Monolith (Java, the default backend) or the optional `ras_commander_fast_dss` engine.
+- DSS backend: `HmsDss.backend` (environment variable `HMS_COMMANDER_DSS_BACKEND`) is `java`, `native` or `shadow`. Keep `java` the default. Guard every engine import (`hms_commander/dss/_backend.py`); a missing wheel must never break the Java path. Gate native features on engine capabilities (`FEATURES`, writer API), never on versions, and never fall back to Java from `native`. `shadow` returns the Java result and must never raise.
+- Do not add `ras-commander-fast-dss` to `pyproject.toml` dependencies or extras, and do not publish it: the name is unpublished (dependency-confusion risk). Install the provided wheel into the environment instead.
+- DSS backend parity tests (`tests/test_dss_native_backend.py`) use `HmsExamples` projects and skip without the engine, Java or an HEC-HMS `samples.zip`. Document new native/Java differences in `docs/user_guide/dss_native_backend.md` with a shadow label.
 - HMS 3.x projects need extra version awareness, especially for Python 2-compatible Jython execution.
 - Clone workflows should be non-destructive, traceable, and side-by-side comparable in HEC-HMS.
 - HMS-to-RAS workflows should hand off DSS file, pathname, outlet/spatial reference, time window, units, and validation notes.
