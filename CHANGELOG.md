@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Docs state the HDM recommendation (`quartile="all"`, `duration_class="0-72"`), the HDM Table 4-16 8.70 vs SIR 6.37 value at 2.5 percent, the added (0, 0) and (100, 100) end points, and that `nws_hourly` durations of 12-13 hr, 24-25 hr and under 5 hr are unsupported.
 - `BalancedFrequencyStorm` - HEC-HMS Frequency Storm (balanced/alternating-block) hyetograph generator validated against HEC-HMS 4.13 output. Existing `FrequencyStorm` is unchanged.
 - `HmsDss.read_timeseries()` accepts optional `start_date` and `end_date`, passed to `DssCore.read_timeseries()`.
+- **Native DSS backend (pre-release).** `HmsDss.backend` (or the environment variable `HMS_COMMANDER_DSS_BACKEND`) selects `"java"` (HEC Monolith, the default), `"native"` (the optional `ras_commander_fast_dss` engine, no Java) or `"shadow"` (returns the Java result and logs every difference against a native repeat; never raises). It applies to `DssCore`, `HmsDss`, `HmsDssGrid` and the readers built on them. The engine is not on PyPI and is not a dependency or extra; every engine import is guarded, so a missing or broken wheel does not affect the Java backend.
+  - Native reads: catalog, time series (same inclusive window filter as Java; HEC missing values as NaN), peak values, paired data, grids (gated on the engine's `grid_srs_monolith_parity` feature) and file version.
+  - Native writes (gated on the engine's writer API): time series, paired data, Atlas 14 temporal curves and `HmsDssGrid` specified grids. A closed gate raises `hms_commander.dss.DssCapabilityError`; there is no Java fallback.
+  - New methods: `DssCore`/`HmsDss.read_grid()`, `get_file_version()` and `write_timeseries()` (regular intervals, both backends); `HmsDss.get_backend()`, `get_capabilities()` and `get_shadow_summary()`.
+  - On DSS6, the native paired-data writer refuses unit or type strings longer than 8 characters (HEC Monolith truncates them silently), and `import_atlas14_temporal()` stores the Y type `CUMULATI`, the value Monolith stores there for `CUMULATIVE`, on both backends. The native grid writer refuses PER-CUM and PER-AVER grids, which `write_grid_timeseries()` writes with equal start and end times. See `docs/user_guide/dss_native_backend.md`.
 
 ### Fixed
 

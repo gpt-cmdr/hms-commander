@@ -117,6 +117,7 @@ class HmsDss:
     }
 
     @staticmethod
+    @log_call
     def get_backend() -> str:
         """
         DSS backend for the next call: ``"java"``, ``"native"`` or ``"shadow"``.
@@ -137,6 +138,7 @@ class HmsDss:
         return DssCore.get_backend()
 
     @staticmethod
+    @log_call
     def get_capabilities() -> pd.DataFrame:
         """
         Backend support per DSS operation.
@@ -164,6 +166,7 @@ class HmsDss:
         return df
 
     @staticmethod
+    @log_call
     def get_shadow_summary(reset: bool = False) -> Dict[str, int]:
         """
         Counts of shadow comparisons as ``{"operation|outcome|label": n}``.
