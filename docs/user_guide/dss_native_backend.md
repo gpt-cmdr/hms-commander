@@ -4,6 +4,7 @@ HMS Commander reads and writes HEC-DSS files through one of three backends. The
 default uses HEC Monolith (the HEC-DSS Java library) through pyjnius. The native
 backend uses `ras_commander_fast_dss`, a pure-Rust HEC-DSS engine for DSS6 and DSS7
 files, and starts no Java VM. The shadow backend runs both and logs every difference.
+The selection, shadow behavior and comparison labels follow ras-commander's `RasDss`.
 
 !!! warning "Pre-release engine"
     The engine's distribution, `ras-commander-fast-dss`, is not published on PyPI and is
@@ -36,10 +37,10 @@ and the readers built on them (`HmsResults`, the DSS metadata in `HmsPrj`). One 
 |---|---|---|---|
 | `java` | HEC Monolith (pyjnius, Java 8+) | works; the engine is never imported | the Java result |
 | `native` | `ras_commander_fast_dss` | raises `ImportError` | the native result |
-| `shadow` | Java, then native for comparison | runs Java only (one warning) | the Java result or error |
+| `shadow` | reads: native, then Java for comparison; writes: Java, then native on a temporary copy | runs Java only (one warning) | reads: the native result or error (grids: Java's grid); writes: the Java result or error |
 
 `HmsDss.is_available()` follows the selected backend: `native` needs the engine and no
-pyjnius; `java` and `shadow` need pyjnius.
+pyjnius; `java` needs pyjnius; `shadow` needs the engine (without it, shadow runs Java).
 
 ## What the native backend covers
 
@@ -103,27 +104,38 @@ differences remain:
 
 ## Shadow mode
 
-Shadow mode qualifies the native backend on your own files without changing results:
+Shadow mode runs the native backend and checks it against Java on your own files:
 
 ```python
 from hms_commander import HmsDss, HmsResults
 
 HmsDss.backend = "shadow"
-peaks = HmsResults.get_peak_flows("results.dss")   # Java results
+peaks = HmsResults.get_peak_flows("results.dss")   # native results, compared with Java
 print(HmsDss.get_shadow_summary())
-# {'get_catalog|identical|identical': 1, 'get_peak_value|identical|identical': 42, ...}
+# {'catalog|identical|identical': 1, 'get_peak_value|identical|identical': 42, ...}
 ```
+
+Reads return the native result, or raise the native error. Java runs afterwards for the
+comparison. When the native read fails with anything other than "not found" (or an
+invalid file for `get_file_version`), Java is not run: the comparison is recorded as
+skipped (`java skipped: native <Error>`) and the native error is raised. `read_grid`
+returns Java's grid and only compares the native grid. When Java cannot run (no pyjnius,
+Java or HEC Monolith), comparisons are recorded as skipped (`java unavailable`).
 
 Each comparison is logged on the `hms_commander.dss` logger: identical results at DEBUG,
 the known differences above as `expected` at INFO (D1 at DEBUG), and anything else as
-`UNEXPECTED` at WARNING. A comparison never raises.
+`UNEXPECTED` at WARNING. A comparison never raises. Other `expected` labels are
+`D15 catalog order`, `D4 all-missing dataset (error type)`, `D4/D6 no data: typed native
+error`, `D9 blank units/type whitespace`, `PD3 unit/type whitespace` and `G2 whitespace`,
+as in ras-commander.
 
 Shadow writes run on Java first. The native writer then repeats the write on a temporary
 copy of the target file (or a new temporary file), and both files are read back with the
 native reader and compared. The caller's file only ever receives the Java write. Files
 larger than `HmsDss.shadow_copy_limit_mb` (256 MB; environment variable
 `HMS_COMMANDER_DSS_SHADOW_COPY_LIMIT_MB`) are not copied, and the comparison is logged
-as skipped.
+as skipped. An engine without the writer API also gives a skipped comparison
+(`native writers not available`); a native refusal is `expected` (W1).
 
 ## Qualification evidence
 

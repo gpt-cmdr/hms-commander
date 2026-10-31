@@ -6,19 +6,20 @@ backends:
 - ``"java"`` (default in this release): HEC Monolith through pyjnius.
 - ``"native"``: the optional ``ras_commander_fast_dss`` engine (pure Rust). It never
   starts a JVM and never downloads HEC Monolith.
-- ``"shadow"``: runs the Java path and returns its result (or raises its error), then
-  repeats the operation natively and logs every difference. The comparison never
-  raises. Differences that are known and explained are logged as ``expected`` at
-  DEBUG/INFO; anything else is logged at WARNING as ``unexpected``. Writes are repeated
-  natively on a temporary copy of the target, never on the caller's file.
+- ``"shadow"``: reads return the native result (or raise the native error); the Java
+  path runs as well and every difference is logged. Grid reads return Java's grid and
+  only compare the native one. Writes run on Java (its result or error is returned) and
+  are repeated natively on a temporary copy of the target, never on the caller's file;
+  both files are read back natively and compared. The comparison never raises.
+  Differences that are known and explained are logged as ``expected`` at DEBUG/INFO;
+  anything else is logged at WARNING as ``unexpected``.
 
 The environment variable ``HMS_COMMANDER_DSS_BACKEND``, when set, overrides the class
 attribute ``HmsDss.backend``. ``CAPABILITIES`` lists the support matrix that
 ``HmsDss.get_capabilities()`` reports.
 
-This module is private. The design mirrors ``ras_commander.dss`` (``RasDss.backend``,
-``RAS_COMMANDER_DSS_BACKEND``), with one difference: hms-commander's ``shadow`` returns
-the Java result for reads as well as writes.
+This module is private. The design, the shadow semantics and the outcome labels mirror
+``ras_commander.dss`` (``RasDss.backend``, ``RAS_COMMANDER_DSS_BACKEND``).
 
 The Java backend never imports the engine. Every import of the engine is guarded, so a
 missing or broken wheel (``ImportError``, or for example an ``OSError`` while loading
@@ -262,14 +263,16 @@ def require_native_writes():
 #: qualified or writer-capable engine); "java" (runs on Java whatever the backend).
 CAPABILITIES = (
     # operation, java, native, shadow, note
-    ("get_catalog", "yes", "yes", "yes", ""),
+    ("get_catalog", "yes", "yes", "yes",
+     "shadow (all reads): returns the native result and compares Java"),
     ("read_timeseries", "yes", "yes", "yes",
      "start_date/end_date are inclusive stamp filters on every backend"),
     ("read_multiple_timeseries", "yes", "yes", "yes", ""),
     ("get_peak_value", "yes", "yes", "yes", "HmsDss.get_peak_flows_batched uses it"),
     ("read_paired_data", "yes", "yes", "yes", "curve 0 only (the HMS dict contract)"),
     ("read_grid", "yes", "gated", "yes",
-     "native requires an engine advertising 'grid_srs_monolith_parity'"),
+     "native requires an engine advertising 'grid_srs_monolith_parity'; shadow returns "
+     "Java's grid and only compares the native result"),
     ("get_file_version", "yes", "yes", "yes", ""),
     ("write_timeseries", "yes", "gated", "yes",
      "regular intervals only; native requires the engine writers; shadow writes with "
@@ -469,7 +472,8 @@ def classify_timeseries(
     - ``D1``: Java returns raw HEC missing markers; native returns NaN.
     - ``D5``: a time-series pattern (stamps in year 3000) that Java cannot read.
     - ``D9``: units/type differ only in surrounding blanks.
-    - ``D4``: no data on either backend (typed native error).
+    - ``D4``: all-missing data (Java data, native not-found), or no data on either
+      backend (typed native error).
     """
     if java_unavailable(java_exc):
         return "skipped", "java unavailable", []
@@ -495,7 +499,7 @@ def classify_timeseries(
             return "expected", "D4 all-missing dataset (error type)", []
         return "unexpected", "Java data, native error", []
     if typed and isinstance(native_exc, typed):
-        return "expected", "D4 no data on both backends", []
+        return "expected", "D4/D6 no data: typed native error", []
     return "unexpected", "both failed, untyped native error", []
 
 
@@ -510,7 +514,7 @@ def classify_catalog(
     if list(java_list) == list(native_list):
         return "identical", "identical", []
     if Counter(java_list) == Counter(native_list):
-        return "expected", "C1 catalog order", ["order"]
+        return "expected", "D15 catalog order", ["order"]
     return "unexpected", "catalog difference", ["entries"]
 
 
@@ -552,17 +556,22 @@ def compare_paired_data(java: Optional[Dict[str, Any]],
 
 
 def classify_paired_data(java, java_exc, native, native_exc) -> Tuple[str, str, List[str]]:
-    """Classify one ``read_paired_data`` comparison. ``PD3`` labels blank-only
-    differences in unit/type strings."""
+    """Classify one ``read_paired_data`` comparison. Both readers return None when the
+    record cannot be read. ``PD3`` labels blank-only differences in unit/type strings."""
     if java_unavailable(java_exc):
         return "skipped", "java unavailable", []
     if java_exc is not None or native_exc is not None:
-        return "unexpected", "error difference", []
+        return "unexpected", "both failed" if (java_exc and native_exc) else (
+            "Java data, native error" if native_exc else "native data, Java error"), []
+    if java is None and native is None:
+        return "expected", "not found on both backends", []
+    if java is None:
+        return "unexpected", "native data, Java error", []
+    if native is None:
+        return "unexpected", "Java data, native error", []
     diffs = compare_paired_data(java, native)
     if not diffs:
-        if java is None:
-            return "expected", "no record on both backends", []
-        return "identical", "identical", []
+        return "identical", "identical", diffs
     if all(d.startswith("ws:") for d in diffs):
         return "expected", "PD3 unit/type whitespace", diffs
     return "unexpected", "paired-data difference", diffs
@@ -628,6 +637,8 @@ def classify_grid(java, java_exc, native, native_exc) -> Tuple[str, str, List[st
     """
     if java_unavailable(java_exc):
         return "skipped", "java unavailable", []
+    if isinstance(native_exc, DssCapabilityError):
+        return "skipped", "native grid reads not qualified", []
     if java is not None and native is not None:
         diffs, extra_ok = compare_grids(java, native)
         if not diffs:
@@ -641,8 +652,11 @@ def classify_grid(java, java_exc, native, native_exc) -> Tuple[str, str, List[st
         if ws:
             rest -= ws
             labels.append("G2 whitespace")
+        if rest & {"cells_shape", "cells_missing_java_only", "cells_missing_native_only",
+                   "cells_bits"}:
+            return "unexpected", "grid cell difference", diffs
         if rest:
-            return "unexpected", "grid difference", diffs
+            return "unexpected", "grid metadata difference", diffs
         return "expected", "; ".join(labels), diffs
     if java is None and native is None:
         typed = _not_found_types()

@@ -72,6 +72,12 @@ class DssCore:
 
     _jvm_configured = False
     _monolith = None
+    _messages_silenced = False
+
+    #: HEC-DSS library message level set (``zset("MLEVEL")``) before the first Java
+    #: DSS call. 0 silences the library's console messages; see
+    #: ``_silence_hec_messages`` for why the default must stay 0.
+    hec_message_level = 0
 
     @staticmethod
     def _to_1d_array(values) -> np.ndarray:
@@ -269,6 +275,7 @@ class DssCore:
         if jnius_config.vm_running:
             logger.warning(f"JVM already running, cannot set max_memory={max_memory}")
             DssCore._jvm_configured = True
+            DssCore._silence_hec_messages()
             return
 
         # Configure JVM memory options BEFORE first jnius import
@@ -351,6 +358,34 @@ class DssCore:
 
         DssCore._jvm_configured = True
         logger.info("Java VM configured for DSS operations")
+        DssCore._silence_hec_messages()
+
+    @staticmethod
+    def _silence_hec_messages() -> None:
+        """Set the HEC-DSS library message level before any DSS file is opened.
+
+        HEC Monolith's DSS library prints its open/close/read messages ("-----DSS---
+        ZOPEN ...") through a stdout handle that its Fortran runtime looks up at its
+        first message and then keeps. When the process later redirects or restores
+        file descriptor 1 (pytest's output capture does this around every test,
+        ``os.dup2`` does it explicitly, and other tools that capture fd-level output
+        can), that handle is closed and Windows can hand its value to the next file
+        the DSS library opens. The library's later messages are then written into
+        that DSS file, corrupting it: reads return console text as values and later
+        writes fail (``zgtrec6`` error 50). With the message level at 0 (set here,
+        before the first open), the library prints nothing and never caches the
+        handle. The level applies to DSS6 and DSS7 files. Never raises.
+        """
+        if DssCore._messages_silenced:
+            return
+        try:
+            from jnius import autoclass
+
+            autoclass('hec.heclib.util.Heclib').Hec_zset(
+                "MLEVEL", "", int(DssCore.hec_message_level))
+            DssCore._messages_silenced = True
+        except Exception as exc:  # never block DSS I/O on a logging setting
+            logger.debug("Could not set the HEC-DSS message level: %s", exc)
 
     @staticmethod
     def is_available() -> bool:
@@ -358,8 +393,9 @@ class DssCore:
         Check if DSS functionality is available for the selected backend.
 
         The ``native`` backend needs the ``ras_commander_fast_dss`` engine and no
-        Java; ``java`` and ``shadow`` need pyjnius (``shadow`` returns the Java
-        result). An invalid backend name counts as unavailable.
+        Java; ``java`` needs pyjnius. ``shadow`` returns native reads (Java is only
+        compared) and runs Java only when the engine is missing. An invalid backend
+        name counts as unavailable.
 
         Returns:
             True if the selected backend can run
@@ -370,6 +406,8 @@ class DssCore:
             return False
         if backend == "native":
             return _backend.native_available()
+        if backend == "shadow" and _backend.native_available():
+            return True
         return DssCore.java_available()
 
     @staticmethod
@@ -1090,35 +1128,66 @@ class DssCore:
 
     @staticmethod
     def _shadow_read(operation: str, dss_file: Any, pathname: Optional[str],
-                     java_call, native_call, classify):
-        """Run ``java_call`` (its result or error is what the caller gets), then
-        ``native_call``, classify the pair and record it. The comparison never raises."""
-        java_result, java_exc = None, None
+                     java_call, native_call, classify, *,
+                     java_after_native_error=lambda exc: False, return_java: bool = False):
+        """Shadow read, as ``ras_commander.RasDss``: run ``native_call`` first. If it
+        raised and ``java_after_native_error(exc)`` is false, Java is not run (the
+        comparison is recorded as skipped, ``java skipped: native <Error>``) and the
+        native error is raised. Otherwise run ``java_call``, classify the pair and
+        record it, then return the native result or raise the native error
+        (``return_java``: Java's grid, as RasDss does for grids). The comparison
+        never raises."""
+        native_result, native_exc = None, None
         t0 = time.perf_counter()
+        try:
+            native_result = native_call()
+        except Exception as exc:
+            native_exc = exc
+        native_s = time.perf_counter() - t0
+        if native_exc is not None and not return_java:
+            try:
+                run_java = bool(java_after_native_error(native_exc))
+            except Exception:
+                run_java = False
+            if not run_java:
+                _backend.record(
+                    operation, "skipped", f"java skipped: native {type(native_exc).__name__}",
+                    dss_file=dss_file, pathname=pathname, native_error=native_exc,
+                    native_seconds=native_s,
+                )
+                raise native_exc
+        java_result, java_exc = None, None
+        t1 = time.perf_counter()
         try:
             java_result = java_call()
         except Exception as exc:
             java_exc = exc
-        java_s = time.perf_counter() - t0
+        java_s = time.perf_counter() - t1
         try:
-            native_result, native_exc = None, None
-            t1 = time.perf_counter()
-            try:
-                native_result = native_call()
-            except Exception as exc:
-                native_exc = exc
-            native_s = time.perf_counter() - t1
             outcome, label, diffs = classify(java_result, java_exc, native_result, native_exc)
             _backend.record(
                 operation, outcome, label, dss_file=dss_file, pathname=pathname, diffs=diffs,
                 java_seconds=java_s, native_seconds=native_s, java_error=java_exc,
                 native_error=native_exc,
+                detail={"returned": "java" if return_java else "native"},
             )
         except Exception as exc:  # the comparison must never break the read
-            logger.debug("DSS shadow %s comparison failed: %s", operation, exc)
-        if java_exc is not None:
-            raise java_exc
-        return java_result
+            logger.warning("DSS shadow %s comparison failed for %s: %s",
+                           operation, dss_file, exc)
+        if return_java:
+            if java_exc is not None:
+                raise java_exc
+            return java_result
+        if native_exc is not None:
+            raise native_exc
+        return native_result
+
+    @staticmethod
+    def _native_not_found(exc: BaseException) -> bool:
+        """True for the engine's not-found error (Java is then still compared)."""
+        dc = _backend._maybe_native()
+        not_found = getattr(dc, "DssPathnameNotFoundError", None) if dc else None
+        return not_found is not None and isinstance(exc, not_found)
 
     @staticmethod
     def get_catalog(dss_file: Union[str, Path]) -> List[str]:
@@ -1140,18 +1209,11 @@ class DssCore:
         if backend == "native":
             return DssCore._get_catalog_native(dss_file)
         if backend == "shadow":
-            def classify(j, je, n, ne):
-                if ne is not None and je is None:
-                    return "unexpected", "native catalog error", []
-                if ne is not None:
-                    return "expected", "error on both backends", []
-                return _backend.classify_catalog(j, je, n)
-
             return DssCore._shadow_read(
-                "get_catalog", dss_file, None,
+                "catalog", dss_file, None,
                 lambda: DssCore._get_catalog_java(dss_file),
                 lambda: DssCore._get_catalog_native(dss_file),
-                classify,
+                lambda j, je, n, ne: _backend.classify_catalog(j, je, n),
             )
         return DssCore._get_catalog_java(dss_file)
 
@@ -1224,6 +1286,7 @@ class DssCore:
                 lambda: DssCore._read_timeseries_java(dss_file, pathname, start_date, end_date),
                 lambda: DssCore._read_timeseries_native(dss_file, pathname, start_date, end_date),
                 lambda j, je, n, ne: _backend.classify_timeseries(pathname, j, je, n, ne),
+                java_after_native_error=DssCore._native_not_found,
             )
         return DssCore._read_timeseries_java(dss_file, pathname, start_date, end_date)
 
@@ -1432,10 +1495,11 @@ class DssCore:
             return DssCore._get_file_version_native(dss_path)
         if backend == "shadow":
             return DssCore._shadow_read(
-                "get_file_version", dss_path, None,
+                "file_version", dss_path, None,
                 lambda: DssCore._get_file_version_java(dss_path),
                 lambda: DssCore._get_file_version_native(dss_path),
                 _backend.classify_file_version,
+                java_after_native_error=lambda exc: isinstance(exc, ValueError),
             )
         return DssCore._get_file_version_java(dss_path)
 
@@ -1528,6 +1592,7 @@ class DssCore:
                 lambda: DssCore._read_grid_java(dss_path, pathname),
                 lambda: DssCore._read_grid_native(dss_path, pathname),
                 _backend.classify_grid,
+                return_java=True,
             )
         return DssCore._read_grid_java(dss_path, pathname)
 

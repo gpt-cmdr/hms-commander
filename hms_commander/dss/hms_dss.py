@@ -63,8 +63,10 @@ class HmsDss:
 
         - ``"java"`` (default): HEC Monolith through pyjnius.
         - ``"native"``: the optional ``ras_commander_fast_dss`` engine; no Java.
-        - ``"shadow"``: runs Java and returns its result, repeats the call
-          natively and logs every difference (never raises).
+        - ``"shadow"``: reads return the native result and are compared with
+          Java (grids return Java's grid); writes run on Java and are repeated
+          natively on a temporary copy. Differences are logged; the comparison
+          never raises.
 
         See ``docs/user_guide/dss_native_backend.md``.
 
@@ -186,7 +188,8 @@ class HmsDss:
 
         Returns:
             True if the selected backend can run: ``native`` needs the
-            ras_commander_fast_dss engine; ``java`` and ``shadow`` need pyjnius
+            ras_commander_fast_dss engine; ``java`` needs pyjnius; ``shadow``
+            needs the engine (it falls back to ``java`` without it)
 
         Example:
             >>> if HmsDss.is_available():

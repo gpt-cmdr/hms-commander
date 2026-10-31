@@ -364,3 +364,40 @@ def test_atlas14_probabilities_land_on_distinct_records(java, tmp_path):
                                median / 100.0)
     np.testing.assert_allclose(HmsDss.read_paired_data(dss_file, expected[1])["y_values"],
                                upper / 100.0)
+
+
+@pytest.mark.requires_java
+def test_hec_messages_never_land_in_dss_files_when_stdout_is_redirected(java, tmp_path):
+    """HEC Monolith's DSS library prints through a stdout handle its Fortran runtime
+    caches at its first message. Redirecting fd 1 (as pytest's capture does around
+    every test) closes that handle; Windows can reuse its value for the next DSS file
+    the library opens, and later messages are written into that file. hms-commander
+    sets the library message level to 0 before the first open, so nothing is printed.
+    Without that, this loop corrupted several files per run (reproducer in the H1
+    report)."""
+    import os
+    import tempfile
+
+    assert DssCore._messages_silenced
+    times = pd.date_range("2020-01-01 01:00", periods=48, freq="h")
+    values = np.arange(48.0)
+    sink = tempfile.TemporaryFile()
+    saved = os.dup(1)
+    try:
+        for i in range(30):
+            os.dup2(sink.fileno(), 1)  # capture on: closes the previous fd-1 handle
+            target = tmp_path / f"c{i}.dss"
+            HmsDss.write_timeseries(target, "//G/FLOW//1HOUR/R/", times, values,
+                                    dss_version=6)
+            back = HmsDss.read_timeseries(target, "//G/FLOW//1HOUR/R/")
+            np.testing.assert_array_equal(back["value"].to_numpy(), values)
+            os.dup2(saved, 1)  # capture off
+            HmsDss.write_timeseries(tmp_path / f"b{i}.dss", "//B/FLOW//1HOUR/R/", times,
+                                    values, dss_version=6)
+    finally:
+        os.dup2(saved, 1)
+        os.close(saved)
+        sink.close()
+    for dss_file in tmp_path.glob("*.dss"):
+        data = dss_file.read_bytes()
+        assert b"-----DSS" not in data and b"ZOPEN" not in data, dss_file.name

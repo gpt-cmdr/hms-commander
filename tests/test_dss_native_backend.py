@@ -361,34 +361,88 @@ def test_paired_data_and_grids_match(engine, java, sample_files):
 
 @pytest.mark.requires_java
 @pytest.mark.slow
-def test_shadow_reads_return_java_and_log_no_unexpected_difference(engine, java, samples):
+def test_shadow_reads_return_native_and_log_no_unexpected_difference(engine, java, samples):
+    """As ras-commander: shadow reads return the native result (grids: Java's grid),
+    run Java for comparison and record every outcome."""
     dss_file = samples["castro"] / "Current.dss"
-    paths = [p for p in _timeseries_paths(engine, dss_file) if p.split("/")[4] != "TS-PATTERN"]
-    _use("java")
-    expected = [HmsDss.read_timeseries(dss_file, p) for p in paths[:20]]
+    paths = _timeseries_paths(engine, dss_file)[:20]  # includes TS-PATTERN records
+    _use("native")
+    expected = [HmsDss.read_timeseries(dss_file, p) for p in paths]
     _use("shadow")
-    got = [HmsDss.read_timeseries(dss_file, p) for p in paths[:20]]
+    got = [HmsDss.read_timeseries(dss_file, p) for p in paths]
     for e, g in zip(expected, got):
-        assert e.equals(g) or (e["value"].isna().all() and g["value"].isna().all())
-    HmsDss.get_catalog(dss_file)
-    HmsDss.get_file_version(dss_file)
+        pd.testing.assert_frame_equal(e, g, check_exact=True)
+    assert HmsDss.get_catalog(dss_file) == _java_then_native(
+        lambda: HmsDss.get_catalog(dss_file))[1]
+    _use("shadow")
+    assert HmsDss.get_file_version(dss_file) == 6
     HmsDss.get_peak_flows_batched(dss_file, progress=False)
     HmsDss.read_paired_data(samples["tenk"] / "tenk.dss", "//TABLE 1/STORAGE-FLOW///TABLE/")
     hrap = samples["tenk"] / "hrap.dss"
-    HmsDss.read_grid(hrap, HmsDss.get_catalog(hrap)[0])
+    grid_path = HmsDss.get_catalog(hrap)[0]
+    grid = HmsDss.read_grid(hrap, grid_path)
+    _use("java")
+    java_grid = HmsDss.read_grid(hrap, grid_path)
+    assert np.array_equal(grid["data"], java_grid["data"], equal_nan=True)
+    assert grid["crs"] == java_grid["crs"]
     _assert_no_unexpected()
     summary = HmsDss.get_shadow_summary()
-    for op in ("read_timeseries", "get_catalog", "get_file_version", "get_peak_value",
+    for op in ("read_timeseries", "catalog", "file_version", "get_peak_value",
                "read_paired_data", "read_grid"):
         assert any(key.startswith(op + "|") for key in summary), op
+    assert summary["read_timeseries|expected|D5 pattern record (Java cannot read)"] >= 1
+    returned = {r["operation"]: r["returned"] for r in _backend.SHADOW_RECORDS
+                if "returned" in r}
+    assert returned["read_grid"] == "java" and returned["read_timeseries"] == "native"
 
 
 @pytest.mark.requires_java
-def test_shadow_returns_java_error(engine, java, samples):
+def test_shadow_raises_native_not_found_after_comparing(engine, java, samples):
     _use("shadow")
-    with pytest.raises(ValueError, match="No data found"):
+    with pytest.raises(engine.DssPathnameNotFoundError, match="No data found"):
         HmsDss.read_timeseries(samples["castro"] / "castro.dss", "//NOWHERE/FLOW//1HOUR//")
     _assert_no_unexpected()
+    rec = list(_backend.SHADOW_RECORDS)[-1]
+    assert rec["label"] == "D4/D6 no data: typed native error" and rec["java_error"]
+
+
+@pytest.mark.requires_java
+def test_shadow_does_not_run_java_after_other_native_errors(engine, java, tmp_path):
+    """Java creates a missing DSS file on open; shadow never runs it after a native
+    failure other than not-found."""
+    missing = tmp_path / "missing.dss"
+    _use("shadow")
+    with pytest.raises(Exception):
+        DssCore.get_catalog(missing)
+    assert not missing.exists()
+    rec = list(_backend.SHADOW_RECORDS)[-1]
+    assert rec["outcome"] == "skipped" and rec["label"].startswith("java skipped: native ")
+
+
+@pytest.mark.requires_java
+def test_shadow_without_java_returns_native_and_records_skip(engine, java, samples,
+                                                              monkeypatch):
+    def no_java(*args, **kwargs):
+        raise ImportError("pyjnius is required for DSS file operations.")
+
+    monkeypatch.setattr(DssCore, "_read_timeseries_java", staticmethod(no_java))
+    dss_file = samples["castro"] / "Current.dss"
+    path = _timeseries_paths(engine, dss_file)[1]
+    _use("shadow")
+    df = HmsDss.read_timeseries(dss_file, path)
+    _use("native")
+    pd.testing.assert_frame_equal(df, HmsDss.read_timeseries(dss_file, path))
+    rec = list(_backend.SHADOW_RECORDS)[0]
+    assert (rec["outcome"], rec["label"]) == ("skipped", "java unavailable")
+
+
+def test_paired_data_and_catalog_labels_match_ras_commander():
+    assert _backend.classify_catalog(["/A/", "/B/"], None, ["/B/", "/A/"])[1] == \
+        "D15 catalog order"
+    assert _backend.classify_paired_data(None, None, None, None)[1] == \
+        "not found on both backends"
+    assert _backend.classify_paired_data({"x_values": [1.0]}, None, None, None)[1] == \
+        "Java data, native error"
 
 
 # ---------------------------------------------------------------------------
@@ -665,3 +719,20 @@ def test_shadow_write_skips_files_above_the_copy_limit(engine, java, castro_flow
                             data_type)
     rec = list(_backend.SHADOW_RECORDS)[-1]
     assert rec["outcome"] == "skipped" and "copy limit" in rec["label"]
+
+
+@pytest.mark.requires_java
+def test_shadow_write_skips_when_the_engine_has_no_writers(engine, java, castro_flow,
+                                                           tmp_path, monkeypatch):
+    df, e_part, units, data_type = castro_flow
+    target = tmp_path / "nowriters.dss"
+    engine.create(target, 7)
+    monkeypatch.setattr(_backend, "native_writes_available", lambda: False)
+    _use("shadow")
+    HmsDss.write_timeseries(target, f"//C/FLOW//{e_part}/F/", df.index, df["value"], units,
+                            data_type)
+    rec = list(_backend.SHADOW_RECORDS)[-1]
+    assert (rec["outcome"], rec["label"]) == ("skipped", _backend.NATIVE_WRITERS_MISSING_LABEL)
+    # The caller's file holds the Java write.
+    assert len(_java_reads(lambda: HmsDss.read_timeseries(
+        target, f"//C/FLOW//{e_part}/F/"))) == len(df)
