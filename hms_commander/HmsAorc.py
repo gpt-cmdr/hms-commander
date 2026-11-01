@@ -124,6 +124,7 @@ class HmsAorc:
 
     # AORC variable names
     PRECIP_VAR = "APCP_surface"  # Hourly total precipitation (kg/m²)
+    PRECIP_INTERVAL_MINUTES = 60  # A stamp T holds the depth that fell in (T - 1h, T]
 
     # CONUS bounding box (approximate)
     CONUS_BOUNDS = (-125.0, 25.0, -67.0, 53.0)  # west, south, east, north
@@ -640,6 +641,11 @@ class HmsAorc:
         - AORC precipitation is in kg/m^2 which equals mm depth
         - Data is written in WGS84 (lat/lon) coordinate system
         - Each hourly timestep is written as a separate DSS grid record
+        - An AORC stamp T is the end of its hour (NWS OWP AORC v1.1 methods, section
+          4.1), so the record's D part is T - 1h and its E part is T: the stamp
+          2020-05-02 00:00 gives ``/01MAY2020:2300/01MAY2020:2400/``. Files written
+          before this period convention have equal D and E parts. HEC-HMS treats
+          those cells as missing and computes no rain from them, so regenerate them.
         - Implementation uses HEC Monolith classes (same as HEC-Vortex)
         - HMS met-model wiring for gridded precipitation is still a separate,
           review-required step; there is no public HmsMet helper for it yet.
@@ -709,7 +715,8 @@ class HmsAorc:
             lon_coords=lon_coords,
             timestamps=timestamps,
             units=units,
-            data_type="PER-CUM"  # Precipitation is period cumulative
+            data_type="PER-CUM",  # Precipitation is period cumulative
+            interval_minutes=HmsAorc.PRECIP_INTERVAL_MINUTES,
         )
 
         logger.info(f"DSS conversion complete: {result}")

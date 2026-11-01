@@ -703,16 +703,125 @@ def test_native_grid_write_reads_back_like_java_write(engine, java, hrap_cells, 
             engine.read_grid(files["native"], path, missing="raw")) == []
 
 
-@pytest.mark.requires_java
-def test_native_grid_write_refuses_period_grids_with_one_time(engine, java, hrap_cells,
-                                                              tmp_path):
-    lat, lon = _lat_lon(hrap_cells.shape[1:])
+def _skip_aorc_dependency_check(monkeypatch):
+    """convert_to_dss_grid reads a local NetCDF; its dependency check also asks for the
+    download-only packages, which it does not use here."""
+    import sys
+
+    monkeypatch.setattr(sys.modules["hms_commander.HmsAorc"], "_check_aorc_dependencies",
+                        lambda: None)
+
+
+def test_aorc_stamp_is_the_end_of_its_hour():
+    # Maintainer decision on AORC_TIMESTAMP_RESEARCH: D = T - 1h, E = T.
+    expected = {
+        "2020-05-01 12:00": "/A/B/PRECIP/01MAY2020:1100/01MAY2020:1200//",
+        "2020-05-02 00:00": "/A/B/PRECIP/01MAY2020:2300/01MAY2020:2400//",
+        "2020-05-02 01:00": "/A/B/PRECIP/02MAY2020:0000/02MAY2020:0100//",
+        "2021-01-01 00:00": "/A/B/PRECIP/31DEC2020:2300/31DEC2020:2400//",
+    }
+    for stamp, path in expected.items():
+        (start, end), = HmsDssGrid._grid_time_windows([stamp], 1, "PER-CUM", 60)
+        assert HmsDssGrid._grid_pathname("/A/B/PRECIP////", start, end) == path
+
+
+def test_grid_time_windows_rules():
+    stamps = list(pd.date_range("2020-05-01 01:00", periods=3, freq="h"))
+    windows = HmsDssGrid._grid_time_windows(stamps, 3, "per-aver")  # uniform spacing
+    assert windows[0] == (pd.Timestamp("2020-05-01 00:00"), pd.Timestamp("2020-05-01 01:00"))
+    boundaries = HmsDssGrid._grid_time_windows(stamps, 2, "PER-CUM")
+    assert boundaries == [(stamps[0], stamps[1]), (stamps[1], stamps[2])]
+    assert HmsDssGrid._grid_time_windows(stamps, 3, "INST-VAL")[1] == (stamps[1], stamps[1])
+    # A gap must not stretch a period: refused without an interval, exact with one.
+    gappy = [stamps[0], stamps[1], pd.Timestamp("2020-05-01 09:00")]
+    with pytest.raises(ValueError, match="interval_minutes"):
+        HmsDssGrid._grid_time_windows(gappy, 3, "PER-CUM")
+    assert HmsDssGrid._grid_time_windows(gappy, 3, "PER-CUM", 60)[2][0] == pd.Timestamp("2020-05-01 08:00")
+    with pytest.raises(ValueError, match="interval_minutes"):
+        HmsDssGrid._grid_time_windows(stamps[:1], 1, "PER-CUM")
+    with pytest.raises(ValueError, match="Unknown grid data type"):
+        HmsDssGrid._grid_time_windows(stamps, 3, "PER-MAX")
+    with pytest.raises(ValueError, match="must match"):
+        HmsDssGrid._grid_time_windows(stamps, 2, "INST-VAL")
+    with pytest.raises(ValueError, match="whole minute"):
+        HmsDssGrid._grid_time_windows(["2020-05-01 00:00:30"], 1, "PER-CUM", 60)
+
+
+@pytest.mark.parametrize("backend", ["java", "native", "shadow"])
+@pytest.mark.parametrize("kwargs", [
+    {"timestamps": ["2020-05-01 01:00", "2020-05-01 01:00", "2020-05-01 02:00"], "n": 2},
+    {"timestamps": ["2020-05-01 01:00"], "n": 1, "interval_minutes": 0},
+    {"timestamps": ["2020-05-01 01:00"], "n": 1, "interval_minutes": -60},
+])
+def test_period_grid_with_no_length_is_refused_before_writing(backend, kwargs, tmp_path):
+    # start = end stays refused for a caller who still asks for it, on every backend:
+    # HEC-HMS reads such a record as missing precipitation.
+    kwargs = dict(kwargs)
+    n = kwargs.pop("n")
     target = tmp_path / "sub" / "percum.dss"
-    _use("native")
-    with pytest.raises(ValueError, match="start and end"):
-        HmsDssGrid.write_grid_timeseries(target, "/AORC/T/PRECIP////", hrap_cells, lat, lon,
-                                         list(pd.date_range("2020-05-01", periods=3, freq="h")))
-    assert not target.exists() and not target.parent.exists()
+    _use(backend)
+    with pytest.raises(ValueError, match="no length"):
+        HmsDssGrid.write_grid_timeseries(target, "/AORC/T/PRECIP////", np.ones((n, 2, 2)),
+                                         [35.0, 35.04], [-97.0, -96.96], **kwargs)
+    assert not target.parent.exists()
+
+
+@pytest.mark.requires_java
+@pytest.mark.parametrize("version", [6, 7])
+def test_period_grid_write_matches_java_and_reads_back_both_ways(engine, java, hrap_cells,
+                                                                 tmp_path, version):
+    lat, lon = _lat_lon(hrap_cells.shape[1:])
+    times = list(pd.date_range("2020-05-01 23:00", periods=3, freq="h"))  # period ends
+    expected = ["/AORC/T/PRECIP/01MAY2020:2200/01MAY2020:2300//",
+                "/AORC/T/PRECIP/01MAY2020:2300/01MAY2020:2400//",
+                "/AORC/T/PRECIP/02MAY2020:0000/02MAY2020:0100//"]
+    files = {}
+    for backend in ("java", "native"):
+        files[backend] = tmp_path / f"period_{backend}{version}.dss"
+        engine.create(files[backend], version)
+        _use(backend)
+        HmsDssGrid.write_grid_timeseries(files[backend], "/AORC/T/PRECIP////", hrap_cells,
+                                         lat, lon, times)
+    for backend, dss_file in files.items():
+        assert sorted(_java_reads(lambda: HmsDss.get_catalog(dss_file))) == sorted(expected)
+        assert sorted(engine.get_catalog(str(dss_file))["pathname"]) == sorted(expected)
+    for i, path in enumerate(expected):
+        java_g = _java_reads(lambda: HmsDss.read_grid(files["java"], path))
+        native_g = _java_reads(lambda: HmsDss.read_grid(files["native"], path))
+        assert _backend.compare_grids(java_g, native_g)[0] == []
+        for dss_file in files.values():
+            stored = engine.read_grid(str(dss_file), path, missing="raw")
+            assert stored.data_type == 1  # HEC's code for PER-CUM
+            np.testing.assert_array_equal(np.asarray(stored.data, dtype=np.float32),
+                                          hrap_cells[i].astype(np.float32))
+        assert HmsDssGrid._compare_written(
+            engine.read_grid(str(files["java"]), path, missing="raw"),
+            engine.read_grid(str(files["native"]), path, missing="raw")) == []
+
+
+@pytest.mark.requires_java
+@pytest.mark.parametrize("backend", ["java", "native"])
+def test_convert_to_dss_grid_uses_end_of_hour_periods(engine, java, tmp_path, monkeypatch, backend):
+    xr = pytest.importorskip("xarray")
+    pytest.importorskip("netCDF4")
+    from hms_commander import HmsAorc
+
+    _skip_aorc_dependency_check(monkeypatch)
+    # Whole-burst AORC layout: the stamp 2020-05-02 00:00 crosses midnight.
+    times = pd.date_range("2020-05-01 23:00", periods=3, freq="h")
+    data = np.arange(3 * 4 * 5, dtype=np.float32).reshape(3, 4, 5)
+    nc = tmp_path / "aorc.nc"
+    xr.DataArray(data, dims=("time", "latitude", "longitude"), name="APCP_surface",
+                 coords={"time": times, "latitude": 35.0 + 0.01 * np.arange(4),
+                         "longitude": -97.0 + 0.01 * np.arange(5)}).to_netcdf(nc)
+    target = tmp_path / f"aorc_{backend}.dss"
+    _use(backend)
+    HmsAorc.convert_to_dss_grid(nc, target, "/AORC/TEST/PRECIP////")
+    path = "/AORC/TEST/PRECIP/01MAY2020:2300/01MAY2020:2400//"
+    assert path in list(engine.get_catalog(str(target))["pathname"])
+    np.testing.assert_array_equal(engine.read_grid(str(target), path, missing="raw").data, data[1])
+    assert path in _java_reads(lambda: HmsDss.get_catalog(target))
+    np.testing.assert_allclose(_java_reads(lambda: HmsDss.read_grid(target, path))["data"], data[1])
 
 
 @pytest.mark.requires_java
@@ -735,7 +844,6 @@ def test_shadow_writes_return_java_and_compare_natively(engine, java, castro_flo
         HmsDss.import_atlas14_temporal(target, atlas14_tx3_24h, "TX_R3", 24)
         HmsDssGrid.write_grid_timeseries(target, "/AORC/T/TEMP////", hrap_cells, lat, lon,
                                          times, units="DEG C", data_type="INST-VAL")
-        # PER-CUM with one time per grid: Java writes, native refuses (W1, expected).
         HmsDssGrid.write_grid_timeseries(target, "/AORC/T/PRECIP////", hrap_cells, lat, lon,
                                          times)
     # A new file through shadow: Java creates it, the native copy is a new DSS7 file.
@@ -746,8 +854,7 @@ def test_shadow_writes_return_java_and_compare_natively(engine, java, castro_flo
     assert summary["write_timeseries|identical|identical"] == 3
     assert summary["write_paired_data|identical|identical"] == 2
     assert summary["write_multiple_paired_data|identical|identical"] == 2  # Atlas 14
-    assert summary["write_grid_timeseries|identical|identical"] == 2
-    assert summary[f"write_grid_timeseries|expected|{_backend.WRITE_REFUSAL_LABEL}"] == 2
+    assert summary["write_grid_timeseries|identical|identical"] == 4
     # The caller's files hold the Java writes.
     assert _java_reads(lambda: HmsDss.get_file_version(tmp_path / "new" / "created.dss")) == 7
 

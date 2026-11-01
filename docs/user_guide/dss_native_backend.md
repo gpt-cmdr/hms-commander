@@ -58,7 +58,7 @@ state in `attrs` (`native_available`, `native_writes_available`, `native_grid_qu
 | `get_file_version` | yes | 6 or 7 |
 | `write_timeseries` | gated | Regular intervals only |
 | `write_paired_data`, `write_multiple_paired_data`, `import_atlas14_temporal` | gated | Float32 (PD) records, as Monolith stores them |
-| `HmsDssGrid.write_grid_timeseries` | gated | INST-VAL and INST-CUM grids; PER-CUM and PER-AVER are refused (see below) |
+| `HmsDssGrid.write_grid_timeseries` | gated | All four data types; PER-CUM and PER-AVER grids need a period (see below) |
 
 "Gated" operations check the installed engine's capabilities, not its version. Writes need
 the complete writer API (`create`, `write_timeseries`, `write_paired_data`, `write_grid`,
@@ -96,11 +96,49 @@ differences remain:
 - **Paired-data precision on DSS6.** Monolith stores the precision word as 0, which
   Monolith reads back as "unset"; the native writer stores -1, also "unset". The HMS
   `read_paired_data` dict does not report precision.
-- **Grids.** `write_grid_timeseries` stores one time per grid: the D part is the time and
-  the E part the same time (midnight is the previous day's `2400` in E), as Monolith
-  stores it. HEC period data (PER-CUM, PER-AVER) needs an end time after the start time,
-  so the native writer refuses those data types. The Java path writes them. AORC
-  precipitation (`HmsAorc.convert_to_dss_grid`, PER-CUM) therefore needs the Java backend.
+- **Grids.** See [Grid periods and AORC stamps](#grid-periods-and-aorc-stamps). Both
+  backends store the same D and E parts.
+
+## Grid periods and AORC stamps
+
+`HmsDssGrid.write_grid_timeseries` treats PER-CUM and PER-AVER `timestamps` as period
+**end** times. The period length is `interval_minutes`, otherwise the spacing of the stamps,
+which must be uniform; a single grid or stamps with gaps must give `interval_minutes`. You can also pass one more time than
+there are grids, as period boundaries. INST-VAL and INST-CUM grids keep one instant in both
+parts.
+
+| AORC stamp T | D part (T - 1h) | E part (T) |
+|---|---|---|
+| 2020-05-01 12:00 | `01MAY2020:1100` | `01MAY2020:1200` |
+| 2020-05-02 00:00 | `01MAY2020:2300` | `01MAY2020:2400` |
+| 2020-05-02 01:00 | `02MAY2020:0000` | `02MAY2020:0100` |
+
+An AORC stamp is the end of its hour (NWS OWP AORC v1.1 methods, section 4.1: precipitation
+"ending at the 'top' of each hour"). `HmsAorc.convert_to_dss_grid` therefore works on the
+native backend, with a fixed 60-minute period. A period with its start at or after its end,
+or an unknown data type, raises `ValueError` on every backend.
+
+**Recheck existing AORC work.** Earlier versions wrote PER-CUM grids with equal D and E
+parts. In a one-burst test (tenk sample, 100 mm in one hour), HEC-HMS 4.9, 4.11, 4.12 and
+4.13 did not read such grids as rain, and this is not a timing shift:
+
+| Stamps | Subbasin precipitation | Peak outflow at Tenkiller | HEC-HMS log |
+|---|---|---|---|
+| Equal D and E (earlier versions) | 0 | 620 cfs, the initial baseflow | `WARNING 40503` for every subbasin and hour; the run still reports success |
+| Period (this version) | 3.937 in, all in the step ending at T | 79,546 cfs | No missing-precipitation warning (DSS7 on 4.11 to 4.13, DSS6 on 4.9 and 4.13) |
+
+Results computed from those earlier files contain no precipitation from them. Look for
+`WARNING 40503` in the run log, regenerate the DSS file with this version, and recheck any
+calibration or result that used it. Do not merge old and new files: the same hour has two
+different pathnames.
+
+HEC-HMS 4.9 also did not read DSS7 grids from any writer, with either stamp (`ERROR 12520`,
+no rain, and the run still reports success). For 4.9, write to an existing DSS6 file.
+
+The test covers one sample project, an hourly control interval on these versions and a
+15-minute interval on 4.13. It does not establish how other versions treat these records.
+With period stamps, moving the record one hour later moved the rain and the outlet peak one
+hour later.
 
 ## Shadow mode
 

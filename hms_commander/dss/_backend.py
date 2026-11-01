@@ -284,7 +284,8 @@ CAPABILITIES = (
     ("import_atlas14_temporal", "yes", "gated", "yes",
      "y type CUMULATIVE on DSS7, CUMULATI on DSS6 (both backends)"),
     ("write_grid_timeseries", "yes", "gated", "yes",
-     "native refuses PER-CUM/PER-AVER grids with equal start and end times"),
+     "period grids get D = start, E = end; a period with no length or an unknown type "
+     "is refused on every backend"),
 )
 
 

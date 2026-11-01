@@ -123,6 +123,13 @@ watersheds = HmsHuc.get_huc12_for_bounds((-77.71, 41.01, -77.25, 41.22))
 
 ---
 
+### AORC stamps and DSS periods
+
+An AORC stamp T is the end of its hour. `HmsAorc.convert_to_dss_grid` writes D = T - 1h, E = T
+(T = 2020-05-02 00:00 gives `/01MAY2020:2300/01MAY2020:2400/`). HEC-HMS reads PER-CUM grids with
+equal D and E parts as missing, with no rain and a successful run, so regenerate older files.
+See `docs/user_guide/dss_native_backend.md`.
+
 ### Phase 2: AORC Download and DSS Conversion (PLANNED)
 
 **Class**: `HmsAorc` (SKELETON)
