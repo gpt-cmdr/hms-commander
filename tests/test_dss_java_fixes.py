@@ -15,6 +15,7 @@ when pyjnius, Java or the HEC Monolith libraries are unavailable.
 
 from __future__ import annotations
 
+import os
 import types
 from datetime import date
 
@@ -504,3 +505,48 @@ def test_read_of_damaged_file_logs_the_library_failure(java, tmp_path, caplog, v
         with pytest.raises(Exception):
             HmsDss.read_timeseries(target, "//G/FLOW//1HOUR/R/")
     assert "HEC-DSS library reported" in caplog.text
+
+
+WRONG_TYPE_SCRIPT = """
+import sys
+from pathlib import Path
+import numpy as np
+import pandas as pd
+from hms_commander import HmsDss
+from hms_commander.dss.core import DssCore
+
+folder = Path(sys.argv[1])
+pd_file, pd_path = folder / "pd.dss", "//G/SF///T/"
+ts_file, ts_path = folder / "ts.dss", "//G/FLOW//1HOUR/R/"
+HmsDss.write_paired_data(pd_file, pd_path, np.arange(3.0), np.arange(3.0), "FT", "CFS", "L", "L")
+HmsDss.write_timeseries(ts_file, ts_path, pd.date_range("2020-01-01 01:00", periods=3, freq="h"),
+                        np.arange(3.0))
+try:
+    DssCore.read_timeseries(pd_file, pd_path)
+    print("read_timeseries: no error")
+except ValueError as exc:
+    print("read_timeseries: refused" if "not a time-series record" in str(exc) else exc)
+print("peak:", DssCore.get_peak_value(pd_file, pd_path))
+print("paired:", DssCore.read_paired_data(ts_file, ts_path))
+print("right kinds:", DssCore.read_timeseries(ts_file, ts_path)["value"].tolist(),
+      DssCore.read_paired_data(pd_file, pd_path)["x_values"].tolist())
+print("finished", flush=True)
+"""
+
+
+@pytest.mark.requires_java
+def test_wrong_record_kind_is_refused_without_crashing_the_jvm(java, tmp_path):
+    """Run in a child process: before the fix each read below ended the process (exit 139)."""
+    import subprocess
+    import sys
+
+    env = {key: value for key, value in os.environ.items()
+           if key != "HMS_COMMANDER_DSS_BACKEND"}
+    done = subprocess.run([sys.executable, "-c", WRONG_TYPE_SCRIPT, str(tmp_path)], text=True,
+                          capture_output=True, timeout=300, env=env)
+    assert done.returncode == 0, done.stderr[-2000:]
+    lines = done.stdout.splitlines()
+    assert "read_timeseries: refused" in lines
+    assert "peak: None" in lines and "paired: None" in lines
+    assert "right kinds: [0.0, 1.0, 2.0] [0.0, 1.0, 2.0]" in lines
+    assert "finished" in lines

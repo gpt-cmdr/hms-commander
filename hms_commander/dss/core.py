@@ -590,6 +590,18 @@ class DssCore:
             DssCore._done_and_release(dss, dss_file)
 
     @staticmethod
+    def _container_is(container, class_name: str) -> bool:
+        """Whether a ``HecDss.get`` result is ``class_name``. Reading a field after casting
+        to the wrong container class crashes the JVM (access violation, exit 139), which
+        no Python ``except`` can catch, so check the real class before any cast."""
+        java_class = container.getClass()
+        while java_class is not None:
+            if str(java_class.getName()) == class_name:
+                return True
+            java_class = java_class.getSuperclass()
+        return False
+
+    @staticmethod
     def _read_timeseries_java(
         dss_file: Union[str, Path],
         pathname: str,
@@ -632,6 +644,12 @@ class DssCore:
 
             if container is None:
                 raise ValueError(f"No data found for pathname: {pathname}")
+
+            if not DssCore._container_is(container, 'hec.io.TimeSeriesContainer'):
+                raise ValueError(
+                    f"DSS pathname is not a time-series record: {pathname} "
+                    f"(HEC Monolith returned {container.getClass().getName()})"
+                )
 
             # Cast to TimeSeriesContainer to access fields
             tsc = cast('hec.io.TimeSeriesContainer', container)
@@ -748,6 +766,10 @@ class DssCore:
 
             if container is None:
                 logger.warning(f"No data found for pathname: {pathname}")
+                return None
+
+            if not DssCore._container_is(container, 'hec.io.TimeSeriesContainer'):
+                logger.warning(f"DSS pathname is not a time-series record: {pathname}")
                 return None
 
             # Cast to TimeSeriesContainer to access fields
@@ -1197,6 +1219,10 @@ class DssCore:
 
             if container is None:
                 logger.warning(f"No data found for pathname: {pathname}")
+                return None
+
+            if not DssCore._container_is(container, 'hec.io.PairedDataContainer'):
+                logger.warning(f"DSS pathname is not a paired-data record: {pathname}")
                 return None
 
             # Cast to PairedDataContainer to access fields
