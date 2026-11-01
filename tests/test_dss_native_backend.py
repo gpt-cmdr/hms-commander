@@ -436,6 +436,51 @@ def test_shadow_without_java_returns_native_and_records_skip(engine, java, sampl
     assert (rec["outcome"], rec["label"]) == ("skipped", "java unavailable")
 
 
+@pytest.mark.requires_java
+def test_shadow_does_not_run_java_on_a_record_of_the_wrong_type(engine, java, tmp_path):
+    """Java crashes the JVM reading paired data as a time series and the reverse, so
+    shadow skips it after the native type error. The HMS contract is then None."""
+    target = tmp_path / "mixed.dss"
+    engine.create(target, 7)
+    _use("native")
+    times = pd.date_range("2020-01-01 01:00", periods=4, freq="h")
+    HmsDss.write_timeseries(target, "//G/FLOW//1HOUR/R/", times, np.arange(4.0))
+    HmsDss.write_paired_data(target, "//G/SF///T/", np.arange(3.0), np.arange(3.0))
+    _use("shadow")
+    assert DssCore.get_peak_value(target, "//G/SF///T/") is None
+    assert DssCore.read_paired_data(target, "//G/FLOW//1HOUR/R/") is None
+    for rec in list(_backend.SHADOW_RECORDS)[-2:]:
+        assert rec["outcome"] == "skipped" and rec["label"].startswith("java skipped: native ")
+
+
+def test_timeseries_labels_match_ras_commander():
+    index = pd.date_range("2020-01-05", periods=3, freq="7D")
+    frame = pd.DataFrame({"value": [1.0, 2.0, 3.0]}, index=index)
+    frame.attrs["interval"] = 10080
+    assert _backend.classify_timeseries("//A/B//1WEEK/F/", _backend._with_attrs(frame.iloc[1:], frame),
+                                        None, frame, None)[1] == \
+        "D8 weekly data: Java drops first value"
+    index = pd.date_range("2020-01-01 00:00:15", periods=5, freq="15s")
+    frame = pd.DataFrame({"value": np.arange(5.0)}, index=index)
+    frame.attrs["interval"] = 0.25
+    assert _backend.classify_timeseries("//A/B//15S/F/", _backend._with_attrs(frame.iloc[:-1], frame),
+                                        None, frame, None)[1] == \
+        "J2b Java sub-minute tail cut to whole minute"
+    no_data = ValueError("No data found for pathname: //A/\xc9/C//1HOUR/F/")
+    assert _backend.classify_timeseries("//A/\xc9/C//1HOUR/F/", None, no_data, frame,
+                                        None)[1] == "D7 Latin-1 pathname (Java cannot address)"
+    # A native answer for a Java "no data" outside those rules stays visible.
+    assert _backend.classify_timeseries("//A/B/C//1HOUR/F/", None, no_data, frame,
+                                        None)[0] == "unexpected"
+
+
+def test_file_version_errors_are_expected_only_when_both_say_invalid():
+    invalid = ValueError("File is not a DSS6 or DSS7 file")
+    assert _backend.classify_file_version(None, invalid, None, invalid)[0] == "expected"
+    assert _backend.classify_file_version(None, RuntimeError("jvm"), None, invalid)[0] == \
+        "unexpected"
+
+
 def test_paired_data_and_catalog_labels_match_ras_commander():
     assert _backend.classify_catalog(["/A/", "/B/"], None, ["/B/", "/A/"])[1] == \
         "D15 catalog order"

@@ -422,15 +422,20 @@ def compare_frames(java_df: pd.DataFrame, native_df: pd.DataFrame,
                    skip_attrs: Tuple[str, ...] = ()) -> List[str]:
     """Differences between a Java and a native ``read_timeseries`` frame.
 
-    Rules: columns, index dtype, length, stamps, missing positions (Java markers or NaN
+    Rules: columns, index name and dtype, value dtype, length, stamps, missing positions (Java markers or NaN
     against native NaN), the remaining values bitwise, and every ``attrs`` key.
     ``attr_ws:<key>`` marks string attributes that differ only in surrounding blanks.
     """
     diffs: List[str] = []
     if list(java_df.columns) != list(native_df.columns):
         diffs.append("columns")
+    if java_df.index.name != native_df.index.name:
+        diffs.append("index_name")
     if java_df.index.dtype != native_df.index.dtype:
         diffs.append(f"index_dtype:{java_df.index.dtype}->{native_df.index.dtype}")
+    if "value" in java_df and "value" in native_df \
+            and java_df["value"].dtype != native_df["value"].dtype:
+        diffs.append(f"value_dtype:{java_df['value'].dtype}->{native_df['value'].dtype}")
     if len(java_df) != len(native_df):
         diffs.append("length")
     elif "value" in java_df and "value" in native_df:
@@ -458,12 +463,73 @@ def java_marker_count(java_df: pd.DataFrame) -> int:
     return int(np.isin(v, JAVA_MISSING_MARKERS).sum())
 
 
+#: Shadow label for a native not-found error that HEC's DSS6 "no data" rule explains.
+HEC_NO_DATA_LABEL = "D4 HEC DSS6 no-data rule (native refusal, status 4)"
+
+
+def native_refuses_no_data(read, native_exc: Optional[BaseException]) -> bool:
+    """True when HEC's DSS6 "no data" rule explains a native not-found error.
+
+    For the shadow label only; never used for the value a read returns. ``read`` repeats
+    the native read with extra keywords (``no_data="refuse"``). It runs only for a plain
+    not-found error and an engine that provides ``DssNoDataError``. Never raises.
+    """
+    dc = _maybe_native()
+    no_data_error = getattr(dc, "DssNoDataError", None) if dc else None
+    not_found = getattr(dc, "DssPathnameNotFoundError", None) if dc else None
+    if no_data_error is None or not_found is None:
+        return False
+    if isinstance(native_exc, no_data_error):
+        return True
+    if not isinstance(native_exc, not_found):
+        return False
+    try:
+        read(no_data="refuse")
+    except no_data_error:
+        return True
+    except Exception:
+        return False
+    return False
+
+
+def _is_ascii(text: Optional[str]) -> bool:
+    try:
+        (text or "").encode("ascii")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
+def _with_attrs(df: pd.DataFrame, source: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    out.attrs = dict(source.attrs)
+    return out
+
+
+def _values_prefix(java_df: pd.DataFrame, native_df: pd.DataFrame) -> bool:
+    """True when ``java_df`` equals the start of ``native_df`` and stops at the last
+    whole minute before the native end."""
+    n = len(java_df)
+    if not 0 < n < len(native_df):
+        return False
+    js = java_df.index.to_numpy(dtype="datetime64[s]").astype(np.int64)
+    ns = native_df.index.to_numpy(dtype="datetime64[s]").astype(np.int64)
+    if not np.array_equal(js, ns[:n]) or js[-1] % 60 != 0 or not 0 < ns[-1] - js[-1] < 60:
+        return False
+    jv = java_df["value"].to_numpy(dtype=np.float64)
+    nv = native_df["value"].to_numpy(dtype=np.float64)[:n]
+    jm, nm = java_missing(jv), np.isnan(nv)
+    return bool(np.array_equal(jm, nm)) and _bits_equal(jv[~jm & ~nm], nv[~jm & ~nm])
+
+
 def classify_timeseries(
     pathname: str,
     java_df: Optional[pd.DataFrame],
     java_exc: Optional[BaseException],
     native_df: Optional[pd.DataFrame],
     native_exc: Optional[BaseException],
+    *,
+    native_hec_no_data: bool = False,
 ) -> Tuple[str, str, List[str]]:
     """Classify one ``read_timeseries`` comparison: ``(outcome, label, diffs)``.
 
@@ -471,9 +537,13 @@ def classify_timeseries(
 
     - ``D1``: Java returns raw HEC missing markers; native returns NaN.
     - ``D5``: a time-series pattern (stamps in year 3000) that Java cannot read.
+    - ``D7``: a non-ASCII pathname that Java cannot address.
+    - ``D8``: weekly data: Java drops the first value.
     - ``D9``: units/type differ only in surrounding blanks.
+    - ``J2b``: sub-minute data: Java cuts the tail to a whole minute.
     - ``D4``: all-missing data (Java data, native not-found), or no data on either
-      backend (typed native error).
+      backend (typed native error). ``native_hec_no_data`` (the engine's
+      ``no_data="refuse"`` raised ``DssNoDataError``) selects the narrower DSS6 label.
     """
     if java_unavailable(java_exc):
         return "skipped", "java unavailable", []
@@ -484,20 +554,36 @@ def classify_timeseries(
             if java_marker_count(java_df):
                 return "expected", "D1 missing markers mapped to NaN", diffs
             return "identical", "identical", diffs
-        if set(diffs) <= {"attr_ws:type", "attr_ws:units"}:
+        dset = set(diffs)
+        if dset <= {"attr_ws:type", "attr_ws:units"}:
             return "expected", "D9 blank units/type whitespace", diffs
+        interval = native_df.attrs.get("interval")
+        if (isinstance(interval, float) and not float(interval).is_integer()
+                and dset == {"length"} and _values_prefix(java_df, native_df)):
+            return "expected", "J2b Java sub-minute tail cut to whole minute", diffs
+        if ("length" in dset and len(native_df) == len(java_df) + 1 and interval == 10080
+                and not compare_frames(java_df, _with_attrs(native_df.iloc[1:], native_df))):
+            return "expected", "D8 weekly data: Java drops first value", diffs
         return "unexpected", "frame difference", diffs
     if java_df is None and native_df is not None:
         no_data = (isinstance(java_exc, ValueError)
                    and str(java_exc).startswith("No data found"))
-        if no_data and len(native_df) and native_df.index[0].year == 3000:
+        parts = pathname.split("/")
+        if (no_data and len(parts) == 8 and parts[4].upper() == "TS-PATTERN"
+                and len(native_df) and native_df.index[0].year == 3000):
             return "expected", "D5 pattern record (Java cannot read)", []
+        if no_data and not _is_ascii(pathname):
+            return "expected", "D7 Latin-1 pathname (Java cannot address)", []
         return "unexpected", "native data, Java error", []
     if java_df is not None and native_df is None:
         if typed and isinstance(native_exc, typed) and "value" in java_df and \
                 java_missing(java_df["value"].to_numpy()).all():
+            if native_hec_no_data:
+                return "expected", HEC_NO_DATA_LABEL, []
             return "expected", "D4 all-missing dataset (error type)", []
         return "unexpected", "Java data, native error", []
+    if native_hec_no_data and typed and isinstance(native_exc, typed):
+        return "expected", HEC_NO_DATA_LABEL, []
     if typed and isinstance(native_exc, typed):
         return "expected", "D4/D6 no data: typed native error", []
     return "unexpected", "both failed, untyped native error", []
@@ -676,7 +762,7 @@ def classify_file_version(java_v, java_exc, native_v, native_exc) -> Tuple[str, 
         if java_v == native_v:
             return "identical", "identical", []
         return "unexpected", "version difference", ["version"]
-    if java_exc is not None and native_exc is not None:
+    if isinstance(java_exc, ValueError) and isinstance(native_exc, ValueError):
         return "expected", "invalid file on both backends", []
     return "unexpected", "error difference", []
 

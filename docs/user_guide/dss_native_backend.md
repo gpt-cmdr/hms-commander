@@ -118,16 +118,33 @@ print(HmsDss.get_shadow_summary())
 Reads return the native result, or raise the native error. Java runs afterwards for the
 comparison. When the native read fails with anything other than "not found" (or an
 invalid file for `get_file_version`), Java is not run: the comparison is recorded as
-skipped (`java skipped: native <Error>`) and the native error is raised. `read_grid`
-returns Java's grid and only compares the native grid. When Java cannot run (no pyjnius,
+skipped (`java skipped: native <Error>`) and the native error is raised. This also protects
+the process: Java can create a missing file, and it crashes the JVM when it reads a record
+of the wrong type. `get_peak_value` and `read_paired_data` keep their contract there and
+return None. `read_grid` returns Java's grid and only compares the native grid. When Java cannot run (no pyjnius,
 Java or HEC Monolith), comparisons are recorded as skipped (`java unavailable`).
 
 Each comparison is logged on the `hms_commander.dss` logger: identical results at DEBUG,
 the known differences above as `expected` at INFO (D1 at DEBUG), and anything else as
 `UNEXPECTED` at WARNING. A comparison never raises. Other `expected` labels are
-`D15 catalog order`, `D4 all-missing dataset (error type)`, `D4/D6 no data: typed native
-error`, `D9 blank units/type whitespace`, `PD3 unit/type whitespace` and `G2 whitespace`,
-as in ras-commander.
+`D15 catalog order`, `D4 all-missing dataset (error type)`, `D4 HEC DSS6 no-data rule`,
+`D4/D6 no data: typed native error`, `D7 Latin-1 pathname`, `D8 weekly data`,
+`D9 blank units/type whitespace`, `J2b Java sub-minute tail`, `PD3 unit/type whitespace` and
+`G2 whitespace`, as in ras-commander.
+
+Shadow reads differ from ras-commander's `RasDss` in these ways, because the HMS methods
+have other contracts:
+
+- `get_peak_value` has a shadow comparison. `RasDss` has no such method.
+- Paired data compares the HMS dictionary (curve 0, units, axis types), so the labels for
+  curve labels, the DSS7 time zone and DSS6 precision (PD1, PD2, PD4) do not arise.
+- Windows are the same inclusive stamp filter on both backends, so no window translation
+  is needed.
+- `D3` is not used. It needs a separate Java windowed read, which the HMS Java path does
+  not have, so that case stays `UNEXPECTED` (`native data, Java error`).
+- A wheel without `grid_srs_monolith_parity` gives a skipped grid comparison instead of the
+  `G-CRS` label. Grid labels G3 and G4 do not arise: HMS grid times come from the pathname,
+  and the dictionary has no `number_missing`.
 
 Shadow writes run on Java first. The native writer then repeats the write on a temporary
 copy of the target file (or a new temporary file), and both files are read back with the
@@ -136,6 +153,20 @@ larger than `HmsDss.shadow_copy_limit_mb` (256 MB; environment variable
 `HMS_COMMANDER_DSS_SHADOW_COPY_LIMIT_MB`) are not copied, and the comparison is logged
 as skipped. An engine without the writer API also gives a skipped comparison
 (`native writers not available`); a native refusal is `expected` (W1).
+
+## HEC library messages on the Java backend
+
+The Java backend sends the HEC-DSS library's messages to a private temporary file instead
+of the console, and logs the failure lines on the `hms_commander.dss.core` logger as
+`HEC-DSS library reported: ...`. A DSS file cannot receive library messages through a
+redirected stdout (this corrupted files under pytest's output capture). Set
+`DssCore.hec_message_level` before the first Java call to change the level (default 1).
+Level 0 also drops most failure messages.
+
+Two console paths remain outside that file. HEC Monolith's own Java messages, such as
+`Cannot open data base file`, still print. The Fortran `readf fail` line after a failed read
+of a damaged DSS6 file also still uses stdout and can reach a stale handle; hms-commander
+holds no other DSS file open during a read, and the damage is also reported in the log.
 
 ## Qualification evidence
 

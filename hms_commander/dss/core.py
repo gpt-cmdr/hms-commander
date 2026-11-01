@@ -1391,7 +1391,12 @@ class DssCore:
                 "read_timeseries", dss_file, pathname,
                 lambda: DssCore._read_timeseries_java(dss_file, pathname, start_date, end_date),
                 lambda: DssCore._read_timeseries_native(dss_file, pathname, start_date, end_date),
-                lambda j, je, n, ne: _backend.classify_timeseries(pathname, j, je, n, ne),
+                lambda j, je, n, ne: _backend.classify_timeseries(
+                    pathname, j, je, n, ne,
+                    native_hec_no_data=ne is not None and _backend.native_refuses_no_data(
+                        lambda **options: _backend.import_native().read_timeseries(
+                            str(Path(dss_file).resolve()), pathname, **options),
+                        ne)),
                 java_after_native_error=DssCore._native_not_found,
             )
         return DssCore._read_timeseries_java(dss_file, pathname, start_date, end_date)
@@ -1473,19 +1478,26 @@ class DssCore:
                     return "unexpected", "peak difference", diffs
                 return "identical", "identical", []
 
-            return DssCore._shadow_read(
-                "get_peak_value", dss_file, pathname,
-                lambda: DssCore._get_peak_value_java(dss_file, pathname),
-                lambda: DssCore._get_peak_value_native(dss_file, pathname),
-                classify,
-            )
+            # A native error other than not-found (for example paired data) skips Java,
+            # which crashes the JVM on such a record. The method's contract is then None.
+            try:
+                return DssCore._shadow_read(
+                    "get_peak_value", dss_file, pathname,
+                    lambda: DssCore._get_peak_value_java(dss_file, pathname),
+                    lambda: DssCore._get_peak_value_native(dss_file, pathname, reraise=True),
+                    classify,
+                )
+            except Exception as e:
+                logger.error(f"Error reading DSS pathname {pathname}: {e}")
+                return None
         return DssCore._get_peak_value_java(dss_file, pathname)
 
     @staticmethod
     def _get_peak_value_native(
-        dss_file: Union[str, Path], pathname: str
+        dss_file: Union[str, Path], pathname: str, reraise: bool = False
     ) -> Optional[Dict[str, Any]]:
-        """``get_peak_value`` through ras_commander_fast_dss (no JVM)."""
+        """``get_peak_value`` through ras_commander_fast_dss (no JVM). ``reraise`` raises
+        a read failure other than not-found instead of returning None (shadow reads)."""
         dss_path = Path(dss_file)
         if not dss_path.exists():
             logger.warning(f"DSS file not found: {dss_path}")
@@ -1499,6 +1511,8 @@ class DssCore:
             logger.warning(f"No data found for pathname: {pathname}")
             return None
         except Exception as e:
+            if reraise:
+                raise
             logger.error(f"Error reading DSS pathname {pathname}: {e}")
             return None
         values = df['value'].to_numpy(dtype=np.float64)
@@ -1554,12 +1568,18 @@ class DssCore:
         if backend == "native":
             return DssCore._read_paired_data_native(dss_file, pathname)
         if backend == "shadow":
-            return DssCore._shadow_read(
-                "read_paired_data", dss_file, pathname,
-                lambda: DssCore._read_paired_data_java(dss_file, pathname),
-                lambda: DssCore._read_paired_data_native(dss_file, pathname),
-                _backend.classify_paired_data,
-            )
+            # A native error other than not-found (for example a time-series record) skips
+            # Java, which crashes the JVM on such a record. The contract is then None.
+            try:
+                return DssCore._shadow_read(
+                    "read_paired_data", dss_file, pathname,
+                    lambda: DssCore._read_paired_data_java(dss_file, pathname),
+                    lambda: DssCore._read_paired_data_checked(dss_file, pathname),
+                    _backend.classify_paired_data,
+                )
+            except Exception as e:
+                logger.error(f"Error reading paired data from {pathname}: {e}")
+                return None
         return DssCore._read_paired_data_java(dss_file, pathname)
 
     @staticmethod
@@ -1577,6 +1597,21 @@ class DssCore:
             logger.warning(f"DSS file not found: {dss_path}")
             return None
         return dc.read_paired_data_compat(str(dss_path.resolve()), pathname)
+
+    @staticmethod
+    def _read_paired_data_checked(
+        dss_file: Union[str, Path], pathname: str
+    ) -> Optional[Dict[str, Any]]:
+        """``_read_paired_data_native``, but a None from anything other than a missing
+        file or record raises the engine's error (shadow reads)."""
+        result = DssCore._read_paired_data_native(dss_file, pathname)
+        if result is None and Path(dss_file).exists():
+            dc = _backend.import_native()
+            try:
+                dc.read_paired_data(str(Path(dss_file).resolve()), pathname, dtype="float64")
+            except dc.DssPathnameNotFoundError:
+                pass
+        return result
 
     @staticmethod
     def get_file_version(dss_file: Union[str, Path]) -> int:
