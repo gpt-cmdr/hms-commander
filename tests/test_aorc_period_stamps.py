@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
@@ -95,12 +95,23 @@ def test_unknown_data_types_are_refused(kind):
 
 
 @pytest.mark.parametrize("stamp,match", [
-    (datetime(2020, 5, 1, 1, tzinfo=timezone.utc), "time-zone aware"),
+    (datetime(2020, 5, 1, 1, tzinfo=timezone(timedelta(hours=-6))), "not UTC"),
     (datetime(2020, 5, 1, 1, 0, 30), "whole minute"),
 ])
 def test_stamps_a_pathname_cannot_hold_are_refused(stamp, match):
     with pytest.raises(ValueError, match=match):
         windows([stamp], 1, "PER-CUM", 60)
+
+
+@pytest.mark.parametrize("kind,expected", [
+    ("INST-VAL", (T("2020-01-01 12:00"), T("2020-01-01 12:00"))),
+    ("INST-CUM", (T("2020-01-01 12:00"), T("2020-01-01 12:00"))),
+    ("PER-CUM", (T("2020-01-01 11:00"), T("2020-01-01 12:00"))),
+    ("PER-AVER", (T("2020-01-01 11:00"), T("2020-01-01 12:00"))),
+])
+def test_utc_stamps_keep_their_clock_time(kind, expected):
+    stamp = datetime(2020, 1, 1, 12, tzinfo=timezone.utc)
+    assert windows([stamp], 1, kind, 60) == [expected]
 
 
 def test_interval_must_be_whole_minutes():
@@ -151,6 +162,11 @@ def test_write_refuses_before_writing(tmp_path, kwargs, match):
 @pytest.fixture(scope="module")
 def java():
     pytest.importorskip("jnius_config")
+    # _ensure_monolith() downloads a missing Monolith; these tests stay offline.
+    from hms_commander.dss._hec_monolith import HecMonolithDownloader
+
+    if not HecMonolithDownloader().is_installed():
+        pytest.skip("HEC Monolith is not installed; these tests do not download it")
     try:
         DssCore._ensure_monolith()
         DssCore._configure_jvm()
@@ -197,6 +213,16 @@ def test_java_keeps_instantaneous_grids_as_instants(java, tmp_path):
     HmsDssGrid.write_grid_timeseries(
         target, "/A/B/SWE////", grid, lat, lon, [datetime(2020, 5, 1, 6)], data_type="INST-VAL")
     assert _grid_parts(target) == [("01MAY2020:0600", "01MAY2020:0600")]
+
+
+@pytest.mark.requires_java
+def test_java_writes_a_utc_instant_at_its_clock_time(java, tmp_path):
+    grid, lat, lon = _small_grid(1)
+    target = tmp_path / "utc.dss"
+    HmsDssGrid.write_grid_timeseries(
+        target, "/A/B/SWE////", grid, lat, lon,
+        [datetime(2020, 1, 1, 12, tzinfo=timezone.utc)], data_type="INST-VAL")
+    assert _grid_parts(target) == [("01JAN2020:1200", "01JAN2020:1200")]
 
 
 # ---------------------------------------------------------------------------

@@ -193,6 +193,9 @@ class HmsDssGrid:
             For ``PER-CUM`` and ``PER-AVER``: one period **end** per grid (the period is
             the ``interval_minutes`` before it), or one more time than there are grids,
             as period boundaries. AORC stamps are period ends, so they pass unchanged.
+            Times must be whole minutes, and naive or UTC. A UTC time is stored at its
+            UTC clock time; another time zone raises ``ValueError``, because DSS grid
+            times hold no zone and the model clock is the caller's choice.
         units : str, default "MM"
             Data units string. Common values:
             - "MM" - millimeters
@@ -219,7 +222,8 @@ class HmsDssGrid:
         ImportError
             If pyjnius not installed.
         ValueError
-            If array dimensions don't match, the data type is unknown, or a PER-CUM or
+            If a time is not a whole minute or has a time zone other than UTC, array
+            dimensions don't match, the data type is unknown, or a PER-CUM or
             PER-AVER grid has no period (start at or after end). Raised before anything
             is written: HEC-HMS treats the cells of a period grid with equal start and
             end times as missing.
@@ -440,6 +444,23 @@ class HmsDssGrid:
             raise ValueError(f"timestamp {t} is not a whole minute (grid pathnames store minutes)")
 
     @staticmethod
+    def _naive_grid_time(timestamp):
+        """``timestamp`` as a naive ``pd.Timestamp``. UTC keeps its clock time, as earlier
+        versions stored it; another zone raises, rather than choosing a model clock."""
+        import pandas as pd
+
+        t = pd.Timestamp(timestamp)
+        if t.tzinfo is not None:
+            if t.utcoffset() != pd.Timedelta(0):
+                raise ValueError(
+                    f"timestamp {t} is time-zone aware and not UTC; DSS grid times hold no "
+                    "zone, so convert it to the model's clock and pass it naive or as UTC"
+                )
+            t = t.tz_localize(None)
+        HmsDssGrid._check_grid_time(t)
+        return t
+
+    @staticmethod
     def _grid_time_windows(timestamps, n_grids, data_type, interval_minutes=None):
         """``(start, end)`` for each grid, before anything is written.
 
@@ -457,9 +478,7 @@ class HmsDssGrid:
         known = HmsDssGrid._PERIOD_TYPES + HmsDssGrid._INSTANT_TYPES
         if kind not in known:
             raise ValueError(f"Unknown grid data type {data_type!r}; expected one of {known}")
-        stamps = [pd.Timestamp(t) for t in timestamps]
-        for t in stamps:
-            HmsDssGrid._check_grid_time(t)
+        stamps = [HmsDssGrid._naive_grid_time(t) for t in timestamps]
         is_period = kind in HmsDssGrid._PERIOD_TYPES
         if len(stamps) != n_grids and not (is_period and len(stamps) == n_grids + 1):
             raise ValueError(
