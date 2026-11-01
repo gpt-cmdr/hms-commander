@@ -188,6 +188,10 @@ class HmsAorc:
         - Download time depends on spatial extent and time range
         - Data remains in WGS84 (lat/lon) - no reprojection
         - AORC resolution: ~800m, hourly timesteps
+        - ``start_time`` and ``end_time`` select AORC stamps, inclusive, to the hour.
+          A stamp T holds the rain of the hour ending at T, so the rain of 15 May
+          (00:00 to 24:00) is ``"2020-05-15 01:00"`` to ``"2020-05-16 00:00"``. A date
+          without a time means 00:00: the stamp of the last hour of the day before.
         - Units: kg/m² (equivalent to mm of precipitation)
         """
         _check_aorc_dependencies()
@@ -275,13 +279,12 @@ class HmsAorc:
                         **{lon_dim: slice(west, east)}
                     )
 
-                # Subset temporally - use date-only strings for proper inclusive slicing
+                # AORC timestamps are hourly UTC interval-ending verification times.
+                # Keep the caller's hour and minute bounds; date-only strings would
+                # expand every request to whole calendar days.
                 year_start = max(start_dt, pd.Timestamp(f"{year}-01-01"))
                 year_end = min(end_dt, pd.Timestamp(f"{year}-12-31 23:59:59"))
-                # Use date format YYYY-MM-DD for proper inclusive time slicing
-                start_str = year_start.strftime('%Y-%m-%d')
-                end_str = year_end.strftime('%Y-%m-%d')
-                ds_subset = ds_subset.sel(time=slice(start_str, end_str))
+                ds_subset = ds_subset.sel(time=slice(year_start, year_end))
 
                 if ds_subset.size > 0:
                     # Load data from S3 now (force lazy evaluation)
@@ -314,6 +317,8 @@ class HmsAorc:
         combined.attrs['history'] = f'Downloaded by hms-commander on {datetime.now().isoformat()}'
         combined.attrs['units'] = 'kg/m^2'  # AORC precipitation units (equivalent to mm)
         combined.attrs['long_name'] = 'Hourly Total Precipitation'
+        combined.attrs['accumulation_interval_hours'] = 1.0
+        combined.attrs['time_semantics'] = 'one-hour accumulation ending at the UTC timestamp'
         combined.attrs['crs'] = 'EPSG:4326'  # WGS84 lat/lon (no reprojection for HMS)
 
         # Create output directory if needed
@@ -368,8 +373,9 @@ class HmsAorc:
         pd.DataFrame
             Storm catalog with columns:
             - storm_id: Sequential storm identifier (1-based)
-            - start_time: Event start (first hour with precipitation)
-            - end_time: Event end (last hour with precipitation)
+            - start_time: AORC stamp of the first wet hour; that hour's rain began
+              one hour earlier
+            - end_time: AORC stamp of the last wet hour, when its rain ended
             - sim_start: Recommended simulation start (start - buffer)
             - sim_end: Recommended simulation end (end + buffer)
             - total_depth_in: Total event precipitation (inches, spatial mean)
