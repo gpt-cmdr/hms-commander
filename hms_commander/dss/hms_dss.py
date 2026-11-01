@@ -182,6 +182,7 @@ class HmsDss:
         return result
 
     @staticmethod
+    @log_call
     def is_available() -> bool:
         """
         Check if full DSS functionality is available.

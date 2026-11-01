@@ -35,6 +35,7 @@ from contextlib import contextmanager
 import pandas as pd
 import numpy as np
 
+from ..LoggingConfig import log_call
 from . import _backend
 from .catalog import create_pathname, filter_catalog, parse_pathname
 
@@ -494,6 +495,7 @@ class DssCore:
         return failures
 
     @staticmethod
+    @log_call
     def is_available() -> bool:
         """
         Check if DSS functionality is available for the selected backend.
@@ -517,6 +519,7 @@ class DssCore:
         return DssCore.java_available()
 
     @staticmethod
+    @log_call
     def java_available() -> bool:
         """True if pyjnius can be imported (the Java backend's Python dependency)."""
         try:
@@ -533,6 +536,7 @@ class DssCore:
         return getattr(HmsDss, "backend", None)
 
     @staticmethod
+    @log_call
     def get_backend() -> str:
         """
         DSS backend for the next call: ``"java"``, ``"native"`` or ``"shadow"``.
@@ -1296,6 +1300,7 @@ class DssCore:
         return not_found is not None and isinstance(exc, not_found)
 
     @staticmethod
+    @log_call
     def get_catalog(dss_file: Union[str, Path]) -> List[str]:
         """
         Get list of all data paths in DSS file.
@@ -1339,6 +1344,7 @@ class DssCore:
         return window_start, window_end
 
     @staticmethod
+    @log_call
     def read_timeseries(
         dss_file: Union[str, Path],
         pathname: str,
@@ -1437,6 +1443,7 @@ class DssCore:
         return df
 
     @staticmethod
+    @log_call
     def get_peak_value(
         dss_file: Union[str, Path],
         pathname: str
@@ -1533,6 +1540,7 @@ class DssCore:
         }
 
     @staticmethod
+    @log_call
     def read_paired_data(
         dss_file: Union[str, Path],
         pathname: str
@@ -1614,6 +1622,7 @@ class DssCore:
         return result
 
     @staticmethod
+    @log_call
     def get_file_version(dss_file: Union[str, Path]) -> int:
         """
         HEC-DSS version of an existing file: 6 or 7.
@@ -1684,6 +1693,7 @@ class DssCore:
         return day + pd.Timedelta(hours=int(match.group(2)), minutes=int(match.group(3)))
 
     @staticmethod
+    @log_call
     def read_grid(dss_file: Union[str, Path], pathname: str) -> Dict[str, Any]:
         """
         Read one grid record (HRAP, Albers/SHG or specified) by its full pathname.
@@ -2006,6 +2016,7 @@ class DssCore:
         return stamps.astype("datetime64[s]"), values
 
     @staticmethod
+    @log_call
     def write_timeseries(
         dss_file: Union[str, Path],
         pathname: str,
@@ -2161,6 +2172,7 @@ class DssCore:
             seen[key] = pathname
 
     @staticmethod
+    @log_call
     def write_paired_data(
         dss_file: Union[str, Path],
         pathname: str,
@@ -2228,6 +2240,7 @@ class DssCore:
         return java_call()
 
     @staticmethod
+    @log_call
     def write_multiple_paired_data(
         dss_file: Union[str, Path],
         paired_data_records: List[Dict[str, Any]]
