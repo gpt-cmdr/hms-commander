@@ -87,6 +87,12 @@ DSS calls use HEC Monolith (Java) by default. `HmsDss.backend = "native"` uses t
 optional `ras_commander_fast_dss` engine without Java, and `"shadow"` compares both.
 See [Native DSS Backend](dss_native_backend.md).
 
+### HEC-HMS 4.9 needs DSS6 grids
+
+HEC-HMS 4.9 does not read DSS7 grids with either stamp form (`ERROR 12520`, no rain, and the
+run still reports success), so use DSS6 there: write grids to an existing DSS6 file, which
+keeps its version. HEC-HMS 4.10 to 4.13 read DSS7 grids.
+
 ## DSS Pathname Structure
 
 DSS uses a 6-part pathname:
