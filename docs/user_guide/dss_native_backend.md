@@ -57,7 +57,8 @@ state in `attrs` (`native_available`, `native_writes_available`, `native_grid_qu
 | `read_grid` | gated | Needs an engine that advertises `grid_srs_monolith_parity` |
 | `get_file_version` | yes | 6 or 7 |
 | `write_timeseries` | gated | Regular intervals only |
-| `write_paired_data`, `write_multiple_paired_data`, `import_atlas14_temporal` | gated | Float32 (PD) records, as Monolith stores them |
+| `write_paired_data` | gated | The arguments of `RasDss.write_paired_data` (see below) |
+| `write_multiple_paired_data`, `import_atlas14_temporal` | gated | One curve per record, float32 (PD) records, a result per record |
 | `HmsDssGrid.write_grid_timeseries` | gated | All four data types; PER-CUM and PER-AVER grids need a period (see below) |
 
 "Gated" operations check the installed engine's capabilities, not its version. Writes need
@@ -84,7 +85,19 @@ differences remain:
 - **New files** are DSS7, as HEC Monolith 3.3.27 creates them. `write_timeseries` takes
   `dss_version=6` for a new DSS6 file. An existing file keeps its version.
 - **Missing values.** `write_timeseries` stores NaN as -3.4028e38 on DSS7 and -901 on
-  DSS6 on both backends, and refuses infinity.
+  DSS6 on both backends, and refuses infinity. The paired-data writers store NaN as NaN
+  bits on both backends and both DSS versions, because that is what Monolith stores (the
+  engine's default would store a HEC missing marker). The native writers refuse infinity; Java
+  stores it.
+- **`write_paired_data` arguments.** They match `ras_commander.RasDss.write_paired_data`:
+  `x_type`, `y_type` (the earlier names `x_label`, `y_label` still work), any number of
+  curves, `labels`, `x_precision`, `y_precision`, `value_type`, `dss_version`,
+  `create_if_missing`, and a DataFrame or Series in place of the arrays. Differences from
+  `RasDss`: it returns `True`, and a call with no units or types still stores the earlier
+  HMS defaults (`HOURS`, `FRACTION`, `TIME`, `CUMULATIVE`, float32) with a
+  `DeprecationWarning`. `RasDss` stores blanks there. A call giving only some of them stores
+  the others blank, as `RasDss` does, with the same warning. `write_multiple_paired_data` has no
+  `RasDss` counterpart and keeps its record keys and defaults.
 - **DSS6 text limits.** A DSS6 paired-data record stores at most 8 characters per unit
   and type. HEC Monolith truncates longer strings without a warning (`CUMULATIVE` is
   stored as `CUMULATI`). The native writer refuses them with `ValueError` and writes

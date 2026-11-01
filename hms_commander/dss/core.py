@@ -25,10 +25,11 @@ import shutil
 import tempfile
 import threading
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple, Union, Any
+from typing import List, Dict, Optional, Tuple, Union, Any, Sequence
 import logging
 import re
 import time
+import warnings
 from contextlib import contextmanager
 
 # Lazy imports - these are always needed for type hints and basic operations
@@ -977,15 +978,29 @@ class DssCore:
     def _write_paired_data_java(
         dss_file: Union[str, Path],
         pathname: str,
-        x_values: np.ndarray,
-        y_values: np.ndarray,
-        x_units: str = "HOURS",
-        y_units: str = "FRACTION",
-        x_label: str = "TIME",
-        y_label: str = "CUMULATIVE"
+        spec: Dict[str, Any],
+        create_if_missing: bool = True,
+        *,
+        dss_version: Optional[int] = None,
     ) -> bool:
-        """``write_paired_data`` through HEC Monolith (Java backend)."""
-        DssCore._check_pathname_format(pathname)
+        """``write_paired_data`` through HEC Monolith (``hec.io.PairedDataContainer``)."""
+        dss_path = Path(dss_file)
+        existed = dss_path.exists()
+        if existed:
+            if not dss_path.is_file():
+                raise IsADirectoryError(f"DSS path is not a file: {dss_path}")
+            version = DssCore._get_file_version_java(dss_path)
+            if dss_version is not None and version != dss_version:
+                raise ValueError(
+                    f"Existing DSS file is version {version}, not requested version "
+                    f"{dss_version}: {dss_path}"
+                )
+        else:
+            if not create_if_missing:
+                raise FileNotFoundError(f"DSS file not found: {dss_path}")
+            dss_path.parent.mkdir(parents=True, exist_ok=True)
+            version = dss_version if dss_version is not None else DssCore.NEW_FILE_VERSION
+        x_precision, y_precision = DssCore._paired_data_precision(spec, version)
 
         # Configure JVM (must be before first jnius import)
         DssCore._configure_jvm()
@@ -996,64 +1011,56 @@ class DssCore:
         HecDss = autoclass('hec.heclib.dss.HecDss')
         PairedDataContainer = autoclass('hec.io.PairedDataContainer')
 
-        dss_file = str(Path(dss_file).resolve())
+        dss_path_str = str(dss_path.resolve())
 
-        # Open DSS file (creates if doesn't exist)
-        dss = HecDss.open(dss_file)
+        # Use setter methods (pyjnius requires explicit setters, not property assignment)
+        container = PairedDataContainer()
+        container.setFullName(pathname)
+        container.setXUnits(spec['x_units'])
+        container.setYUnits(spec['y_units'])
+        container.setXType(spec['x_type'])
+        container.setYType(spec['y_type'])
+        container.setXOrdinates(spec['x'].astype(np.float64).tolist())
+        # Java holds the curves curve-major: yOrdinates[curve][ordinate].
+        container.setYOrdinates(spec['y'].astype(np.float64).T.tolist())
+        container.setNumberOrdinates(int(spec['x'].shape[0]))
+        container.setNumberCurves(spec['n_curves'])
+        container.setStoreAsDoubles(spec['value_type'] == 'double')
+        # -1 does not clear a precision that an earlier DSS6 write in this process set:
+        # Monolith keeps it (shadow label W10).
+        container.xprecision = x_precision
+        container.yprecision = y_precision
+        if spec['labels'] is not None:
+            container.setLabels(spec['labels'])
+            container.labelsUsed = True
 
-        # Suppress DSS library verbose output
+        dss = None
         try:
-            dss.setMessageLevel(0)
-        except Exception:
-            pass
-
-        try:
-            # Create PairedDataContainer
-            container = PairedDataContainer()
-
-            # Use setter methods (pyjnius requires explicit setters, not property assignment)
-            container.setFullName(pathname)
-            container.setXUnits(x_units)
-            container.setYUnits(y_units)
-            container.setXType(x_label)
-            container.setYType(y_label)
-
-            # Convert numpy arrays to Java arrays
-            # X ordinates: 1D array (double[])
-            x_list = x_values.astype(np.float64).tolist()
-
-            # Y ordinates: 2D array (double[numberCurves][numberOrdinates])
-            # For single curve, wrap in outer list: [[y1, y2, ...]]
-            # See: https://www.hec.usace.army.mil/confluence/dssdocs/dssjavaprogrammer/paired-data
-            y_list = y_values.astype(np.float64).tolist()
-            y_2d = [y_list]  # Single curve: yOrdinates[1][n]
-
-            container.setXOrdinates(x_list)
-            container.setYOrdinates(y_2d)
-            container.setNumberOrdinates(len(x_values))
-            container.setNumberCurves(1)
-
-            # Write to DSS file. HecDss.put has DataContainer and
-            # DataContainerTransformer overloads; without the cast pyjnius
-            # can select the wrong one and nothing is written.
+            # Open DSS file (creates if doesn't exist)
+            dss = (HecDss.open(dss_path_str, dss_version)
+                   if dss_version is not None and not existed else HecDss.open(dss_path_str))
+            try:
+                dss.setMessageLevel(0)
+            except Exception:
+                pass
+            # HecDss.put has DataContainer and DataContainerTransformer overloads;
+            # without the cast pyjnius can select the wrong one and nothing is written.
             dss.put(cast('hec.io.DataContainer', container))
-
+            missing = DssCore._missing_pathnames(DssCore._cataloged_pathnames(dss), [pathname])
         except Exception as e:
-            logger.error(f"Error writing paired data to {pathname}: {e}")
-            DssCore._done_and_release(dss, dss_file)
-            return False
-
-        try:
-            missing = DssCore._missing_pathnames(
-                DssCore._cataloged_pathnames(dss), [pathname]
-            )
+            raise RuntimeError(
+                f"Failed to write paired data to DSS: {e}\n"
+                f"  File: {dss_path_str}\n"
+                f"  Pathname: {pathname}"
+            ) from e
         finally:
-            DssCore._done_and_release(dss, dss_file)
+            if dss is not None:
+                DssCore._done_and_release(dss, dss_path_str)
 
         if missing:
             raise RuntimeError(
                 f"Paired data write reported no error, but {pathname} is not in "
-                f"the catalog of {dss_file}"
+                f"the catalog of {dss_path_str}"
             )
 
         logger.info(f"Wrote paired data to {pathname}")
@@ -2176,42 +2183,92 @@ class DssCore:
     def write_paired_data(
         dss_file: Union[str, Path],
         pathname: str,
-        x_values: np.ndarray,
-        y_values: np.ndarray,
-        x_units: str = "HOURS",
-        y_units: str = "FRACTION",
-        x_label: str = "TIME",
-        y_label: str = "CUMULATIVE"
+        x_values: Any,
+        y_values: Any = None,
+        x_units: Optional[str] = None,
+        y_units: Optional[str] = None,
+        x_type: Optional[str] = None,
+        y_type: Optional[str] = None,
+        labels: Optional[Sequence[str]] = None,
+        create_if_missing: bool = True,
+        *,
+        x_precision: Optional[int] = None,
+        y_precision: Optional[int] = None,
+        value_type: str = "auto",
+        dss_version: Optional[int] = None,
+        x_label: Optional[str] = None,
+        y_label: Optional[str] = None,
     ) -> bool:
         """
-        Write paired data (X-Y curve) to DSS file.
+        Write one paired-data record (temporal curve, rating curve, storage table, ...)
+        with one or more curves. The arguments are those of
+        ``ras_commander.RasDss.write_paired_data``.
 
-        This is used for Atlas 14 temporal distributions, rating curves,
-        and other X-Y relationships. The record is stored as float32 paired
-        data (HEC record type PD), as HEC Monolith stores it.
+        A new record is added; a record already at ``pathname`` is replaced whole.
 
         Args:
-            dss_file: Path to DSS file (created as DSS7 if it doesn't exist)
+            dss_file: Path to DSS file (created if missing and create_if_missing=True)
             pathname: DSS pathname with exactly six parts
                 (e.g., "//TX_R3/FIRST-QUARTILE/24HR//50%/")
-            x_values: X coordinates (e.g., time in hours)
-            y_values: Y coordinates (e.g., cumulative fraction 0-1)
-            x_units: Units for X values (default: "HOURS")
-            y_units: Units for Y values (default: "FRACTION")
-            x_label: Stored as the X axis type (default: "TIME")
-            y_label: Stored as the Y axis type (default: "CUMULATIVE")
+            x_values: The ordinates (1-D array-like), or a DataFrame or Series indexed by
+                the ordinates with one column per curve. With a DataFrame or Series, omit
+                ``y_values``; its ``attrs`` supply any metadata argument left as ``None``.
+            y_values: The curves: 1-D for one curve, or 2-D with shape
+                ``(len(x_values), n_curves)``.
+            x_units: Units of the ordinates. ``None``: from ``attrs``, otherwise blank.
+            y_units: Units of the curves. ``None``: as ``x_units``.
+            x_type: Axis type of the ordinates. ``None``: as ``x_units``.
+            y_type: Axis type of the curves. ``None``: as ``x_units``.
+            labels: Curve names, one per curve. ``None``: a DataFrame's string column names
+                (not the default ``curve_n`` names; then ``attrs["labels"]``), a Series'
+                name, otherwise no labels.
+            create_if_missing: Create the DSS file if it doesn't exist (default True).
+            x_precision: Decimal places to display for the ordinates, 0-9, or -1 for unset.
+                Give both precisions or neither; they must be both -1 or both 0-9.
+            y_precision: As ``x_precision``, for the curves.
+            value_type: ``"auto"`` (default) stores float32 (record type PD) when both the
+                ordinates and the curves are float32, and float64 (PDD) otherwise.
+                ``"float"`` or ``"double"`` choose.
+            dss_version: Major DSS version (6 or 7) for a new file. Omit it for DSS7. An
+                existing file must match an explicit value.
+            x_label: Earlier name of ``x_type``; give one or the other.
+            y_label: Earlier name of ``y_type``; give one or the other.
 
         Returns:
-            True if the record was written and found in the file catalog,
-            False if the DSS library raised an error during the write
+            True. As with ``write_timeseries``, a failed write raises.
 
         Raises:
-            ValueError: If ``pathname`` does not have exactly six parts
-                (seven slashes). With the native backend, also if a unit or type
-                string is longer than 8 characters for a DSS6 file (HEC Monolith
-                silently truncates it there). Nothing is written in either case.
-            RuntimeError: If the write returned without error but the record
-                is not in the file catalog afterwards
+            FileNotFoundError: If the file doesn't exist and create_if_missing=False
+            IsADirectoryError: If ``dss_file`` is a directory
+            TypeError: If ``pathname`` or a unit, type or label is not a string
+            ValueError: If an argument is invalid (pathname parts, array shapes or
+                values, labels, precisions, ``value_type``, ``dss_version``), checked before
+                any file change. Under ``native``, also for the refusals below.
+            ImportError: If pyjnius (``java``) or ras_commander_fast_dss (``native``) is
+                not installed
+            DssCapabilityError: ``native`` with an engine wheel that has no writers
+            RuntimeError: If the write fails, or returns without the record being in the
+                file. Native engine errors are ``RuntimeError`` subclasses too.
+
+        Compatibility:
+            Before this signature, the writer had the defaults ``HOURS``, ``FRACTION``,
+            ``TIME`` and ``CUMULATIVE``, always stored float32 and returned False on a
+            library error. A call with no units or types at all still stores exactly that
+            record, with a ``DeprecationWarning``. A call giving only some of them stores
+            the others blank, also with a ``DeprecationWarning``. Calls with metadata store
+            float64 for float64 input unless ``value_type="float"``.
+            ``write_multiple_paired_data`` keeps its record keys, defaults, float32
+            records and per-record results.
+
+        Backends:
+            ``"java"`` (default) writes through HEC Monolith. ``"native"`` writes through
+            ras_commander_fast_dss without a JVM and never falls back to Java. Both store
+            ``NaN`` as stored bits. The native writer refuses input the Java path accepts:
+            DSS6 units or types over 8 characters (Java truncates them), some DSS6 labels
+            and precisions, non-ASCII pathnames, infinite values, and a record of another
+            kind at the pathname. ``"shadow"`` writes with Java, repeats the write natively
+            on a temporary copy and logs any difference. The comparison never raises. See
+            ``docs/user_guide/dss_native_backend.md``.
 
         Example:
             >>> x = np.linspace(0, 24, 49)  # 0 to 24 hours
@@ -2219,25 +2276,273 @@ class DssCore:
             >>> DssCore.write_paired_data(
             ...     "temporal.dss",
             ...     "//TX_R3/ALL-CASES/24HR//50%/",
-            ...     x, y
+            ...     x, y,
+            ...     x_units="HOURS", y_units="FRACTION", x_type="TIME", y_type="CUMULATIVE",
             ... )
         """
-        DssCore._check_pathname_format(pathname)
-        record = {'pathname': pathname, 'x_values': x_values, 'y_values': y_values,
-                  'x_units': x_units, 'y_units': y_units, 'x_label': x_label,
-                  'y_label': y_label}
+        spec = DssCore._paired_data_spec(
+            pathname, x_values, y_values, x_units, y_units, x_type, y_type, labels,
+            x_precision, y_precision, value_type, x_label, y_label,
+        )
+        dss_version = DssCore._validate_dss_version(dss_version)
 
         def java_call():
             return DssCore._write_paired_data_java(
-                dss_file, pathname, x_values, y_values, x_units, y_units, x_label, y_label)
+                dss_file, pathname, spec, create_if_missing, dss_version=dss_version)
 
         backend = DssCore.get_backend()
         if backend == "native":
-            return DssCore._write_paired_data_native(dss_file, [record])[pathname]
+            return DssCore._write_paired_data_spec_native(
+                dss_file, pathname, spec, create_if_missing, dss_version=dss_version)
         if backend == "shadow":
-            return DssCore._shadow_write_paired_data(
-                "write_paired_data", dss_file, [record], java_call)
+            def native_call(copy, existed):
+                DssCore._write_paired_data_spec_native(
+                    copy, pathname, spec, True,
+                    dss_version=None if existed else DssCore._get_file_version_native(dss_file))
+
+            def compare(copy):
+                return DssCore._compare_written_paired_data(dss_file, copy, pathname)
+
+            return DssCore._shadow_write("write_paired_data", dss_file, pathname, java_call,
+                                         native_call, compare)
         return java_call()
+
+    @staticmethod
+    def _paired_data_numeric(values: Any, what: str) -> np.ndarray:
+        array = np.asarray(values)
+        if array.dtype.kind not in "fiu":
+            raise ValueError(f"{what} must be numeric, not {array.dtype}")
+        return array
+
+    @staticmethod
+    def _paired_data_labels_from_frame(frame: pd.DataFrame) -> Optional[List[str]]:
+        """A frame's string column names, unless they are the default ``curve_n`` names;
+        then ``attrs["labels"]`` when it has one entry per curve (as ``RasDss``)."""
+        columns = list(frame.columns)
+        if columns == [f"curve_{i + 1}" for i in range(len(columns))]:
+            stored = frame.attrs.get("labels")
+            if isinstance(stored, (list, tuple)) and len(stored) == len(columns):
+                return [str(label) for label in stored]
+            return None
+        return columns if all(isinstance(column, str) for column in columns) else None
+
+    @staticmethod
+    def _paired_data_spec(
+        pathname, x_values, y_values, x_units, y_units, x_type, y_type, labels,
+        x_precision, y_precision, value_type, x_label=None, y_label=None,
+    ) -> Dict[str, Any]:
+        """Check and normalize the writer's arguments, the same way for every backend, as
+        ``RasDss._paired_data_spec``. Runs before any JVM start or file change."""
+        if not isinstance(pathname, str):
+            raise TypeError(f"DSS pathname must be a string, got {type(pathname).__name__}")
+        DssCore._check_pathname_format(pathname)
+        if value_type not in ("auto", "float", "double"):
+            raise ValueError('value_type must be "auto", "float" or "double"')
+        if x_label is not None:
+            if x_type is not None:
+                raise ValueError("give x_type or its earlier name x_label, not both")
+            x_type = x_label
+        if y_label is not None:
+            if y_type is not None:
+                raise ValueError("give y_type or its earlier name y_label, not both")
+            y_type = y_label
+
+        attrs: Dict[str, Any] = {}
+        frame_labels = None
+        is_frame = isinstance(x_values, (pd.Series, pd.DataFrame))
+        if isinstance(x_values, pd.Series):
+            x_values = x_values.to_frame()
+        if is_frame:
+            if y_values is not None:
+                raise ValueError("y_values must be omitted when x_values is a DataFrame or Series")
+            attrs = dict(x_values.attrs)
+            frame_labels = DssCore._paired_data_labels_from_frame(x_values)
+            x = DssCore._paired_data_numeric(x_values.index.to_numpy(), "the ordinates")
+            y = DssCore._paired_data_numeric(x_values.to_numpy(), "the curves")
+        else:
+            if y_values is None:
+                raise ValueError("y_values is required unless x_values is a DataFrame or Series")
+            x = DssCore._paired_data_numeric(x_values, "x_values")
+            y = DssCore._paired_data_numeric(y_values, "y_values")
+        if x.ndim != 1:
+            raise ValueError("x_values must be one-dimensional")
+        if y.ndim == 1:
+            y = y.reshape(-1, 1)
+        elif y.ndim != 2:
+            raise ValueError("y_values must be 1-D (one curve) or 2-D (one column per curve)")
+        if x.shape[0] == 0:
+            raise ValueError("x_values must not be empty")
+        if y.shape[0] != x.shape[0]:
+            raise ValueError(
+                f"y_values has {y.shape[0]} rows for {x.shape[0]} ordinates "
+                "(shape must be (len(x_values), n_curves))"
+            )
+        n_curves = int(y.shape[1])
+        if n_curves == 0:
+            raise ValueError("y_values has no curves")
+
+        if labels is None:
+            labels = frame_labels
+        elif isinstance(labels, (str, bytes)):
+            raise ValueError("labels must be a sequence of strings, one per curve")
+        if labels is not None:
+            labels = list(labels)
+            for index, label in enumerate(labels):
+                if not isinstance(label, str):
+                    raise TypeError(f"labels[{index}] must be a string, not {type(label).__name__}")
+            if len(labels) != n_curves:
+                raise ValueError(f"{len(labels)} labels for {n_curves} curves (give one per curve)")
+            if not any(label.strip() for label in labels):
+                labels = None
+
+        given = (x_units, y_units, x_type, y_type)
+        legacy = not is_frame and all(value is None for value in given)
+        if legacy:
+            warnings.warn(
+                "write_paired_data without units or types stores the Atlas 14 defaults "
+                "HOURS, FRACTION, TIME and CUMULATIVE as float32. This default is "
+                "deprecated, to match ras_commander.RasDss; pass the metadata explicitly.",
+                DeprecationWarning, stacklevel=3,
+            )
+            x_units, y_units, x_type, y_type = "HOURS", "FRACTION", "TIME", "CUMULATIVE"
+            if value_type == "auto":
+                value_type = "float"
+        elif not is_frame and any(value is None for value in given):
+            warnings.warn(
+                "write_paired_data stores an omitted unit or type as blank, as "
+                "ras_commander.RasDss does. Earlier versions stored HOURS, FRACTION, TIME "
+                "or CUMULATIVE there; pass them explicitly if the record needs them.",
+                DeprecationWarning, stacklevel=3,
+            )
+
+        text: Dict[str, str] = {}
+        for key, value in (("x_units", x_units), ("y_units", y_units),
+                           ("x_type", x_type), ("y_type", y_type)):
+            if value is None:
+                value = attrs.get(key) or ""
+            if not isinstance(value, str):
+                raise TypeError(f"{key} must be a string, not {type(value).__name__}")
+            text[key] = value
+
+        explicit = x_precision is not None or y_precision is not None
+        if explicit and (x_precision is None or y_precision is None):
+            raise ValueError("give both x_precision and y_precision, or neither")
+        if explicit:
+            for name, value in (("x_precision", x_precision), ("y_precision", y_precision)):
+                if type(value) is not int or not -1 <= value <= 9:
+                    raise ValueError(f"{name} must be an integer from -1 to 9, not {value!r}")
+            if (x_precision == -1) != (y_precision == -1):
+                raise ValueError("x_precision and y_precision must be both -1 or both 0-9")
+
+        if value_type == "auto":
+            value_type = "float" if x.dtype == np.float32 and y.dtype == np.float32 else "double"
+
+        return {
+            "x": x,
+            "y": y,
+            "n_curves": n_curves,
+            "labels": labels,
+            "precision": (x_precision, y_precision) if explicit else None,
+            "attr_precision": (attrs.get("x_precision"), attrs.get("y_precision")),
+            "value_type": value_type,
+            **text,
+        }
+
+    @staticmethod
+    def _paired_data_precision(spec: Dict[str, Any], version: int) -> Tuple[int, int]:
+        """Display precision for a target file: explicit values as given; inherited
+        ``attrs`` values when the target can store them, otherwise unset. DSS6 cannot
+        store an x precision of 0."""
+        if spec["precision"] is not None:
+            return spec["precision"]
+        x_precision, y_precision = spec["attr_precision"]
+        usable = (
+            isinstance(x_precision, (int, np.integer))
+            and isinstance(y_precision, (int, np.integer))
+            and 0 <= x_precision <= 9 and 0 <= y_precision <= 9
+            and not (version == 6 and x_precision == 0)
+        )
+        return (int(x_precision), int(y_precision)) if usable else (-1, -1)
+
+    @staticmethod
+    def _check_native_paired_values(name: str, x: np.ndarray, y: np.ndarray) -> None:
+        for what, values in (("x_values", x), ("y_values", y)):
+            if values.dtype.kind == "f" and np.isinf(values).any():
+                raise ValueError(
+                    f"{name}: {what} contain infinity; HEC-DSS has no infinity convention "
+                    "(the native writer refuses it; the Java path stores the bits)"
+                )
+
+    @staticmethod
+    def _check_dss6_text(name: str, strings: Dict[str, Any]) -> None:
+        for key, value in strings.items():
+            text = str(value)
+            if len(text) > DssCore.DSS6_TEXT_LIMIT:
+                raise ValueError(
+                    f"{name}: {key} {text!r} is {len(text)} "
+                    f"characters; a DSS6 file stores at most "
+                    f"{DssCore.DSS6_TEXT_LIMIT} (HEC Monolith would silently store "
+                    f"{text[:DssCore.DSS6_TEXT_LIMIT]!r}). Pass a string of "
+                    f"{DssCore.DSS6_TEXT_LIMIT} characters or fewer, or write to a "
+                    "DSS7 file."
+                )
+
+    @staticmethod
+    def _write_paired_data_spec_native(
+        dss_file: Union[str, Path],
+        pathname: str,
+        spec: Dict[str, Any],
+        create_if_missing: bool = True,
+        *,
+        dss_version: Optional[int] = None,
+    ) -> bool:
+        """``write_paired_data`` through ras_commander_fast_dss (no JVM). ``NaN`` keeps
+        its stored bits on both DSS versions (``raw=True``), as Monolith stores it."""
+        DssCore._check_native_paired_values(pathname, spec["x"], spec["y"])
+        dc = _backend.require_native_writes()
+        if not create_if_missing and not Path(dss_file).exists():
+            raise FileNotFoundError(f"DSS file not found: {dss_file}")
+        target, version, existed, created = DssCore._native_write_target(dss_file, dss_version)
+        try:
+            if version == 6:
+                DssCore._check_dss6_text(pathname, {key: spec[key] for key in (
+                    "x_units", "x_type", "y_units", "y_type")})
+            x_precision, y_precision = DssCore._paired_data_precision(spec, version)
+        except Exception:
+            _backend.remove_created_dirs(created)
+            raise
+        with DssCore._native_new_file(dc, target, version, existed, created):
+            dc.write_paired_data(
+                str(target), pathname, spec["x"], spec["y"],
+                x_units=spec["x_units"], x_type=spec["x_type"],
+                y_units=spec["y_units"], y_type=spec["y_type"],
+                labels=spec["labels"], value_type=spec["value_type"], raw=True,
+                x_precision=x_precision, y_precision=y_precision, version=version,
+            )
+        logger.info(f"Wrote paired data to {pathname}")
+        return True
+
+    @staticmethod
+    def _compare_written_paired_data(java_file, native_file, pathname) -> List[str]:
+        """Differences between the native read-backs of a Java- and a native-written
+        record: stored bits of ordinates and curves, record type, labels, units, types.
+        Display precision is left out on DSS6, where Monolith keeps the precision of an
+        earlier write in the same process (W10 in ras-commander)."""
+        dc = _backend.import_native()
+        version = DssCore._get_file_version_native(java_file)
+        read_path = pathname.upper() if version == 6 else pathname
+        java = dc.read_paired_data(str(Path(java_file).resolve()), read_path, dtype="stored")
+        native = dc.read_paired_data(str(Path(native_file).resolve()), read_path, dtype="stored")
+        keys = ["record_type", "labels", "units_independent", "type_independent",
+                "units_dependent", "type_dependent"]
+        if version != 6:
+            keys += ["x_precision", "y_precision"]
+        diffs = [key for key in keys if getattr(java, key) != getattr(native, key)]
+        for key in ("ordinates", "values"):
+            ja, na = np.asarray(getattr(java, key)), np.asarray(getattr(native, key))
+            if ja.shape != na.shape or ja.dtype != na.dtype or ja.tobytes() != na.tobytes():
+                diffs.append(key)
+        return diffs
 
     @staticmethod
     @log_call
@@ -2307,18 +2612,10 @@ class DssCore:
                 'x_type': record.get('x_label', 'TIME'),
                 'y_type': record.get('y_label', 'CUMULATIVE'),
             }
+            DssCore._check_native_paired_values(record['pathname'], spec['x'], spec['y'])
             if version == 6:
-                for key in ('x_units', 'x_type', 'y_units', 'y_type'):
-                    text = str(spec[key])
-                    if len(text) > DssCore.DSS6_TEXT_LIMIT:
-                        raise ValueError(
-                            f"{record['pathname']}: {key} {text!r} is {len(text)} "
-                            f"characters; a DSS6 file stores at most "
-                            f"{DssCore.DSS6_TEXT_LIMIT} (HEC Monolith would silently store "
-                            f"{text[:DssCore.DSS6_TEXT_LIMIT]!r}). Pass a string of "
-                            f"{DssCore.DSS6_TEXT_LIMIT} characters or fewer, or write to a "
-                            "DSS7 file."
-                        )
+                DssCore._check_dss6_text(record['pathname'], {
+                    key: spec[key] for key in ('x_units', 'x_type', 'y_units', 'y_type')})
             specs.append(spec)
         return specs
 
@@ -2328,10 +2625,11 @@ class DssCore:
     ) -> Dict[str, bool]:
         """Paired-data writes through ras_commander_fast_dss (no JVM).
 
-        Mirrors the Java path: float32 (PD) records, the ``*_label`` arguments stored
-        as axis types, no curve labels, one result per record (False when the engine
-        raised for that record), then a catalog check. DSS6 unit/type strings over 8
-        characters are refused before anything is written.
+        Mirrors the Java path: float32 (PD) records with NaN as stored bits, the
+        ``*_label`` keys stored as axis types, no curve labels, one result per record
+        (False when the engine raised for that record), then a catalog check. DSS6
+        unit/type strings over 8 characters and infinite values are refused before
+        anything is written.
         """
         DssCore._check_paired_data_records(paired_data_records)
         dc = _backend.require_native_writes()
@@ -2350,7 +2648,7 @@ class DssCore:
                         str(target), pathname, spec['x'], spec['y'],
                         x_units=spec['x_units'], x_type=spec['x_type'],
                         y_units=spec['y_units'], y_type=spec['y_type'],
-                        value_type="float", version=version,
+                        value_type="float", raw=True, version=version,
                     )
                     results[pathname] = True
                 except Exception as e:

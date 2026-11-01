@@ -20,7 +20,7 @@ All methods are static and designed to be used without instantiation.
 
 import gc
 from pathlib import Path
-from typing import Dict, List, Optional, Union, Any
+from typing import Dict, List, Optional, Union, Any, Sequence
 import pandas as pd
 
 from ..LoggingConfig import get_logger
@@ -826,66 +826,47 @@ class HmsDss:
     def write_paired_data(
         dss_file: Union[str, Path],
         pathname: str,
-        x_values,
-        y_values,
-        x_units: str = "HOURS",
-        y_units: str = "FRACTION",
-        x_label: str = "TIME",
-        y_label: str = "CUMULATIVE"
+        x_values: Any,
+        y_values: Any = None,
+        x_units: Optional[str] = None,
+        y_units: Optional[str] = None,
+        x_type: Optional[str] = None,
+        y_type: Optional[str] = None,
+        labels: Optional[Sequence[str]] = None,
+        create_if_missing: bool = True,
+        *,
+        x_precision: Optional[int] = None,
+        y_precision: Optional[int] = None,
+        value_type: str = "auto",
+        dss_version: Optional[int] = None,
+        x_label: Optional[str] = None,
+        y_label: Optional[str] = None,
     ) -> bool:
         """
-        Write paired data (X-Y curve) to DSS file.
+        Write one paired-data record with one or more curves.
 
-        This is used for Atlas 14 temporal distributions, rating curves,
-        and other X-Y relationships.
-
-        Args:
-            dss_file: Path to DSS file (created if doesn't exist)
-            pathname: DSS pathname with exactly six parts
-                (e.g., "//TX_R3/FIRST-QUARTILE/24HR//50%/")
-            x_values: X coordinates (e.g., time in hours) - numpy array or list
-            y_values: Y coordinates (e.g., cumulative fraction 0-1) - numpy array or list
-            x_units: Units for X values (default: "HOURS")
-            y_units: Units for Y values (default: "FRACTION")
-            x_label: Label for X axis (default: "TIME")
-            y_label: Label for Y axis (default: "CUMULATIVE")
+        Used for Atlas 14 temporal distributions, rating curves and other X-Y
+        relationships. The arguments are those of
+        ``ras_commander.RasDss.write_paired_data``; ``DssCore.write_paired_data`` documents
+        each one, the backends and the refusals. A failed write raises. ``x_label`` and
+        ``y_label`` are the earlier names of ``x_type`` and ``y_type``.
 
         Returns:
-            True if the record was written and found in the file catalog,
-            False if the HEC library raised an error during the write
-
-        Raises:
-            ValueError: If ``pathname`` does not have exactly six parts
-            RuntimeError: If the write reported no error but the record is not
-                in the file catalog afterwards
+            True when the record is written and in the file catalog
 
         Example:
-            >>> import numpy as np
-            >>> x = np.linspace(0, 24, 49)  # 0 to 24 hours
-            >>> y = np.linspace(0, 1, 49)   # 0 to 100% cumulative
+            >>> x = np.linspace(0, 24, 49)  # Hours
+            >>> y = np.linspace(0, 1, 49)   # Cumulative fraction
             >>> HmsDss.write_paired_data(
-            ...     "temporal.dss",
-            ...     "//TX_R3/ALL-CASES/24HR//50%/",
-            ...     x, y
+            ...     "temporal.dss", "//TX_R3/FIRST-QUARTILE/24HR//50%/", x, y,
+            ...     x_units="HOURS", y_units="FRACTION", x_type="TIME", y_type="CUMULATIVE",
             ... )
+            True
         """
-        import numpy as np
-        dss_file = Path(dss_file)
-
-        if not DSS_AVAILABLE:
-            raise ImportError(
-                "DSS functionality requires pyjnius.\n"
-                "Install with: pip install pyjnius\n"
-                "Also requires Java 8+ (JRE or JDK)"
-            )
-
-        # Convert to numpy arrays if needed
-        x_values = np.asarray(x_values)
-        y_values = np.asarray(y_values)
-
         return DssCore.write_paired_data(
-            dss_file, pathname, x_values, y_values,
-            x_units, y_units, x_label, y_label
+            dss_file, pathname, x_values, y_values, x_units, y_units, x_type, y_type, labels,
+            create_if_missing, x_precision=x_precision, y_precision=y_precision,
+            value_type=value_type, dss_version=dss_version, x_label=x_label, y_label=y_label,
         )
 
     @staticmethod

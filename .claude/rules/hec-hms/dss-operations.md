@@ -136,7 +136,9 @@ HmsDss.write_paired_data(
     x_values=x_hours,
     y_values=y_cumulative,
     x_units="HOURS",
-    y_units="FRACTION"
+    y_units="FRACTION",
+    x_type="TIME",
+    y_type="CUMULATIVE",
 )
 ```
 
@@ -197,7 +199,11 @@ DssCore.write_paired_data(
     dss_file="file.dss",
     pathname="//A/B/C//D/",
     x_values=x_array,
-    y_values=y_array
+    y_values=y_array,
+    x_units="HOURS",
+    y_units="FRACTION",
+    x_type="TIME",
+    y_type="CUMULATIVE",
 )
 ```
 

@@ -278,9 +278,10 @@ CAPABILITIES = (
      "regular intervals only; native requires the engine writers; shadow writes with "
      "Java and repeats the write natively on a temporary copy"),
     ("write_paired_data", "yes", "gated", "yes",
-     "stored as float32 (PD) as HEC Monolith stores it; DSS6 units/types at most 8 "
-     "characters on native"),
-    ("write_multiple_paired_data", "yes", "gated", "yes", "as write_paired_data"),
+     "arguments of RasDss.write_paired_data: curves, labels, precision, value_type; NaN "
+     "as stored bits; DSS6 units/types at most 8 characters on native"),
+    ("write_multiple_paired_data", "yes", "gated", "yes",
+     "one curve per record, stored as float32 (PD); per-record results"),
     ("import_atlas14_temporal", "yes", "gated", "yes",
      "y type CUMULATIVE on DSS7, CUMULATI on DSS6 (both backends)"),
     ("write_grid_timeseries", "yes", "gated", "yes",

@@ -661,6 +661,206 @@ def test_native_paired_data_refuses_long_dss6_type_before_writing(engine, java, 
     assert target.read_bytes() == before
 
 
+def test_write_paired_data_has_the_rasdss_arguments():
+    # ras_commander.RasDss.write_paired_data, plus the earlier HMS names at the end.
+    import inspect
+
+    canonical = ["dss_file", "pathname", "x_values", "y_values", "x_units", "y_units", "x_type",
+                 "y_type", "labels", "create_if_missing", "x_precision", "y_precision",
+                 "value_type", "dss_version", "x_label", "y_label"]
+    for method in (DssCore.write_paired_data, HmsDss.write_paired_data):
+        parameters = inspect.signature(method).parameters
+        assert list(parameters) == canonical
+        assert parameters["value_type"].default == "auto"
+        assert parameters["y_values"].default is None and parameters["x_units"].default is None
+
+
+@pytest.mark.parametrize("kwargs, error, match", [
+    ({"x_values": [1.0], "y_values": None}, ValueError, "y_values is required"),
+    ({"x_values": [1.0, 2.0], "y_values": [1.0]}, ValueError, "rows"),
+    ({"x_values": [], "y_values": []}, ValueError, "empty"),
+    ({"x_values": ["a"], "y_values": [1.0]}, ValueError, "numeric"),
+    ({"labels": ["a", "b"]}, ValueError, "labels"),
+    ({"labels": "a"}, ValueError, "sequence"),
+    ({"labels": [1]}, TypeError, "string"),
+    ({"x_units": 3}, TypeError, "string"),
+    ({"x_precision": 1}, ValueError, "both"),
+    ({"x_precision": -1, "y_precision": 2}, ValueError, "both -1"),
+    ({"x_precision": 10, "y_precision": 2}, ValueError, "-1 to 9"),
+    ({"value_type": "half"}, ValueError, "value_type"),
+    ({"dss_version": 5}, ValueError, "dss_version"),
+    ({"x_type": "A", "x_label": "B"}, ValueError, "not both"),
+    ({"y_type": "A", "y_label": "B"}, ValueError, "not both"),
+])
+@pytest.mark.parametrize("backend", ["java", "native", "shadow"])
+def test_paired_data_arguments_fail_the_same_on_every_backend(backend, kwargs, error, match,
+                                                              tmp_path):
+    args = {"x_values": [1.0, 2.0], "y_values": [1.0, 2.0], "x_units": "FT"}
+    args.update(kwargs)
+    target = tmp_path / "bad.dss"
+    _use(backend)
+    with pytest.raises(error, match=match):
+        HmsDss.write_paired_data(target, "//G/SF///T/", **args)
+    assert not target.exists()
+
+
+@pytest.mark.requires_java
+@pytest.mark.parametrize("version", [6, 7])
+def test_paired_data_nan_is_stored_as_nan_on_both_backends(engine, java, tmp_path, version):
+    """Settles R3's inference: Monolith stores NaN bits; the engine default stored -901 or
+    -FLT_MAX. HMS now passes raw=True, for one record and for the batch writer."""
+    x, y = np.array([1.0, 2.0, 3.0]), np.array([10.0, np.nan, 30.0])
+    path = "//NAN/SF///T/"
+    stored = {}
+    for backend in ("java", "native"):
+        for how in ("single", "batch"):
+            target = tmp_path / f"nan_{backend}_{how}{version}.dss"
+            engine.create(target, version)
+            _use(backend)
+            if how == "single":
+                HmsDss.write_paired_data(target, path, x, y, "FT", "CFS", "LIN", "LIN",
+                                         value_type="float")
+            else:
+                assert HmsDss.write_multiple_paired_data(target, [{
+                    "pathname": path, "x_values": x, "y_values": y, "x_units": "FT",
+                    "y_units": "CFS", "x_label": "LIN", "y_label": "LIN"}])[path]
+            stored[backend, how] = engine.read_paired_data(str(target), path, dtype="stored").values
+            for reader in ("java", "native"):
+                _use(reader)
+                back = HmsDss.read_paired_data(target, path)["y_values"]
+                assert np.isnan(back[1]) and back[0] == 10.0, (backend, how, reader)
+    for key, values in stored.items():
+        assert np.asarray(values).tobytes() == np.asarray(stored["java", "single"]).tobytes(), key
+        assert np.isnan(np.asarray(values).ravel()[1])
+
+
+def test_native_paired_data_refuses_infinity_before_writing(engine, tmp_path):
+    target = tmp_path / "sub" / "inf.dss"
+    _use("native")
+    with pytest.raises(ValueError, match="infinity"):
+        HmsDss.write_paired_data(target, "//I/SF///T/", [1.0, np.inf], [1.0, 2.0], "FT", "CFS")
+    with pytest.raises(ValueError, match="infinity"):
+        HmsDss.write_multiple_paired_data(target, [{
+            "pathname": "//I/SF///T/", "x_values": np.array([1.0]), "y_values": np.array([np.inf])}])
+    assert not target.parent.exists()
+
+
+@pytest.mark.requires_java
+@pytest.mark.parametrize("version", [6, 7])
+def test_multi_curve_paired_data_matches_java(engine, java, tmp_path, version):
+    x = np.array([1.0, 2.0, 3.0])
+    y = np.array([[10.0, 100.0], [20.0, 200.0], [30.0, np.nan]])
+    kwargs = dict(x_units="FT", y_units="CFS", x_type="LIN", y_type="LIN", labels=["LOW", "HIGH"],
+                  x_precision=2, y_precision=1, dss_version=version)
+    path = "//M/STAGE-FLOW///RATING/"
+    files = {}
+    for backend in ("java", "native"):
+        files[backend] = tmp_path / f"curves_{backend}{version}.dss"
+        _use(backend)
+        assert HmsDss.write_paired_data(files[backend], path, x, y, **kwargs) is True
+    assert DssCore._compare_written_paired_data(files["java"], files["native"], path) == []
+    for dss_file in files.values():
+        record = engine.read_paired_data(str(dss_file), path, dtype="stored")
+        assert record.record_type == 205 and record.dss_version == version
+        assert list(record.labels) == ["LOW", "HIGH"]
+        assert record.y_precision == 1
+        np.testing.assert_array_equal(np.asarray(record.values), y.T)  # curve-major
+        first = _java_reads(lambda: HmsDss.read_paired_data(dss_file, path))
+        np.testing.assert_array_equal(first["y_values"], y[:, 0])
+
+
+@pytest.mark.requires_java
+@pytest.mark.parametrize("backend", ["java", "native"])
+def test_paired_data_value_type_frame_and_create_flag(engine, java, tmp_path, backend):
+    path = "//V/SF///T/"
+    _use(backend)
+    x64, y64 = np.array([1.0, 2.0]), np.array([3.0, 4.0])
+    width = {}
+    for name, x, y, value_type in [("auto64", x64, y64, "auto"),
+                                   ("auto32", x64.astype("f4"), y64.astype("f4"), "auto"),
+                                   ("float", x64, y64, "float"),
+                                   ("double", x64.astype("f4"), y64.astype("f4"), "double")]:
+        target = tmp_path / f"{name}.dss"
+        HmsDss.write_paired_data(target, path, x, y, "FT", "CFS", "LIN", "LIN",
+                                 value_type=value_type)
+        width[name] = engine.read_paired_data(str(target), path, dtype="stored").record_type
+    assert width == {"auto64": 205, "auto32": 200, "float": 200, "double": 205}
+
+    frame = pd.DataFrame({"LOW": y64, "HIGH": y64 * 2}, index=x64)
+    frame.attrs.update(x_units="FT", y_units="CFS", x_type="LIN", y_type="LOG")
+    target = tmp_path / "frame.dss"
+    HmsDss.write_paired_data(target, path, frame)
+    record = engine.read_paired_data(str(target), path, dtype="stored")
+    assert list(record.labels) == ["LOW", "HIGH"]
+    assert (record.units_independent, record.units_dependent) == ("FT", "CFS")
+    assert (record.type_independent, record.type_dependent) == ("LIN", "LOG")
+
+    missing = tmp_path / "missing" / "new.dss"
+    with pytest.raises(FileNotFoundError):
+        HmsDss.write_paired_data(missing, path, x64, y64, "FT", "CFS", "L", "L",
+                                 create_if_missing=False)
+    assert not missing.parent.exists()
+    with pytest.raises(ValueError, match="version"):
+        HmsDss.write_paired_data(target, path, x64, y64, "FT", "CFS", "L", "L", dss_version=6)
+
+
+@pytest.mark.requires_java
+@pytest.mark.parametrize("backend", ["java", "native"])
+def test_existing_paired_data_callers_keep_working(engine, java, tmp_path, backend):
+    path, x, y = "//R/Q/24HR//50%/", np.array([0.0, 24.0]), np.array([0.0, 1.0])
+    _use(backend)
+    # The earlier defaults, with a warning: same record type and metadata as before.
+    target = tmp_path / "defaults.dss"
+    with pytest.warns(DeprecationWarning, match="Atlas 14 defaults"):
+        assert HmsDss.write_paired_data(target, path, x, y) is True
+    record = engine.read_paired_data(str(target), path, dtype="stored")
+    assert record.record_type == 200
+    assert (record.units_independent, record.units_dependent) == ("HOURS", "FRACTION")
+    assert (record.type_independent, record.type_dependent) == ("TIME", "CUMULATIVE")
+    # The earlier keyword names and positions.
+    for name, call in (("keywords", dict(x_units="H", y_units="F", x_label="XT", y_label="YT")),
+                       ("positions", None)):
+        target = tmp_path / f"{name}.dss"
+        if call:
+            HmsDss.write_paired_data(target, path, x, y, **call)
+        else:
+            HmsDss.write_paired_data(target, path, x, y, "H", "F", "XT", "YT")
+        back = _java_reads(lambda: HmsDss.read_paired_data(target, path))
+        assert (back["x_label"], back["y_label"]) == ("XT", "YT")
+        _use(backend)
+    # Some metadata: the rest is blank, as RasDss, and the call says so.
+    target = tmp_path / "partial.dss"
+    with pytest.warns(DeprecationWarning, match="blank"):
+        HmsDss.write_paired_data(target, path, x, y, x_units="FT", y_units="CFS")
+    assert engine.read_paired_data(str(target), path, dtype="stored").type_dependent == ""
+
+
+@pytest.mark.requires_java
+@pytest.mark.parametrize("version", [6, 7])
+def test_paired_data_library_failure_raises_on_java(java, tmp_path, monkeypatch, version):
+    """A library error used to come back as False; it now raises, as RasDss does."""
+    target = tmp_path / f"fail{version}.dss"
+    _use("java")
+    HmsDss.write_paired_data(target, "//F/SF///T/", [1.0], [1.0], "FT", "CFS", "L", "L",
+                             dss_version=version)
+    monkeypatch.setattr(DssCore, "_cataloged_pathnames",
+                        staticmethod(lambda dss: (_ for _ in ()).throw(OSError("boom"))))
+    with pytest.raises(RuntimeError, match="boom"):
+        HmsDss.write_paired_data(target, "//F/SF///U/", [1.0], [1.0], "FT", "CFS", "L", "L")
+
+
+@pytest.mark.requires_java
+def test_shadow_multi_curve_paired_data_is_identical(engine, java, tmp_path):
+    _use("shadow")
+    for version in (6, 7):
+        target = tmp_path / f"shadowpd{version}.dss"
+        engine.create(target, version)
+        HmsDss.write_paired_data(target, "//S/SF///T/", [1.0, 2.0], [[1.0, 2.0], [3.0, 4.0]],
+                                 "FT", "CFS", "LIN", "LIN", labels=["A", "B"])
+    _assert_no_unexpected()
+    assert HmsDss.get_shadow_summary()["write_paired_data|identical|identical"] == 2
+
+
 @pytest.fixture(scope="module")
 def hrap_cells(engine, java, samples):
     """Real HRAP precipitation cells (tenk/hrap.dss), three consecutive hours."""
