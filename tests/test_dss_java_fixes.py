@@ -368,17 +368,16 @@ def test_atlas14_probabilities_land_on_distinct_records(java, tmp_path):
 
 @pytest.mark.requires_java
 def test_hec_messages_never_land_in_dss_files_when_stdout_is_redirected(java, tmp_path):
-    """HEC Monolith's DSS library prints through a stdout handle its Fortran runtime
-    caches at its first message. Redirecting fd 1 (as pytest's capture does around
-    every test) closes that handle; Windows can reuse its value for the next DSS file
-    the library opens, and later messages are written into that file. hms-commander
-    sets the library message level to 0 before the first open, so nothing is printed.
-    Without that, this loop corrupted several files per run (reproducer in the H1
-    report)."""
+    """The DSS library writes messages to a Fortran unit that its runtime connects to the
+    stdout handle at the first write and then keeps. Redirecting fd 1 (as pytest's capture
+    does around every test) closes that handle; Windows can reuse its value for the next
+    DSS file the library opens, and later messages land in that file. hms-commander
+    connects the unit to a private file before the first open, so this loop stays clean.
+    With the routing disabled, this loop puts library text into DSS files."""
     import os
     import tempfile
 
-    assert DssCore._messages_silenced
+    assert DssCore._message_file is not None
     times = pd.date_range("2020-01-01 01:00", periods=48, freq="h")
     values = np.arange(48.0)
     sink = tempfile.TemporaryFile()
@@ -401,3 +400,107 @@ def test_hec_messages_never_land_in_dss_files_when_stdout_is_redirected(java, tm
     for dss_file in tmp_path.glob("*.dss"):
         data = dss_file.read_bytes()
         assert b"-----DSS" not in data and b"ZOPEN" not in data, dss_file.name
+
+
+@pytest.mark.requires_java
+def test_damage_reports_never_land_in_another_open_dss_file(java, tmp_path):
+    """Damage reports ignore the message level. With fd 1 redirected, they must not reach
+    a healthy DSS file that holds the reused handle value. (``WRITE(*,*)`` lines, such as
+    "readf fail", bypass the message unit; see ``DssCore._route_hec_messages``.)"""
+    import os
+    import tempfile
+    from jnius import autoclass
+
+    pathname = "//G/FLOW//1HOUR/R/"
+    times = pd.date_range("2020-01-01 01:00", periods=48, freq="h")
+    values = np.arange(48.0)
+    damaged = tmp_path / "damaged.dss"
+    HmsDss.write_timeseries(damaged, pathname, times, values, dss_version=6)
+    data = damaged.read_bytes()
+    damaged.write_bytes(data[:len(data) // 2])
+
+    def read_damaged():
+        with pytest.raises(Exception):
+            HmsDss.read_timeseries(damaged, pathname)
+
+    sink = tempfile.TemporaryFile()
+    saved = os.dup(1)
+    healthy = []
+    try:
+        for i in range(30):
+            os.dup2(sink.fileno(), 1)
+            if i == 0:
+                read_damaged()
+            os.dup2(saved, 1)  # closes the handle a first library write would keep
+            target = tmp_path / f"h{i}.dss"
+            HmsDss.write_timeseries(target, pathname, times, values, dss_version=6)
+            resolved = str(target.resolve())
+            dss = autoclass('hec.heclib.dss.HecDss').open(resolved)
+            dss.getCatalogedPathnames()
+            read_damaged()
+            DssCore._done_and_release(dss, resolved)
+            healthy.append(target)
+    finally:
+        os.dup2(saved, 1)
+        os.close(saved)
+        sink.close()
+    for target in healthy:
+        data = target.read_bytes()
+        for text in (b"DSS***", b"ERROR DURING"):
+            assert text not in data, target.name
+
+
+@pytest.mark.requires_java
+def test_healthy_java_io_reports_no_library_failure(java, tmp_path, caplog):
+    """Failure-line matching must not trip on routine messages, even when a path holds
+    words such as "Error" or "Cannot"."""
+    folder = tmp_path / "Error Cannot"
+    folder.mkdir()
+    times = pd.date_range("2020-01-01 01:00", periods=4, freq="h")
+    with caplog.at_level("WARNING", logger="hms_commander.dss.core"):
+        for version in (6, 7):
+            file = folder / f"ok{version}.dss"
+            HmsDss.write_timeseries(file, "//G/FLOW//1HOUR/R/", times, np.arange(4.0),
+                                    dss_version=version)
+            HmsDss.read_timeseries(file, "//G/FLOW//1HOUR/R/")
+            HmsDss.write_paired_data(file, "//G/SF///T/", np.arange(3.0), np.arange(3.0))
+            HmsDss.get_catalog(file)
+    assert "HEC-DSS library reported" not in caplog.text
+
+
+@pytest.mark.requires_java
+@pytest.mark.parametrize("version", [6, 7])
+def test_write_to_read_only_file_raises(java, tmp_path, version):
+    """HEC Monolith returns normally from a DSS6 time-series write it refused."""
+    import stat
+
+    target = tmp_path / f"ro{version}.dss"
+    times = pd.date_range("2020-01-01 01:00", periods=4, freq="h")
+    HmsDss.write_timeseries(target, "//G/FLOW//1HOUR/R/", times, np.arange(4.0),
+                            dss_version=version)
+    target.chmod(stat.S_IREAD)
+    try:
+        with pytest.raises(RuntimeError, match="Failed to write time series"):
+            HmsDss.write_timeseries(target, "//NEW/FLOW//1HOUR/R/", times, np.arange(4.0))
+        # An existing record: the catalog cannot show the failure, the library message can.
+        with pytest.raises(RuntimeError, match="Failed to write time series"):
+            HmsDss.write_timeseries(target, "//G/FLOW//1HOUR/R/", times, np.arange(4.0) + 1)
+    finally:
+        target.chmod(stat.S_IWRITE)
+    np.testing.assert_array_equal(
+        HmsDss.read_timeseries(target, "//G/FLOW//1HOUR/R/")["value"].to_numpy(), np.arange(4.0))
+
+
+@pytest.mark.requires_java
+@pytest.mark.parametrize("version", [6, 7])
+def test_read_of_damaged_file_logs_the_library_failure(java, tmp_path, caplog, version):
+    target = tmp_path / f"cut{version}.dss"
+    times = pd.date_range("2020-01-01 01:00", periods=48, freq="h")
+    HmsDss.write_timeseries(target, "//G/FLOW//1HOUR/R/", times, np.arange(48.0),
+                            dss_version=version)
+    data = target.read_bytes()
+    target.write_bytes(data[:len(data) // 2])
+    with caplog.at_level("WARNING", logger="hms_commander.dss.core"):
+        with pytest.raises(Exception):
+            HmsDss.read_timeseries(target, "//G/FLOW//1HOUR/R/")
+    assert "HEC-DSS library reported" in caplog.text

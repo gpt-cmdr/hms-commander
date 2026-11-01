@@ -18,8 +18,12 @@ Lazy Loading:
     use DSS functionality don't pay the cost of loading Java/pyjnius.
 """
 
+import atexit
 import sys
 import os
+import shutil
+import tempfile
+import threading
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple, Union, Any
 import logging
@@ -49,6 +53,14 @@ _HEC_UNDEFINED_DOUBLE = float(-np.finfo(np.float32).max)
 _NS_MAX = np.datetime64(pd.Timestamp.max.floor('s').to_datetime64(), 's')
 # HEC Monolith grid-info classes and the grid_type names read_grid reports.
 _GRID_TYPE_NAMES = {'AlbersInfo': 'albers', 'SpecifiedGridInfo': 'specified', 'HrapInfo': 'hrap'}
+# Lines of the HEC-DSS library's message file that report a failure. Open and close
+# messages name the file, so they are excluded: a path can contain any of these words.
+_HEC_FAILURE_LINE = re.compile(
+    r"ERROR;|ERROR DURING|Error:|Error Code|Error code|Damaged|Read Access Only|Cannot |Unable to"
+)
+_HEC_ROUTINE_LINE = re.compile(r"ZOPEN|zopen|ZCLOSE|zclose|\(Read Access Only\)|Read access")
+# The message file restarts once it passes this size (a long run opens many files).
+_HEC_MESSAGE_FILE_LIMIT = 4 * 1024 * 1024
 
 
 class DssCore:
@@ -72,12 +84,17 @@ class DssCore:
 
     _jvm_configured = False
     _monolith = None
-    _messages_silenced = False
+    _messages_routed = False
+    _message_file: Optional[Path] = None
+    _message_offset = 0
+    _message_lock = threading.Lock()
 
-    #: HEC-DSS library message level set (``zset("MLEVEL")``) before the first Java
-    #: DSS call. 0 silences the library's console messages; see
-    #: ``_silence_hec_messages`` for why the default must stay 0.
-    hec_message_level = 0
+    #: HEC-DSS library message level (``zset("MLEVEL")``) set before the first Java DSS
+    #: call. The messages go to a private file (see ``_route_hec_messages``), never to
+    #: the console. Level 1 keeps the library's failure messages, which are logged.
+    #: Level 0 drops most of them, including the only report of a DSS6 write to a
+    #: read-only file when the record already exists.
+    hec_message_level = 1
 
     @staticmethod
     def _to_1d_array(values) -> np.ndarray:
@@ -179,6 +196,17 @@ class DssCore:
         return [path for path in pathnames if path.upper() not in stored]
 
     @staticmethod
+    def _timeseries_cataloged(catalog: List[str], pathname: str) -> bool:
+        """True when ``catalog`` holds a record with the A, B, C and F parts of
+        ``pathname``. HEC sets the D part per block and can respell the E part."""
+        def key(path: str) -> Tuple[str, ...]:
+            parts = str(path).upper().split('/')
+            return tuple(parts[i] for i in (1, 2, 3, 6)) if len(parts) == 8 else ()
+
+        wanted = key(pathname)
+        return any(key(path) == wanted for path in catalog)
+
+    @staticmethod
     def _cataloged_pathnames(dss) -> List[str]:
         """List the pathnames of an open HecDss handle."""
         vector = dss.getCatalogedPathnames()
@@ -206,6 +234,7 @@ class DssCore:
             autoclass('hec.heclib.dss.HecDSSFileAccess').close(dss_path, True)
         except Exception as exc:
             logger.debug("Could not release DSS file %s: %s", dss_path, exc)
+        DssCore._drain_hec_messages()
 
     @staticmethod
     def _done_and_release(dss, dss_path: str) -> None:
@@ -257,6 +286,7 @@ class DssCore:
               If JVM already running, max_memory parameter is ignored.
         """
         if DssCore._jvm_configured:
+            DssCore._route_hec_messages()
             return
 
         # Ensure monolith is installed
@@ -275,7 +305,7 @@ class DssCore:
         if jnius_config.vm_running:
             logger.warning(f"JVM already running, cannot set max_memory={max_memory}")
             DssCore._jvm_configured = True
-            DssCore._silence_hec_messages()
+            DssCore._route_hec_messages()
             return
 
         # Configure JVM memory options BEFORE first jnius import
@@ -358,34 +388,110 @@ class DssCore:
 
         DssCore._jvm_configured = True
         logger.info("Java VM configured for DSS operations")
-        DssCore._silence_hec_messages()
+        DssCore._route_hec_messages()
 
     @staticmethod
-    def _silence_hec_messages() -> None:
-        """Set the HEC-DSS library message level before any DSS file is opened.
+    def _route_hec_messages() -> None:
+        """Send the HEC-DSS library's messages to a private file before any DSS file opens.
 
-        HEC Monolith's DSS library prints its open/close/read messages ("-----DSS---
-        ZOPEN ...") through a stdout handle that its Fortran runtime looks up at its
-        first message and then keeps. When the process later redirects or restores
-        file descriptor 1 (pytest's output capture does this around every test,
-        ``os.dup2`` does it explicitly, and other tools that capture fd-level output
-        can), that handle is closed and Windows can hand its value to the next file
-        the DSS library opens. The library's later messages are then written into
-        that DSS file, corrupting it: reads return console text as values and later
-        writes fail (``zgtrec6`` error 50). With the message level at 0 (set here,
-        before the first open), the library prints nothing and never caches the
-        handle. The level applies to DSS6 and DSS7 files. Never raises.
+        The library writes its messages to Fortran unit ``MUNIT``, which its Fortran
+        runtime connects to the process's stdout handle at the first write and then
+        keeps. When the process later redirects file descriptor 1 (pytest's capture does
+        this around every test, and so does any tool that captures fd-level output), that
+        handle is closed, and Windows can give its value to the next DSS file the library
+        opens. Later messages are then written into that DSS file: reads return console
+        text as values and writes fail (``zgtrec6`` error 50). Some ``MUNIT`` writes
+        ignore the message level, so lowering the level alone does not close this.
+
+        ``HecDataManager.setMessageFile`` connects ``MUNIT`` to a file instead, so no
+        library message depends on the stdout handle at any level. Failure lines in that
+        file are logged by ``_drain_hec_messages``. If the file cannot be set up, the
+        level drops to 0 and a warning is logged. Never raises.
+
+        A few Fortran ``WRITE(*,*)`` statements (``zrrec6``, ``zabort6``) bypass ``MUNIT``
+        and can still reach a stale handle. They run only after a failed read of a damaged
+        DSS6 file, and hms-commander holds no other DSS file open during a read.
         """
-        if DssCore._messages_silenced:
+        if DssCore._messages_routed:
+            return
+        DssCore._messages_routed = True
+        directory = None
+        try:
+            from jnius import autoclass
+
+            heclib = autoclass('hec.heclib.util.Heclib')
+            manager = autoclass('hec.heclib.dss.HecDataManager')
+            directory = Path(tempfile.mkdtemp(prefix="hmsdss_messages_"))
+            message_file = directory / "hec_messages.txt"
+            status = int(manager.setMessageFile(str(message_file)))
+            if status != 0:
+                raise RuntimeError(f"setMessageFile returned {status}")
+            heclib.Hec_zset("MLEVEL", "", int(DssCore.hec_message_level))
+            DssCore._message_file = message_file
+            atexit.register(DssCore._close_message_file)
+        except Exception as exc:  # never block DSS I/O on message routing
+            logger.warning(
+                "Could not route HEC-DSS library messages to a file (%s). Their level is "
+                "set to 0; a redirected stdout can still receive library messages.", exc)
+            if directory is not None:
+                shutil.rmtree(directory, ignore_errors=True)
+            DssCore._message_file = None
+            try:
+                from jnius import autoclass
+
+                autoclass('hec.heclib.util.Heclib').Hec_zset("MLEVEL", "", 0)
+            except Exception as level_exc:
+                logger.warning("Could not set the HEC-DSS message level: %s", level_exc)
+
+    @staticmethod
+    def _close_message_file() -> None:
+        """Close and remove the private message file at interpreter exit. Never raises."""
+        message_file, DssCore._message_file = DssCore._message_file, None
+        if message_file is None:
             return
         try:
             from jnius import autoclass
 
-            autoclass('hec.heclib.util.Heclib').Hec_zset(
-                "MLEVEL", "", int(DssCore.hec_message_level))
-            DssCore._messages_silenced = True
-        except Exception as exc:  # never block DSS I/O on a logging setting
-            logger.debug("Could not set the HEC-DSS message level: %s", exc)
+            autoclass('hec.heclib.dss.HecDataManager').closeMessageFile()
+        except Exception as exc:
+            logger.debug("Could not close the HEC-DSS message file: %s", exc)
+        shutil.rmtree(message_file.parent, ignore_errors=True)
+
+    @staticmethod
+    def _drain_hec_messages() -> List[str]:
+        """Log and return the failure lines the HEC-DSS library wrote since the last call.
+
+        Some failures reach the caller only here: for example, HEC Monolith returns
+        normally from a DSS6 time-series write to a read-only file, and a read of a
+        damaged file looks like a record with no data. Never raises.
+        """
+        message_file = DssCore._message_file
+        if message_file is None:
+            return []
+        try:
+            from jnius import autoclass
+
+            manager = autoclass('hec.heclib.dss.HecDataManager')
+            with DssCore._message_lock:
+                manager.flushMessageFile()
+                with open(message_file, 'rb') as handle:
+                    handle.seek(DssCore._message_offset)
+                    text = handle.read()
+                DssCore._message_offset += len(text)
+                if DssCore._message_offset > _HEC_MESSAGE_FILE_LIMIT:
+                    manager.windMessageFile()
+                    DssCore._message_offset = 0
+        except Exception as exc:
+            logger.debug("Could not read the HEC-DSS message file: %s", exc)
+            return []
+        failures = []
+        for line in text.decode('latin-1').splitlines():
+            line = line.strip()
+            if _HEC_FAILURE_LINE.search(line) and not _HEC_ROUTINE_LINE.search(line):
+                failures.append(line)
+        if failures:
+            logger.warning("HEC-DSS library reported: %s", " | ".join(failures[:8]))
+        return failures
 
     @staticmethod
     def is_available() -> bool:
@@ -1975,6 +2081,12 @@ class DssCore:
             except Exception:
                 pass
             dss.put(cast('hec.io.DataContainer', tsc))
+            # HEC Monolith returns normally from a DSS6 write it refused.
+            failures = DssCore._drain_hec_messages()
+            if failures:
+                raise RuntimeError("; ".join(failures[:3]))
+            if not DssCore._timeseries_cataloged(DssCore._cataloged_pathnames(dss), pathname):
+                raise RuntimeError("the record is not in the file catalog after the write")
         except Exception as exc:
             raise RuntimeError(
                 f"Failed to write time series {pathname} to {resolved}: {exc}") from exc
