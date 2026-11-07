@@ -43,7 +43,7 @@ Example:
     >>> grid_data = np.random.rand(3, 5, 5) * 10  # mm
     >>> lat = np.linspace(41.0, 41.1, 5)
     >>> lon = np.linspace(-77.5, -77.4, 5)
-    >>> times = [datetime(2020, 5, 1, i) for i in range(3)]
+    >>> times = [datetime(2020, 5, 1, i) for i in range(1, 4)]  # period ends
     >>>
     >>> # Write to DSS
     >>> HmsDssGrid.write_grid_timeseries(
@@ -159,7 +159,8 @@ class HmsDssGrid:
         lon_coords: 'np.ndarray',
         timestamps: List[datetime],
         units: str = "MM",
-        data_type: str = "PER-CUM"
+        data_type: str = "PER-CUM",
+        interval_minutes: Optional[int] = None
     ) -> Path:
         """
         Write gridded precipitation time series to DSS file.
@@ -188,8 +189,13 @@ class HmsDssGrid:
             1D array of longitude values in decimal degrees (WGS84).
             Must match grid_data.shape[2].
         timestamps : List[datetime]
-            List of datetime objects for each timestep.
-            Must match grid_data.shape[0].
+            Times of the grids. For ``INST-VAL`` and ``INST-CUM``: one instant per grid.
+            For ``PER-CUM`` and ``PER-AVER``: one period **end** per grid (the period is
+            the ``interval_minutes`` before it), or one more time than there are grids,
+            as period boundaries. AORC stamps are period ends, so they pass unchanged.
+            Times must be whole minutes, and naive or UTC. A UTC time is stored at its
+            UTC clock time; another time zone raises ``ValueError``, because DSS grid
+            times hold no zone and the model clock is the caller's choice.
         units : str, default "MM"
             Data units string. Common values:
             - "MM" - millimeters
@@ -199,6 +205,12 @@ class HmsDssGrid:
             - "PER-CUM" - Period cumulative (for precipitation)
             - "PER-AVER" - Period average (for temperature)
             - "INST-VAL" - Instantaneous value
+            - "INST-CUM" - Instantaneous cumulative
+        interval_minutes : int, optional
+            Period length for ``PER-CUM`` and ``PER-AVER`` when ``timestamps`` holds
+            period ends. ``None``: the spacing of the timestamps, which must be uniform.
+            A single grid or stamps with gaps need this argument. Not used for
+            instantaneous data.
 
         Returns
         -------
@@ -210,7 +222,11 @@ class HmsDssGrid:
         ImportError
             If pyjnius not installed.
         ValueError
-            If array dimensions don't match.
+            If a time is not a whole minute or has a time zone other than UTC, array
+            dimensions don't match, the data type is unknown, or a PER-CUM or
+            PER-AVER grid has no period (start at or after end). Raised before anything
+            is written: HEC-HMS treats the cells of a period grid with equal start and
+            end times as missing.
         RuntimeError
             If DSS write operation fails.
 
@@ -224,7 +240,7 @@ class HmsDssGrid:
         >>> grid = np.random.rand(24, 10, 10) * 5.0  # 0-5 mm per hour
         >>> lat = np.linspace(40.0, 41.0, 10)
         >>> lon = np.linspace(-78.0, -77.0, 10)
-        >>> times = [datetime(2020, 5, 1) + timedelta(hours=i) for i in range(24)]
+        >>> times = [datetime(2020, 5, 1) + timedelta(hours=i) for i in range(1, 25)]  # period ends
         >>>
         >>> # Write to DSS
         >>> HmsDssGrid.write_grid_timeseries(
@@ -244,6 +260,10 @@ class HmsDssGrid:
         - Grid origin is set to lower-left corner
         - Uses SpecifiedGridInfo (not AlbersInfo) for lat/lon grids
         - Implementation mirrors HEC-Vortex DssDataWriter.java
+        - The D part is the period start and the E part the period end (midnight is
+          ``0000`` in D and the previous day's ``2400`` in E), so the period ending
+          2020-05-02 00:00 is ``/01MAY2020:2300/01MAY2020:2400/``. Instantaneous
+          grids have the instant in both parts.
 
         See Also
         --------
@@ -276,11 +296,7 @@ class HmsDssGrid:
                 f"grid_data lon dimension ({nlon})"
             )
 
-        if len(timestamps) != nt:
-            raise ValueError(
-                f"timestamps length ({len(timestamps)}) must match "
-                f"grid_data time dimension ({nt})"
-            )
+        windows = HmsDssGrid._grid_time_windows(timestamps, nt, data_type, interval_minutes)
 
         # Ensure HEC Monolith is ready
         logger.info("Configuring HEC Monolith for DSS grid writing...")
@@ -325,7 +341,7 @@ class HmsDssGrid:
             "INST-VAL": DssDataType.INST_VAL,
             "INST-CUM": DssDataType.INST_CUM,
         }
-        dss_data_type = data_type_map.get(data_type.upper(), DssDataType.PER_CUM)
+        dss_data_type = data_type_map[data_type.upper()]
 
         # Create output directory if needed
         dss_file.parent.mkdir(parents=True, exist_ok=True)
@@ -344,7 +360,7 @@ class HmsDssGrid:
         logger.info(f"  Units: {units}, Type: {data_type}")
 
         # Write each timestep (Vortex pattern: one write per timestep)
-        for t_idx, timestamp in enumerate(timestamps):
+        for t_idx, (start, end) in enumerate(windows):
             try:
                 # Create SpecifiedGridInfo for this timestep (Vortex DssUtil.java lines 141-159)
                 grid_info = SpecifiedGridInfo()
@@ -359,10 +375,10 @@ class HmsDssGrid:
                 grid_info.setDataUnits(units)
                 grid_info.setDataType(dss_data_type.value())
 
-                # Set times (Vortex pattern: same start and end for single timestep)
-                time_str = timestamp.strftime('%Y-%m-%dT%H:%M:%S')
-                hec_time = HecTime(time_str)
-                grid_info.setGridTimes(hec_time, hec_time)
+                # Period start and end (equal for instantaneous data)
+                hec_start = HecTime(start.strftime('%Y-%m-%dT%H:%M:%S'))
+                hec_end = HecTime(end.strftime('%Y-%m-%dT%H:%M:%S'))
+                grid_info.setGridTimes(hec_start, hec_end)
 
                 # Extract and flatten grid for this timestep
                 # Grid is (lat, lon), flatten in C order (row-major)
@@ -382,13 +398,13 @@ class HmsDssGrid:
                 gridded_data.setPathname(pathname)
 
                 # Set time window
-                gridded_data.setGriddedTimeWindow(hec_time, hec_time)
+                gridded_data.setGriddedTimeWindow(hec_start, hec_end)
 
                 # WRITE TO DSS! (The critical call from Vortex)
                 status = gridded_data.storeGriddedData(grid_info, grid_data_obj)
                 if status != 0:
                     raise RuntimeError(
-                        f"DSS grid write failed at {timestamp}: status code {status}"
+                        f"DSS grid write failed at {end}: status code {status}"
                     )
 
                 # Cleanup (Vortex pattern: done() after each write)
@@ -401,7 +417,7 @@ class HmsDssGrid:
             except Exception as e:
                 DssCore._release_dss_file(dss_path)
                 raise RuntimeError(
-                    f"DSS grid write failed at timestep {t_idx} ({timestamp}): {e}"
+                    f"DSS grid write failed at timestep {t_idx} ({end}): {e}"
                 )
 
         # done() only lowers Monolith's file reference count. Close the native
@@ -415,6 +431,89 @@ class HmsDssGrid:
         logger.info(f"  Total cells: {nt * nlat * nlon:,}")
 
         return dss_file
+
+    #: Period data types: HEC needs an end time after the start time for these.
+    _PERIOD_TYPES = ("PER-CUM", "PER-AVER")
+    _INSTANT_TYPES = ("INST-VAL", "INST-CUM")
+
+    @staticmethod
+    def _check_grid_time(t) -> None:
+        if t.tzinfo is not None:
+            raise ValueError(f"timestamp {t} is time-zone aware; DSS grid times are naive")
+        if t.second or t.microsecond or t.nanosecond:
+            raise ValueError(f"timestamp {t} is not a whole minute (grid pathnames store minutes)")
+
+    @staticmethod
+    def _naive_grid_time(timestamp):
+        """``timestamp`` as a naive ``pd.Timestamp``. UTC keeps its clock time, as earlier
+        versions stored it; another zone raises, rather than choosing a model clock."""
+        import pandas as pd
+
+        t = pd.Timestamp(timestamp)
+        if t.tzinfo is not None:
+            if t.utcoffset() != pd.Timedelta(0):
+                raise ValueError(
+                    f"timestamp {t} is time-zone aware and not UTC; DSS grid times hold no "
+                    "zone, so convert it to the model's clock and pass it naive or as UTC"
+                )
+            t = t.tz_localize(None)
+        HmsDssGrid._check_grid_time(t)
+        return t
+
+    @staticmethod
+    def _grid_time_windows(timestamps, n_grids, data_type, interval_minutes=None):
+        """``(start, end)`` for each grid, before anything is written.
+
+        Instantaneous types: start = end = the stamp. Period types: stamps are period
+        ends (``interval_minutes``, or their uniform spacing, before each), or
+        ``n_grids + 1`` boundaries, as ``RasDss._grid_time_windows``. Unlike RasDss, there
+        is no median spacing or 60-minute default: a gap or a single grid would give a
+        wrong period, so those need ``interval_minutes``. A period with start at or after end is
+        refused: HEC-HMS 4.9 and 4.11 to 4.13 read the cells of such a record as missing.
+        """
+        import numpy as np
+        import pandas as pd
+
+        kind = str(data_type).upper()
+        known = HmsDssGrid._PERIOD_TYPES + HmsDssGrid._INSTANT_TYPES
+        if kind not in known:
+            raise ValueError(f"Unknown grid data type {data_type!r}; expected one of {known}")
+        stamps = [HmsDssGrid._naive_grid_time(t) for t in timestamps]
+        is_period = kind in HmsDssGrid._PERIOD_TYPES
+        if len(stamps) != n_grids and not (is_period and len(stamps) == n_grids + 1):
+            raise ValueError(
+                f"timestamps length ({len(stamps)}) must match grid_data time dimension "
+                f"({n_grids})" + (" or be one longer (period boundaries)" if is_period else "")
+            )
+        if not is_period:
+            return [(t, t) for t in stamps]
+
+        if len(stamps) == n_grids + 1:
+            windows = list(zip(stamps[:-1], stamps[1:]))
+        else:
+            if interval_minutes is None:
+                steps = np.diff(np.array(stamps, dtype="datetime64[m]")).astype(int)
+                if not len(steps) or steps.min() <= 0 or steps.min() != steps.max():
+                    raise ValueError(
+                        f"{data_type} grids are periods and these timestamps have no "
+                        "uniform increasing spacing to take the period length from; "
+                        "pass interval_minutes"
+                    )
+                interval_minutes = int(steps[0])
+            if isinstance(interval_minutes, bool) or int(interval_minutes) != interval_minutes:
+                raise ValueError(
+                    f"interval_minutes must be a whole number, not {interval_minutes!r}")
+            interval = pd.Timedelta(minutes=int(interval_minutes))
+            windows = [(t - interval, t) for t in stamps]
+        for start, end in windows:
+            if start >= end:
+                raise ValueError(
+                    f"{data_type} grid period {start} to {end} has no length: the start "
+                    "time must be before the end time. HEC-HMS reads the cells of a "
+                    "record with equal start and end times as missing and sets the "
+                    "precipitation to zero."
+                )
+        return windows
 
     @staticmethod
     def get_info() -> dict:
