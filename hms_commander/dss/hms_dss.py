@@ -73,7 +73,8 @@ class HmsDss:
     Dependencies:
         - Java backend: pyjnius, Java 8+ (JRE or JDK), HEC Monolith libraries
           (auto-downloaded on first use)
-        - Native backend: the ``ras-commander-fast-dss`` wheel (not on PyPI)
+        - Native backend: the optional ``ras-commander-fast-dss`` engine
+          (``pip install ras-commander-fast-dss`` or ``pip install "hms-commander[dss]"``)
 
     Example:
         >>> from hms_commander import HmsDss

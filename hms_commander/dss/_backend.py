@@ -57,7 +57,8 @@ JAVA_MISSING_MARKERS = np.array([-901.0, -902.0, float(-np.finfo(np.float32).max
 _NATIVE_INSTALL_HINT = (
     "The 'native' DSS backend requires the optional ras-commander-fast-dss engine "
     "(import name ras_commander_fast_dss). Install it with 'pip install "
-    "ras-commander-fast-dss', or use HmsDss.backend = 'java'."
+    "ras-commander-fast-dss' (or 'pip install \"hms-commander[dss]\"'), or use "
+    "HmsDss.backend = 'java'."
 )
 
 
@@ -244,8 +245,9 @@ def native_writes_available() -> bool:
 NATIVE_WRITES_GATE_MESSAGE = (
     "The installed ras-commander-fast-dss does not provide the native DSS writers "
     "(create, write_timeseries, write_paired_data and write_grid with DSS6 support). "
-    "hms-commander does not fall back to Java. Use an engine build with writer support "
-    "(HmsDss.get_capabilities().attrs['native_writes_available']), or use "
+    "hms-commander does not fall back to Java. Upgrade the engine "
+    "('pip install -U \"ras-commander-fast-dss>=0.1.0,<0.2\"'; check "
+    "HmsDss.get_capabilities().attrs['native_writes_available']), or use "
     "HmsDss.backend = 'java'."
 )
 
@@ -265,7 +267,7 @@ NATIVE_GRIDDED_GATE_MESSAGE = (
     "A warped grid write (target_crs='SHG') needs the gridded importer of "
     "ras-commander-fast-dss, and the installed engine does not advertise the "
     "'gridded_import' feature. HEC Monolith has no equivalent route, so there is no "
-    "Java fallback. Install an engine build with the gridded importer, or leave "
+    "Java fallback. Upgrade the engine ('pip install -U \"ras-commander-fast-dss>=0.1.0,<0.2\"'), or leave "
     "target_crs unset to write the WGS 84 grid."
 )
 
