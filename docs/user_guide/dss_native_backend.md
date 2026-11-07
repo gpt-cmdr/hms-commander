@@ -13,16 +13,24 @@ page covers what hms-commander does with it.
 
 ## Install the engine
 
-The engine is optional. It is not an `hms-commander` dependency or extra, and the Java
-backend stays the default. Install it into the same environment:
+The engine is optional and the Java backend stays the default. Install it on its own, or
+with the rest of the DSS stack through the `dss` extra (also part of `all`):
 
 ```bash
 pip install ras-commander-fast-dss
+# or
+pip install "hms-commander[dss]"
 ```
 
 !!! note "Availability"
-    `ras-commander-fast-dss` is available from release **X** (placeholder: the release
-    number is added when the engine is published on PyPI).
+    The engine is published on PyPI as
+    [`ras-commander-fast-dss`](https://pypi.org/project/ras-commander-fast-dss/) from
+    release **0.1.0** (MIT AND BSD-3-Clause; source:
+    [gpt-cmdr/ras-commander-fast-dss](https://github.com/gpt-cmdr/ras-commander-fast-dss)).
+    It ships abi3 wheels for CPython 3.10 and later on Windows x86_64, Linux x86_64 and
+    aarch64 (manylinux; musllinux x86_64) and macOS arm64 and x86_64. The `dss` extra
+    requests `ras-commander-fast-dss>=0.1.0,<0.2` only on those platforms, so pip never
+    builds the Rust source distribution; elsewhere the extra installs the Java stack alone.
 
 Check the installed engine from Python:
 
@@ -334,8 +342,39 @@ HEC-HMS acceptance runs, all through `HmsCmdr`:
 !!! note "Placeholder"
     Measured timings for the native backend are added here after the release benchmark.
 
+## Attributions
+
+`ras-commander-fast-dss` is an independent, pure-Rust implementation of the HEC-DSS file
+format (versions 6 and 7). It was written from HEC's published, MIT-licensed `hec-dss`
+C and Fortran source; no HEC code is copied into it and no HEC library is linked or
+bundled. HEC's own software was the reference throughout development: the HEC-DSS C
+library, HEC Monolith (the Java DSS library used by HEC-RAS, HEC-HMS and HEC-DSSVue),
+HEC-Vortex for the gridded importer, and public HEC-DSSVue, HEC-RAS and HEC-HMS example
+data for the test fixtures. HEC-RAS and HEC-HMS runs confirmed that they read files the
+engine writes.
+
+As a final independent check, the engine's output was compared with
+[pydsstools](https://github.com/gyanz/pydsstools) 3.1.0 (MIT), a widely used third-party
+Python library for HEC-DSS. The comparison covered 4,727 records (21.6 million values)
+in 122 DSS6 and DSS7 files. 4,080 records were identical bit for bit and 182 more under a
+documented rule; of the 196 that differed, 183 differed only in metadata. pydsstools
+could not read 209 of the records. Every difference was traced to pydsstools, to
+behavior HEC's own readers share, or to a documented engine convention.
+
+Thanks to the HEC developers for publishing `hec-dss`, HEC-Vortex and their example data
+as open source, and to the pydsstools maintainers. The full acknowledgments are in the
+engine README's
+[Attributions and acknowledgments](https://github.com/gpt-cmdr/ras-commander-fast-dss#attributions-and-acknowledgments)
+section.
+
+`ras-commander-fast-dss` is an independent open-source project. It is not affiliated
+with, endorsed by or supported by HEC or USACE. HEC-DSS, HEC-RAS, HEC-HMS, HEC-DSSVue and
+HEC-Vortex are products of the U.S. Army Corps of Engineers.
+
 ## Related topics
 
+- [ras-commander-fast-dss on PyPI](https://pypi.org/project/ras-commander-fast-dss/) and
+  [source](https://github.com/gpt-cmdr/ras-commander-fast-dss) - the engine package
 - [Native Rust Engines (ras-commander)](https://rascommander.info/ras/native-engine/#dss-engine) -
   the DSS engine's reads, writes, gridded tools and HEC-RAS qualification
 - [DSS Operations](dss_operations.md) - Reading and writing DSS files

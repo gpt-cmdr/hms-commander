@@ -63,8 +63,9 @@ library. Only the selection was fixed, and its outputs were not refreshed.
 | Notebook runner | nbclient 0.11.0, nbformat, ipykernel 7.4.0, matplotlib Agg backend |
 | Other | numpy 2.5.4, pandas 3.1.1, xarray 2026.9.0, h5py 3.16.0, netCDF4 1.7.5.1.post1 |
 
-The engine wheel is installed only in the qualification venv. It is not a dependency or extra of
-hms-commander (D36).
+The engine wheel is installed only in the qualification venv. At the time of this qualification it
+was not a dependency or extra of hms-commander (D36). Since its PyPI release (0.1.0) it is an
+optional part of the `dss` extra; see [Native DSS Backend](../user_guide/dss_native_backend.md#install-the-engine).
 
 ## Method
 
