@@ -29,6 +29,15 @@ from hms_commander.dss import DssCore, HmsDss
 UNDEFINED = -3.4028234663852886e38  # HEC Monolith undefined value (-Float.MAX)
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _java_backend():
+    """These tests exercise the Java path itself, so pin it whatever backend the run selects."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.delenv("HMS_COMMANDER_DSS_BACKEND", raising=False)
+        mp.setattr(HmsDss, "backend", "java")
+        yield
+
+
 # ---------------------------------------------------------------------------
 # Pure helpers (no Java)
 # ---------------------------------------------------------------------------

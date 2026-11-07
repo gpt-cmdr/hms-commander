@@ -298,7 +298,9 @@ def _run_aorc(tmp_path, version, monkeypatch, backend="java", stamps_as_before=F
             lambda ts, n, d, i=None: [(pd.Timestamp(t), pd.Timestamp(t)) for t in ts]))
     if backend == "native":
         pytest.importorskip("ras_commander_fast_dss")
-        monkeypatch.setattr(HmsDss, "backend", backend)
+    # Pin the backend this case asks for, whatever HMS_COMMANDER_DSS_BACKEND the run sets.
+    monkeypatch.delenv("HMS_COMMANDER_DSS_BACKEND", raising=False)
+    monkeypatch.setattr(HmsDss, "backend", backend)
     # An existing file keeps its version. The sample's hrap.dss holds other pathnames.
     target = project / ("aorc.dss" if _version_key(version) >= DSS7_FROM else "hrap.dss")
     HmsAorc.convert_to_dss_grid(netcdf, target, GRID_PATH)
