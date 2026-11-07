@@ -117,6 +117,7 @@ nav:
       - Geospatial Operations: user_guide/geospatial.md
       - DSS Operations: user_guide/dss_operations.md
       - Native DSS Backend: user_guide/dss_native_backend.md
+      - Native DSS Notebook Qualification: development/dss-native-notebook-qualification.md
       - Results Analysis: user_guide/results_analysis.md
       - Clone Workflows: user_guide/clone_workflows.md
       - Atlas 14 Updates: user_guide/atlas14_updates.md
