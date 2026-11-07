@@ -56,9 +56,8 @@ JAVA_MISSING_MARKERS = np.array([-901.0, -902.0, float(-np.finfo(np.float32).max
 
 _NATIVE_INSTALL_HINT = (
     "The 'native' DSS backend requires the optional ras-commander-fast-dss engine "
-    "(import name ras_commander_fast_dss). It is not published on PyPI; install the "
-    "wheel you were given with 'pip install ras_commander_fast_dss-<version>-<tag>.whl', "
-    "or use HmsDss.backend = 'java'."
+    "(import name ras_commander_fast_dss). Install it with 'pip install "
+    "ras-commander-fast-dss', or use HmsDss.backend = 'java'."
 )
 
 

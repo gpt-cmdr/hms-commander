@@ -6,13 +6,32 @@ backend uses `ras_commander_fast_dss`, a pure-Rust HEC-DSS engine for DSS6 and D
 files, and starts no Java VM. The shadow backend runs both and logs every difference.
 The selection, shadow behavior and comparison labels follow ras-commander's `RasDss`.
 
-!!! warning "Pre-release engine"
-    The engine's distribution, `ras-commander-fast-dss`, is not published on PyPI and is
-    not an `hms-commander` dependency or extra. The Java backend stays the default. Install
-    the wheel you were given into the same environment:
-    ```bash
-    pip install ras_commander_fast_dss-<version>-<tag>.whl
-    ```
+The engine is the DSS engine of the RAS Commander native Rust engines. Its reads, writes,
+gridded tools and qualification for HEC-RAS are described on the ras-commander
+[Native Rust Engines page](https://rascommander.info/ras/native-engine/#dss-engine). This
+page covers what hms-commander does with it.
+
+## Install the engine
+
+The engine is optional. It is not an `hms-commander` dependency or extra, and the Java
+backend stays the default. Install it into the same environment:
+
+```bash
+pip install ras-commander-fast-dss
+```
+
+!!! note "Availability"
+    `ras-commander-fast-dss` is available from release **X** (placeholder: the release
+    number is added when the engine is published on PyPI).
+
+Check the installed engine from Python:
+
+```python
+from hms_commander import HmsDss
+
+caps = HmsDss.get_capabilities()
+print(caps.attrs["native_available"], caps.attrs["engine_features"])
+```
 
 ## Select a backend
 
@@ -42,11 +61,25 @@ and the readers built on them (`HmsResults`, the DSS metadata in `HmsPrj`). One 
 `HmsDss.is_available()` follows the selected backend: `native` needs the engine and no
 pyjnius; `java` needs pyjnius; `shadow` needs the engine (without it, shadow runs Java).
 
+### Which backend to use
+
+- **`java`** (default): keep it where results must come from HEC Monolith, or where the
+  engine is not installed. It needs Java 8 or later and pyjnius.
+- **`native`**: use it where Java is unavailable or unwanted, for example in a container,
+  on a locked-down workstation or in a service. No JVM is started and HEC Monolith is
+  never downloaded. Check the [differences](#differences-from-the-java-backend) first;
+  each one is deliberate.
+- **`shadow`**: use it to qualify the native backend on your own files before you switch.
+  It returns native read results, keeps your files written by Java, and logs every
+  difference (see [Shadow mode](#shadow-mode)).
+- **SHG grids** (`target_crs="SHG"`) always use the engine, whatever the backend, because
+  HEC Monolith has no warp (see [AORC grids on the SHG lattice](#aorc-grids-on-the-shg-lattice)).
+
 ## What the native backend covers
 
 `HmsDss.get_capabilities()` returns this table as a DataFrame, with the installed engine's
 state in `attrs` (`native_available`, `native_writes_available`, `native_grid_qualified`,
-`engine_features`).
+`native_gridded_import_available`, `engine_features`).
 
 | Operation | Native | Notes |
 |---|---|---|
@@ -60,6 +93,7 @@ state in `attrs` (`native_available`, `native_writes_available`, `native_grid_qu
 | `write_paired_data` | gated | The arguments of `RasDss.write_paired_data` (see below) |
 | `write_multiple_paired_data`, `import_atlas14_temporal` | gated | One curve per record, float32 (PD) records, a result per record |
 | `HmsDssGrid.write_grid_timeseries` | gated | All four data types; PER-CUM and PER-AVER grids need a period (see below) |
+| `write_grid_timeseries(target_crs="SHG")`, `HmsAorc.convert_to_dss_grid(target_crs="SHG")` | gated, on every backend | Needs the engine's `gridded_import` feature; no Java route (see below) |
 
 "Gated" operations check the installed engine's capabilities, not its version. Writes need
 the complete writer API (`create`, `write_timeseries`, `write_paired_data`, `write_grid`,
@@ -153,6 +187,53 @@ The test covers one sample project, an hourly control interval on these versions
 With period stamps, moving the record one hour later moved the rain and the outlet peak one
 hour later.
 
+## AORC grids on the SHG lattice
+
+By default `HmsAorc.convert_to_dss_grid` writes the AORC lattice unchanged, as WGS84
+specified grids. A basin whose grid cell file is on the Standard Hydrologic Grid (SHG,
+USGS CONUS Albers on NAD 83, in metres) needs SHG grids instead. Ask for them with
+`target_crs="SHG"`:
+
+```python
+from hms_commander import HmsAorc
+
+HmsAorc.convert_to_dss_grid(
+    netcdf_file="aorc.nc",
+    output_dss_file="aorc_shg.dss",
+    pathname="/AORC/MYBASIN/PRECIP////",
+    target_crs="SHG",          # default None: WGS84, unchanged
+    cell_size=2000.0,          # metres; default 2000 (the 2 km SHG lattice)
+    resample_method="bilinear",  # or "average", "near"
+    envelope=None,             # SHG extent in metres; default: the NetCDF's extent
+)
+```
+
+`HmsDssGrid.write_grid_timeseries` takes the same arguments. The WGS84 cells are warped by
+the engine's gridded importer (`ras_commander_fast_dss.gridded.import_arrays`), the
+replacement for the HEC-Vortex importer, and stored as Albers grid records with whole-cell
+origins. The A, B, C and F parts come from `pathname`. The D and E parts are the same
+period stamps as on the WGS84 route. `units` labels the cells and converts nothing, as on
+the WGS84 route.
+
+- The route always needs the engine with the `gridded_import` feature, whatever
+  `HmsDss.backend` is set to. HEC Monolith has no warp, so there is no Java route and no
+  shadow comparison. A missing engine raises `ImportError`; an engine without the feature
+  raises `DssCapabilityError`.
+- Arguments are checked before the engine is called, and the engine plans the whole run
+  before it writes, so a refused call leaves no file.
+- The basin's cells must be SHG cell indices at the same cell size. Cells are not created
+  or checked against the grid.
+
+**HEC-HMS acceptance.** `tests/test_aorc_shg_route.py` converts an AORC-shaped NetCDF with
+`target_crs="SHG"`, moves the cells of the tenk sample onto that SHG lattice, and runs the
+sample through `HmsCmdr` on every installed HEC-HMS from 4.4.1 to 4.13: 4.4.1, 4.5, 4.6,
+4.7.1, 4.8, 4.9 (DSS6), and 4.10 to 4.13 (DSS7). On all ten, each subbasin's PRECIP-INC equals
+the area-weighted depth of its cells in the stored SHG grid, all of it in the step ending at
+the stamp, and the log has no `WARNING 40503`. The rain rises from south to north, so a
+row or timing error would change the result. A run on real AORC data (the January 1996
+storm at tenk's location, 145 hourly grids, HEC-HMS 4.13) gave subbasin totals equal to the
+grid totals to within 1e-15 in.
+
 ## Shadow mode
 
 Shadow mode runs the native backend and checks it against Java on your own files:
@@ -221,6 +302,9 @@ holds no other DSS file open during a read, and the damage is also reported in t
 
 ## Qualification evidence
 
+The example notebooks that use DSS were run on all three backends; see
+[Native DSS Notebook Qualification](../development/dss-native-notebook-qualification.md).
+
 `tests/test_dss_native_backend.py` compares the two backends on the HEC-HMS example
 projects that `HmsExamples` extracts (castro, tenk and river_bend from the HEC-HMS 4.13
 `samples.zip`; all DSS6):
@@ -237,8 +321,23 @@ projects that `HmsExamples` extracts (castro, tenk and river_bend from the HEC-H
 The tests skip when the engine, Java/pyjnius or an HEC-HMS installation with
 `samples.zip` is missing.
 
+HEC-HMS acceptance runs, all through `HmsCmdr`:
+
+- **Period stamps** (`tests/test_aorc_period_stamps.py`): a WGS84 AORC grid written on the
+  Java and native backends gives rain in HEC-HMS 4.4.1 to 4.13
+  ([Grid periods and AORC stamps](#grid-periods-and-aorc-stamps)).
+- **SHG grids** (`tests/test_aorc_shg_route.py`): see
+  [AORC grids on the SHG lattice](#aorc-grids-on-the-shg-lattice).
+
+## Performance
+
+!!! note "Placeholder"
+    Measured timings for the native backend are added here after the release benchmark.
+
 ## Related topics
 
+- [Native Rust Engines (ras-commander)](https://rascommander.info/ras/native-engine/#dss-engine) -
+  the DSS engine's reads, writes, gridded tools and HEC-RAS qualification
 - [DSS Operations](dss_operations.md) - Reading and writing DSS files
 - [Results Analysis](results_analysis.md) - Processing HMS results
 - [HEC-DSS documentation](https://www.hec.usace.army.mil/confluence/dssdocs) - HEC's

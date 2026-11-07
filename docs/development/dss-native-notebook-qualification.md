@@ -1,6 +1,6 @@
 # DSS Native Backend: Example Notebook Qualification
 
-**Date:** 2026-11-06
+**Date:** 2026-11-06, updated 2026-11-07 (see [Update: fixed notebooks](#update-2026-11-07-fixed-notebooks))
 **Branch:** `feat/fast-dss-notebooks`, from `feat/fast-dss-native-engine` (draft PR #46) after the merge of `origin/main`
 **Scope:** every example notebook that reads or writes DSS through hms-commander, run on the
 `java`, `native` and `shadow` DSS backends (`HMS_COMMANDER_DSS_BACKEND`). This was the final round of
@@ -29,6 +29,25 @@ times from a shared workstation.
 - **Fixes.** No integration defect was found in the hms-commander code that the notebooks
   exercise, so no library change was made. The branch adds the qualification tooling
   (`scripts/dss_notebook_qualification/`) and this report.
+
+## Update 2026-11-07: fixed notebooks
+
+Open items 2 and 3 were fixed on `feat/fast-dss-native-engine`, and the two notebooks were run
+again on all three backends with the same tooling (`run_nb.py`, `compare.py`, `summarize.py`).
+The environment was as below, with hms-commander from this branch (after `5990fb1`). The engine
+wheel was the same: dss-commander-rust `origin/main` at `088668c` differs from `5af800d` only in
+`docs/project/OPEN_QUESTIONS.md`.
+
+| Notebook | Change | Outcome (j / n / s) | Shadow summary | Differences across backends | Wall s (j / n / s) |
+|---|---|---|---|---|---|
+| 105_guide_calibration_validation | River Bend `compute_run` timeout 180 s raised to 900 s; committed outputs re-executed on the default (`java`) backend | pass / pass / pass | catalog 3, read_timeseries 4, all `identical` | none: 16 DSS files, 3,972 records, 0 value or metadata differences | 329 / 332 / 324 |
+| original_notebooks/01_multi_version_execution | Fallback flow selection uses `select_result_paths(result_type="flow-total")`, as `HmsResults.get_peak_flows()` does; the element name comes from the B part | pass / pass / pass | catalog 12, read_timeseries 6, all `identical` (was 6 `expected` D5) | cell 18 only (run times); 7 DSS files, 1,545 records, 0 differences | 16 / 16 / 18 |
+
+The legacy notebook now reports the tifton outlet peak, 927.84 cfs at 1970-03-31 12:00, for
+HEC-HMS 4.13, 4.8 and 4.4.1 on every backend. Before the fix it printed "Could not extract peak
+flow" on `java` and a unit-hydrograph ordinate dated year 3000 on `native`. The legacy notebooks are
+archived: they are not in the docs navigation, and their committed outputs come from an older
+library. Only the selection was fixed, and its outputs were not refreshed.
 
 ## Environment
 
@@ -165,7 +184,7 @@ use, so this branch adds no library change and no new test. Committed on this br
    Reproducer: `python scripts/dss_notebook_qualification/contention_repro.py <copy of a DSS6 file>
    <multi-block pathname> [seconds]`. In Git Bash, set `MSYS_NO_PATHCONV=1` so the pathname is not
    rewritten. This behaviour predates #46.
-2. **105_guide_calibration_validation fails as shipped on this host (not DSS).** The notebook calls
+2. **Fixed 2026-11-07.** **105_guide_calibration_validation fails as shipped on this host (not DSS).** The notebook calls
    `HmsCmdr.compute_run(..., timeout=180)` for each River Bend roughness case. The HEC-HMS 4.13
    "Minimum Facility" run took 161 s standalone and longer inside the notebook, so `HmsJython`
    timed out and `compute_run` returned False. The `assert ok` then fails on every backend, before
@@ -173,7 +192,7 @@ use, so this branch adds no library change and no new test. Committed on this br
    three backends with identical results. Recommendation: raise the timeout in the notebook, then
    re-execute it to refresh its committed outputs. This was not done here, because it is outside
    the DSS scope and would rewrite committed outputs.
-3. **D5 changes what a naive caller sees (legacy 01_multi_version_execution).** The notebook
+3. **Fixed 2026-11-07** (selection only). **D5 changes what a naive caller sees (legacy 01_multi_version_execution).** The notebook
    chooses the first pathname whose C part contains `FLOW`. That is HEC-HMS's unit-hydrograph
    pattern record, `//74006/FLOW-UNIT GRAPH/TS-PATTERN/1HOUR/...`. On `java` the read raises
    "No data found", and the notebook prints "Could not extract peak flow". On `native` the pattern
@@ -190,7 +209,7 @@ use, so this branch adds no library change and no new test. Committed on this br
    `08_atlas14_hyetograph_generation` need a prepared `Upgrade_M3_to_4.13` folder. In
    `06_aorc_gridded_precipitation`, an h5py/netCDF4 HDF5 DLL load order prevents
    `import ras_commander` late in the kernel.
-5. **Committed notebook outputs were not refreshed.** The repository commits executed outputs,
+5. **Committed notebook outputs were not refreshed** (except 105, re-executed on 2026-11-07). The repository commits executed outputs,
    created on the Java backend. Re-running and committing all notebooks would rewrite unrelated
    outputs, so the outputs on the branch are unchanged. The evidence is in this report. The
    executed copies from the three backends are in the scratch folder
