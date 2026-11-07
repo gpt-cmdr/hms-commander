@@ -585,12 +585,17 @@ class HmsAorc:
         netcdf_file: Union[str, Path],
         output_dss_file: Union[str, Path],
         pathname: str,
-        units: str = "MM"
+        units: str = "MM",
+        *,
+        target_crs: Optional[str] = None,
+        cell_size: Optional[float] = None,
+        resample_method: str = "bilinear",
+        envelope: Optional[Tuple[float, float, float, float]] = None,
     ) -> Path:
         """
         Convert AORC NetCDF to DSS grid format for HMS.
 
-        Uses HmsDssGrid to write DSS grids using HEC Monolith libraries,
+        Uses HmsDssGrid to write DSS grids (HEC Monolith or the native engine),
         following the pattern from HEC-Vortex.
 
         Parameters
@@ -603,6 +608,20 @@ class HmsAorc:
             DSS pathname (e.g., "/AORC/GRID/PRECIP////")
         units : str, default "MM"
             Output units. AORC data is in kg/m^2 which equals mm.
+        target_crs : str, optional
+            ``None`` (default) writes the AORC lattice unchanged, in WGS84, as in
+            earlier releases. ``"SHG"`` warps it to the Standard Hydrologic Grid
+            (USGS CONUS Albers, NAD 83) with the native engine's gridded importer
+            (``ras-commander-fast-dss``), whatever ``HmsDss.backend`` is set to. Use
+            it when the basin's grid cell file is on the SHG lattice.
+        cell_size : float, optional
+            SHG cell size in metres; ``None`` means 2000. Only with ``target_crs``.
+        resample_method : str, default "bilinear"
+            ``"bilinear"``, ``"average"`` or ``"near"``. Only with ``target_crs``.
+        envelope : tuple of float, optional
+            SHG extent ``(min_x, min_y, max_x, max_y)`` in metres. ``None``: the
+            NetCDF's extent, projected and snapped to whole cells. Only with
+            ``target_crs``.
 
         Returns
         -------
@@ -612,7 +631,11 @@ class HmsAorc:
         Raises
         ------
         ImportError
-            If required dependencies (xarray, ras-commander) not installed.
+            If required dependencies (xarray, ras-commander) not installed, or,
+            with ``target_crs``, if ``ras-commander-fast-dss`` is not installed.
+        ValueError
+            If ``target_crs``, ``cell_size``, ``resample_method`` or ``envelope``
+            is invalid, or the NetCDF lattice is not evenly spaced.
         FileNotFoundError
             If input NetCDF file does not exist.
         RuntimeError
@@ -632,6 +655,14 @@ class HmsAorc:
         ...     pathname="/AORC/MAY2020/PRECIP////"
         ... )
         >>>
+        >>> # Or warp to the SHG 2 km lattice (needs ras-commander-fast-dss)
+        >>> shg_file = HmsAorc.convert_to_dss_grid(
+        ...     netcdf_file="aorc.nc",
+        ...     output_dss_file="aorc_shg.dss",
+        ...     pathname="/SHG/MAY2020/PRECIP////",
+        ...     target_crs="SHG",
+        ... )
+        >>>
         >>> # Create the HMS grid definition that the met model will reference
         >>> from hms_commander import HmsGrid
         >>> HmsGrid.create_grid_definition(
@@ -645,14 +676,17 @@ class HmsAorc:
         -----
         - Requires ras-commander for HEC Monolith and DSS operations
         - AORC precipitation is in kg/m^2 which equals mm depth
-        - Data is written in WGS84 (lat/lon) coordinate system
+        - By default data is written in WGS84 (lat/lon) coordinate system; with
+          ``target_crs="SHG"`` it is warped to SHG Albers grid records, so the
+          basin's cells must be SHG cells
         - Each hourly timestep is written as a separate DSS grid record
         - An AORC stamp T is the end of its hour (NWS OWP AORC v1.1 methods, section
           4.1), so the record's D part is T - 1h and its E part is T: the stamp
           2020-05-02 00:00 gives ``/01MAY2020:2300/01MAY2020:2400/``. Files written
           before this period convention have equal D and E parts. HEC-HMS treats
           those cells as missing and computes no rain from them, so regenerate them.
-        - Implementation uses HEC Monolith classes (same as HEC-Vortex)
+        - The WGS84 route writes through the backend ``HmsDss.backend`` selects (HEC
+          Monolith by default); the SHG route through the native gridded importer
         - HMS met-model wiring for gridded precipitation is still a separate,
           review-required step; there is no public HmsMet helper for it yet.
 
@@ -723,6 +757,10 @@ class HmsAorc:
             units=units,
             data_type="PER-CUM",  # Precipitation is period cumulative
             interval_minutes=HmsAorc.PRECIP_INTERVAL_MINUTES,
+            target_crs=target_crs,
+            cell_size=cell_size,
+            resample_method=resample_method,
+            envelope=envelope,
         )
 
         logger.info(f"DSS conversion complete: {result}")

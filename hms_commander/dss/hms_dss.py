@@ -150,7 +150,8 @@ class HmsDss:
             and ``note``. Values: ``yes``; ``gated`` (needs a qualified or
             writer-capable engine). ``attrs`` report ``requested_backend``,
             ``native_available``, ``native_writes_available``,
-            ``native_grid_qualified`` and ``engine_features``.
+            ``native_grid_qualified``, ``native_gridded_import_available`` and
+            ``engine_features``.
         """
         df = pd.DataFrame(list(_backend.CAPABILITIES),
                           columns=["operation", "java", "native", "shadow", "note"])
@@ -163,6 +164,7 @@ class HmsDss:
             native_available=_backend.native_available(),
             native_writes_available=_backend.native_writes_available(),
             native_grid_qualified=_backend.native_grid_qualified(),
+            native_gridded_import_available=_backend.native_gridded_import_available(),
             engine_features=sorted(_backend.engine_features()),
         )
         return df

@@ -62,7 +62,7 @@ References:
 """
 
 from pathlib import Path
-from typing import Union, List, Optional
+from typing import Union, List, Optional, Sequence
 from datetime import datetime
 import logging
 
@@ -161,7 +161,12 @@ class HmsDssGrid:
         timestamps: List[datetime],
         units: str = "MM",
         data_type: str = "PER-CUM",
-        interval_minutes: Optional[int] = None
+        interval_minutes: Optional[int] = None,
+        *,
+        target_crs: Optional[str] = None,
+        cell_size: Optional[float] = None,
+        resample_method: str = "bilinear",
+        envelope: Optional[Sequence[float]] = None,
     ) -> Path:
         """
         Write gridded precipitation time series to DSS file.
@@ -212,6 +217,23 @@ class HmsDssGrid:
             period ends. ``None``: the spacing of the timestamps, which must be uniform.
             A single grid or stamps with gaps need this argument. Not used for
             instantaneous data.
+        target_crs : str, optional
+            ``None`` (default): write the WGS 84 grid as given, through the backend
+            ``HmsDss.backend`` selects. ``"SHG"``: warp the grid to the Standard
+            Hydrologic Grid (USGS CONUS Albers, NAD 83, metres) with the gridded
+            importer of the native engine, ``ras_commander_fast_dss.gridded``, and
+            store Albers grid records. This route needs the engine on every backend:
+            HEC Monolith has no warp, so there is no Java route and no shadow
+            comparison.
+        cell_size : float, optional
+            SHG cell size in metres; ``None`` means 2000 (the HEC-HMS SHG 2 km
+            lattice). Only with ``target_crs``.
+        resample_method : str, default "bilinear"
+            ``"bilinear"``, ``"average"`` or ``"near"``. Only with ``target_crs``.
+        envelope : sequence of float, optional
+            ``(min_x, min_y, max_x, max_y)`` of the SHG grid in metres. ``None``:
+            the extent of the WGS 84 cells, projected and snapped to whole cells by
+            the engine. Only with ``target_crs``.
 
         Returns
         -------
@@ -257,7 +279,7 @@ class HmsDssGrid:
 
         Notes
         -----
-        - Data is written in WGS84 (lat/lon) coordinate system
+        - Without ``target_crs``, data is written in the WGS84 (lat/lon) coordinate system
         - Cell size is calculated as average of lat/lon spacing
         - Grid origin is set to lower-left corner
         - Uses SpecifiedGridInfo (not AlbersInfo) for lat/lon grids
@@ -300,6 +322,14 @@ class HmsDssGrid:
             )
 
         windows = HmsDssGrid._grid_time_windows(timestamps, nt, data_type, interval_minutes)
+
+        if target_crs is not None:
+            return HmsDssGrid._write_grid_timeseries_warped(
+                dss_file, pathname, grid_data, lat_coords, lon_coords, windows,
+                units, data_type, target_crs=target_crs, cell_size=cell_size,
+                resample_method=resample_method, envelope=envelope)
+        if cell_size is not None or envelope is not None:
+            raise ValueError("cell_size and envelope apply only with target_crs (for example 'SHG')")
 
         backend = DssCore.get_backend()
         if backend == "native":
@@ -637,6 +667,103 @@ class HmsDssGrid:
             lambda: HmsDssGrid._write_grid_timeseries_java(dss_file, *args),
             native_call, compare,
         )
+
+    #: Target CRS names for the warped route, and the default SHG cell size (metres).
+    WARP_TARGETS = ("SHG",)
+    SHG_CELL_SIZE = 2000.0
+    _RESAMPLE_METHODS = ("bilinear", "average", "near")
+
+    @staticmethod
+    def _lattice_transform(coords, name: str):
+        """``(origin, spacing)`` of a uniform 1-D lattice of cell centres; the origin is
+        the outer edge of the first cell. A lattice that is not uniform is refused."""
+        import numpy as np
+
+        c = np.asarray(coords, dtype=np.float64)
+        if c.ndim != 1 or len(c) < 2:
+            raise ValueError(f"{name} needs at least two cell centres to define a spacing")
+        steps = np.diff(c)
+        step = (c[-1] - c[0]) / (len(c) - 1)
+        if step == 0 or not np.all(np.isfinite(steps)) or \
+                np.max(np.abs(steps - step)) > 1e-3 * abs(step):
+            raise ValueError(f"{name} must be evenly spaced and monotonic to be warped")
+        return float(c[0] - step / 2.0), float(step)
+
+    @staticmethod
+    def _write_grid_timeseries_warped(dss_file, pathname, grid_data, lat_coords, lon_coords,
+                                      windows, units, data_type, *, target_crs, cell_size,
+                                      resample_method, envelope) -> Path:
+        """``write_grid_timeseries`` warped to ``target_crs`` by the engine's gridded importer.
+
+        The WGS 84 cells go to ``gridded.import_arrays`` with their cell-edge transform
+        and the same period windows as the WGS 84 route. The A, B, C and F parts come
+        from ``pathname``; D and E from each window. ``units`` labels the cells, as on the
+        WGS 84 route. Everything is checked before the engine is called, and the engine
+        plans the whole run before it writes, so a refusal leaves the output untouched.
+        """
+        import numpy as np
+
+        crs = str(target_crs).strip().upper()
+        if crs not in HmsDssGrid.WARP_TARGETS:
+            raise ValueError(
+                f"target_crs must be one of {HmsDssGrid.WARP_TARGETS} or None, not {target_crs!r}")
+        method = str(resample_method).strip().lower()
+        if method not in HmsDssGrid._RESAMPLE_METHODS:
+            raise ValueError(
+                f"resample_method must be one of {HmsDssGrid._RESAMPLE_METHODS}, not "
+                f"{resample_method!r}")
+        size = HmsDssGrid.SHG_CELL_SIZE if cell_size is None else float(cell_size)
+        if not np.isfinite(size) or size <= 0:
+            raise ValueError(f"cell_size must be a positive number of metres, not {cell_size!r}")
+        parts = pathname.split("/")
+        if len(parts) != 8 or parts[0] or parts[7]:
+            raise ValueError(
+                f"DSS pathname must have exactly six parts (/A/B/C/D/E/F/); got {pathname!r}")
+        if not parts[3].strip():
+            raise ValueError(f"pathname {pathname!r} needs a C part (for example PRECIP)")
+        x0, dx = HmsDssGrid._lattice_transform(lon_coords, "lon_coords")
+        y0, dy = HmsDssGrid._lattice_transform(lat_coords, "lat_coords")
+        _, nlat, nlon = grid_data.shape
+        if envelope is None:
+            x1, y1 = x0 + nlon * dx, y0 + nlat * dy
+            box = (min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
+            box_crs = HmsDssGrid.WKT_WGS84
+        else:
+            box = tuple(float(v) for v in envelope)
+            if len(box) != 4:
+                raise ValueError("envelope must be (min_x, min_y, max_x, max_y) in metres")
+            box_crs = crs
+
+        gridded = _backend.require_native_gridded_import()
+        backend = DssCore.get_backend()
+        if backend != "native":
+            logger.info("target_crs=%r: the grid is warped and written by the native engine "
+                        "(there is no Java route); HmsDss.backend=%r does not apply", crs, backend)
+        times = [(start.to_pydatetime(), end.to_pydatetime()) for start, end in windows]
+        result = gridded.import_arrays(
+            grid_data,
+            str(Path(dss_file)),
+            times=times,
+            transform=(x0, dx, y0, dy),
+            crs=HmsDssGrid.WKT_WGS84,
+            variable=parts[3],
+            source_units=units,
+            envelope=box,
+            envelope_crs=box_crs,
+            target_crs=crs,
+            cell_size=size,
+            method=method,
+            parts={"A": parts[1], "B": parts[2], "C": parts[3], "F": parts[6]},
+            units=units,
+            data_type=str(data_type).upper(),
+        )
+        first = result.records[0] if result.records else {}
+        logger.info(
+            "DSS grid write complete (native, %s %g m, %s): %s (%d grids, %s x %s cells, "
+            "lower-left cell (%s, %s))", crs, size, method, dss_file, len(result.records),
+            first.get("nx"), first.get("ny"), first.get("lower_left_cell_x"),
+            first.get("lower_left_cell_y"))
+        return Path(dss_file)
 
     #: Grid attributes compared after a shadow write (both files read natively).
     _WRITTEN_GRID_KEYS = (

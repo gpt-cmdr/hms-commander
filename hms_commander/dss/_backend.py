@@ -259,6 +259,31 @@ def require_native_writes():
     return dc
 
 
+#: Feature the engine advertises when it has the gridded importer (``gridded.import_arrays``).
+NATIVE_GRIDDED_FEATURE = "gridded_import"
+
+NATIVE_GRIDDED_GATE_MESSAGE = (
+    "A warped grid write (target_crs='SHG') needs the gridded importer of "
+    "ras-commander-fast-dss, and the installed engine does not advertise the "
+    "'gridded_import' feature. HEC Monolith has no equivalent route, so there is no "
+    "Java fallback. Install an engine build with the gridded importer, or leave "
+    "target_crs unset to write the WGS 84 grid."
+)
+
+
+def native_gridded_import_available() -> bool:
+    """True when the installed engine advertises its gridded importer. Never raises."""
+    return NATIVE_GRIDDED_FEATURE in engine_features()
+
+
+def require_native_gridded_import():
+    """The engine's ``gridded`` module, or ``ImportError``/``DssCapabilityError`` (never Java)."""
+    import_native()
+    if not native_gridded_import_available():
+        raise DssCapabilityError(NATIVE_GRIDDED_GATE_MESSAGE)
+    return importlib.import_module(ENGINE_MODULE + ".gridded")
+
+
 #: Backend support per public DSS operation. Values: "yes"; "gated" (needs a
 #: qualified or writer-capable engine); "java" (runs on Java whatever the backend).
 CAPABILITIES = (
@@ -287,6 +312,9 @@ CAPABILITIES = (
     ("write_grid_timeseries", "yes", "gated", "yes",
      "period grids get D = start, E = end; a period with no length or an unknown type "
      "is refused on every backend"),
+    ("write_grid_timeseries(target_crs='SHG')", "gated", "gated", "gated",
+     "warped to SHG by the engine's gridded importer whatever the backend; needs the "
+     "'gridded_import' engine feature; no Java route and no shadow comparison"),
 )
 
 
