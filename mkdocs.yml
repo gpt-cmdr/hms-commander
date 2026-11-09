@@ -1,6 +1,6 @@
 site_name: HMS Commander Documentation
 site_description: Python library for automating HEC-HMS operations
-site_url: https://gpt-cmdr.github.io/hms-commander/
+site_url: https://rascommander.info/hms/
 repo_url: https://github.com/gpt-cmdr/hms-commander
 repo_name: gpt-cmdr/hms-commander
 edit_uri: edit/main/docs/
