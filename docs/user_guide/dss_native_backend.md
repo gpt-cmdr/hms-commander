@@ -25,12 +25,19 @@ pip install "hms-commander[dss]"
 !!! note "Availability"
     The engine is published on PyPI as
     [`ras-commander-fast-dss`](https://pypi.org/project/ras-commander-fast-dss/) from
-    release **0.1.0** (MIT AND BSD-3-Clause; source:
-    [gpt-cmdr/ras-commander-fast-dss](https://github.com/gpt-cmdr/ras-commander-fast-dss)).
-    It ships abi3 wheels for CPython 3.10 and later on Windows x86_64, Linux x86_64 and
-    aarch64 (manylinux; musllinux x86_64) and macOS arm64 and x86_64. The `dss` extra
-    requests `ras-commander-fast-dss>=0.1.0,<0.2` only on those platforms, so pip never
-    builds the Rust source distribution; elsewhere the extra installs the Java stack alone.
+    release **0.1.0**; hms-commander requires **0.1.1** or later
+    ([0.1.1 on PyPI](https://pypi.org/project/ras-commander-fast-dss/0.1.1/); MIT AND
+    BSD-3-Clause; source:
+    [gpt-cmdr/ras-commander-fast-dss](https://github.com/gpt-cmdr/ras-commander-fast-dss),
+    [changelog](https://github.com/gpt-cmdr/ras-commander-fast-dss/blob/main/CHANGELOG.md)).
+    0.1.1 ships abi3 wheels for CPython 3.10 and later on Windows x86_64 and on Linux
+    x86_64 and aarch64 (manylinux and musllinux), and an sdist. The `dss` extra requests
+    `ras-commander-fast-dss>=0.1.1,<0.2` only on those platforms, so pip never builds the
+    Rust source distribution; elsewhere the extra installs the Java stack alone.
+
+    There are no macOS wheels. On macOS, install the engine from its sdist yourself
+    (`pip install ras-commander-fast-dss`, which needs a Rust toolchain), or use the Java
+    backend.
 
 Check the installed engine from Python:
 
@@ -153,6 +160,43 @@ differences remain:
   `read_paired_data` dict does not report precision.
 - **Grids.** See [Grid periods and AORC stamps](#grid-periods-and-aorc-stamps). Both
   backends store the same D and E parts.
+
+## Damaged files and write durability
+
+Engine 0.1.1 adds two tools that hms-commander does not wrap. Call them from
+`ras_commander_fast_dss` directly; the `HmsDss` writers keep the engine defaults.
+
+- **Crash recovery.** 0.1.1 fixes DSS7 crash recovery in the native writers. The guarantee
+  covers a writing process that dies (it is killed or crashes) part way through a write: the
+  next native write reconciles the interrupted write when the file was consistent before it.
+  No claim is made for power loss or an operating-system crash, and a normal write does not
+  repair damage it did not cause. A DSS7 file that a 0.1.0 native write left with a catalog
+  *hole* after an interrupted write stays as it is; copy it with `repair` (engine
+  changelog, F1).
+- **`repair(src, dest)`** copies the readable records of a damaged DSS7 file into a new DSS7
+  file. `src` is opened read-only and never written, and an existing `dest` raises
+  `FileExistsError`. It copies only the records that its documented discovery procedure
+  reaches, and it publishes `dest` even when some records could not be copied. Always check
+  `complete` and `not_copied` in the result. A complete copy is not an integrity
+  certificate for `src`. Check `"repair_copy_out" in ras_commander_fast_dss.FEATURES`
+  first.
+
+    ```python
+    import ras_commander_fast_dss as fdss
+
+    if "repair_copy_out" in fdss.FEATURES:
+        report = fdss.repair("damaged.dss", "recovered.dss")
+        if not report["complete"]:
+            print(report["not_copied"])
+    ```
+
+- **`sync=False`.** The engine writers (`write_timeseries`, `write_paired_data`,
+  `write_grid`) take an opt-in `sync=False` (feature `write_sync_policy`) that skips the
+  `fsync` calls of the default `sync=True`. Writes still reach the operating system in the
+  same order, so the process-death behavior is unchanged, but nothing is forced to storage.
+  The engine makes no power-loss claim for either setting and suggests `sync=False` for
+  scratch or regenerable files. The `HmsDss` and `HmsDssGrid` writers do not pass it and
+  always use the default.
 
 ## Grid periods and AORC stamps
 

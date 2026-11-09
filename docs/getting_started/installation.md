@@ -35,8 +35,10 @@ pip install hms-commander[dss]
 Additional packages:
 - ras-commander (provides DSS functionality)
 - pyjnius (Java bridge for DSS)
-- ras-commander-fast-dss (optional native DSS engine, on platforms with published wheels;
-  see [Native DSS Backend](../user_guide/dss_native_backend.md). Java stays the default.)
+- ras-commander-fast-dss 0.1.1 or later (optional native DSS engine, on CPython with
+  published wheels: Windows x86_64 and Linux x86_64/aarch64. macOS has no wheels and can
+  build it from source. See [Native DSS Backend](../user_guide/dss_native_backend.md).
+  Java stays the default.)
 
 ## Installing from Source
 

@@ -1,6 +1,6 @@
 # DSS Native Backend: Example Notebook Qualification
 
-**Date:** 2026-11-06, updated 2026-11-07 (see [Update: fixed notebooks](#update-2026-11-07-fixed-notebooks))
+**Date:** 2026-11-06, updated 2026-11-07 (see [Update: fixed notebooks](#update-2026-11-07-fixed-notebooks)) and 2026-11-09 (see [Update: engine 0.1.1 from PyPI](#update-2026-11-09-engine-011-from-pypi))
 **Branch:** `feat/fast-dss-notebooks`, from `feat/fast-dss-native-engine` (draft PR #46) after the merge of `origin/main`
 **Scope:** every example notebook that reads or writes DSS through hms-commander, run on the
 `java`, `native` and `shadow` DSS backends (`HMS_COMMANDER_DSS_BACKEND`). This was the final round of
@@ -48,6 +48,34 @@ HEC-HMS 4.13, 4.8 and 4.4.1 on every backend. Before the fix it printed "Could n
 flow" on `java` and a unit-hydrograph ordinate dated year 3000 on `native`. The legacy notebooks are
 archived: they are not in the docs navigation, and their committed outputs come from an older
 library. Only the selection was fixed, and its outputs were not refreshed.
+
+## Update 2026-11-09: engine 0.1.1 from PyPI
+
+The `dss` extra now requires `ras-commander-fast-dss>=0.1.1,<0.2`. The 12 notebooks that passed
+above (the 11 current notebooks and legacy `01_multi_version_execution`) were run again on the
+`native` backend with the same tooling (`run_backend.sh`, `compare.py`, `summarize.py`). The
+`java` baseline is the 2026-11-06 Java run (for 105, the 900 s timeout copy). The `java` and
+`shadow` notebook passes were not repeated; the full test suite was run on all three settings.
+
+| Item | Value |
+|---|---|
+| Engine | `ras-commander-fast-dss` **0.1.1** installed from PyPI (`ras_commander_fast_dss-0.1.1-cp310-abi3-win_amd64.whl`); `FEATURES` includes `repair_copy_out` and `write_sync_policy` |
+| Venv | fresh uv venv `D:\CLB-Dev\venvs\HP011-hms-3.12` (Python 3.12.11), hms-commander editable from `feat/fast-dss-native-engine`; `zarr` 3.4.2 and `s3fs` 2026.9.0 added for 14a |
+| Java backend | HEC Monolith 3.3.27, pyjnius 1.9.0, OpenJDK 17.0.20.1 |
+
+| Notebook | Outcome (native) | Differences from the Java baseline |
+|---|---|---|
+| 01_basic_workflow, 05_clone_workflow, 06_results_dss, 101, 102, 104, 106, 14c | pass | none: same text outputs; DSS files equal record by record |
+| 105_guide_calibration_validation | pass | none; 16 DSS files, 3,972 records, 0 value or metadata differences |
+| 14a_aorc_download, 14b_aorc_grid_setup | pass | 124 grids, cells and metadata equal; 14b differs only in the grid file's `Last Modified` lines (wall clock) |
+| original_notebooks/01_multi_version_execution | pass | no Java baseline in this comparison; prints the tifton outlet peak 927.84 cfs at 1970-03-31 12:00 for HEC-HMS 4.13, 4.8 and 4.4.1, as on 2026-11-07 |
+
+All 12 runs recorded engine version 0.1.1 and no shadow records (native backend). Value and
+metadata comparisons found **0 differences** across 7,498 records read through Java (67 DSS files). 14a first
+failed at cell 14 with `Missing AORC dependencies: zarr, s3fs` because the fresh venv lacked the
+`aorc` extra. It passed after those packages were installed; this was not a backend problem.
+Committed notebook outputs were not changed. Executed copies and logs:
+`D:\CLB-Dev\dss-work\HP011\nb-runs\native`, `compare.json`, `summarize.txt`.
 
 ## Environment
 
