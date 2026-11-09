@@ -60,7 +60,7 @@ above (the 11 current notebooks and legacy `01_multi_version_execution`) were ru
 | Item | Value |
 |---|---|
 | Engine | `ras-commander-fast-dss` **0.1.1** installed from PyPI (`ras_commander_fast_dss-0.1.1-cp310-abi3-win_amd64.whl`); `FEATURES` includes `repair_copy_out` and `write_sync_policy` |
-| Venv | fresh uv venv `D:\CLB-Dev\venvs\HP011-hms-3.12` (Python 3.12.11), hms-commander editable from `feat/fast-dss-native-engine`; `zarr` 3.4.2 and `s3fs` 2026.9.0 added for 14a |
+| Venv | fresh uv venv (Python 3.12.11), hms-commander editable from `feat/fast-dss-native-engine`; `zarr` 3.4.2 and `s3fs` 2026.9.0 added for 14a |
 | Java backend | HEC Monolith 3.3.27, pyjnius 1.9.0, OpenJDK 17.0.20.1 |
 
 | Notebook | Outcome (native) | Differences from the Java baseline |
@@ -74,18 +74,21 @@ All 12 runs recorded engine version 0.1.1 and no shadow records (native backend)
 metadata comparisons found **0 differences** across 7,498 records read through Java (67 DSS files). 14a first
 failed at cell 14 with `Missing AORC dependencies: zarr, s3fs` because the fresh venv lacked the
 `aorc` extra. It passed after those packages were installed; this was not a backend problem.
-Committed notebook outputs were not changed. Executed copies and logs:
-`D:\CLB-Dev\dss-work\HP011\nb-runs\native`, `compare.json`, `summarize.txt`.
+Committed notebook outputs were not re-executed. The executed copies and the `compare.py` and
+`summarize.py` outputs are kept outside the repository with the qualification evidence.
+In the saved outputs of legacy `01_multi_version_execution`, host-specific path prefixes were
+replaced with labelled placeholders (`<HEC-HMS install>`, `<HEC-HMS (x86) install>`, `<REPO>`,
+`<TEMP>\ipykernel`, `<JAVA_HOME>`). No other output text was changed.
 
 ## Environment
 
 | Item | Value |
 |---|---|
-| Host | Windows 11 Pro for Workstations, CLB01 |
-| Python | 3.12.11 (uv venv `D:\CLB-Dev\venvs\H-NB-3.12`, installed offline from the uv cache) |
+| Host | Windows 11 Pro for Workstations |
+| Python | 3.12.11 (uv venv, installed offline from the uv cache) |
 | hms-commander | 0.4.0, editable from this branch (`e8d2d28` merge, then `a203e21` tooling) |
 | Engine | `ras-commander-fast-dss` 0.0.1 built from dss-commander-rust `main` at `5af800d` (P46b); wheel `ras_commander_fast_dss-0.0.1-cp310-abi3-win_amd64.whl`, SHA-256 `eaf6b39e3554e4415abd8c9a101d3140ed56ad559482cc1bfebb03f9ac589e40` |
-| Java backend | HEC Monolith 3.3.27 (`~/.ras-commander/dss/jar`), pyjnius 1.9.0, OpenJDK 17.0.20.1 (`D:\CLB-Dev\jdk\jdk-17.0.20.1+1`) |
+| Java backend | HEC Monolith 3.3.27 (`~/.ras-commander/dss/jar`), pyjnius 1.9.0, OpenJDK 17.0.20.1 |
 | ras-commander | 0.113.0, for the one `RasDss.get_catalog` call in 14a (`RAS_COMMANDER_DSS_BACKEND` set to the same backend) |
 | HEC-HMS | 4.13 (guides 101-106, 06, 14c), 4.10 (01, 05), 4.4.1, 4.8 and 4.13 (legacy 01). All runs went through `HmsCmdr`/`HmsJython`. |
 | Notebook runner | nbclient 0.11.0, nbformat, ipykernel 7.4.0, matplotlib Agg backend |
@@ -241,8 +244,8 @@ use, so this branch adds no library change and no new test. Committed on this br
 5. **Committed notebook outputs were not refreshed** (except 105, re-executed on 2026-11-07). The repository commits executed outputs,
    created on the Java backend. Re-running and committing all notebooks would rewrite unrelated
    outputs, so the outputs on the branch are unchanged. The evidence is in this report. The
-   executed copies from the three backends are in the scratch folder
-   (`D:\dss-commander-oracle\work\H-NB\runs`, `runs_orig`).
+   executed copies from the three backends are kept in a scratch folder outside the
+   repository (`runs`, `runs_orig`).
 6. **Engine wheel build.** `build_wheel.sh` built the wheel, but it could not create its per-name
    test venvs, because TLS to PyPI failed (`invalid peer certificate: UnknownIssuer`). The engine's
    own `tests/python` suite was therefore not re-run by that script. The wheel was installed with
