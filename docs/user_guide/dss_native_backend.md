@@ -142,10 +142,11 @@ differences remain:
   `x_type`, `y_type` (the earlier names `x_label`, `y_label` still work), any number of
   curves, `labels`, `x_precision`, `y_precision`, `value_type`, `dss_version`,
   `create_if_missing`, and a DataFrame or Series in place of the arrays. Differences from
-  `RasDss`: it returns `True`, and a call with no units or types still stores the earlier
-  HMS defaults (`HOURS`, `FRACTION`, `TIME`, `CUMULATIVE`, float32) with a
-  `DeprecationWarning`. `RasDss` stores blanks there. A call giving only some of them stores
-  the others blank, as `RasDss` does, with the same warning. `write_multiple_paired_data` has no
+  `RasDss`: it returns `True`, and an array call that omits any unit or type still stores
+  the earlier HMS default for each omitted field (`HOURS`, `FRACTION`, `TIME`,
+  `CUMULATIVE`) as a float32 record, with a `DeprecationWarning`, on every backend.
+  `RasDss` stores blanks there. A call giving all four stores float64 input as float64
+  unless `value_type="float"`. `write_multiple_paired_data` has no
   `RasDss` counterpart and keeps its record keys and defaults.
 - **DSS6 text limits.** A DSS6 paired-data record stores at most 8 characters per unit
   and type. HEC Monolith truncates longer strings without a warning (`CUMULATIVE` is

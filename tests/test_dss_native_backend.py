@@ -811,7 +811,7 @@ def test_existing_paired_data_callers_keep_working(engine, java, tmp_path, backe
     _use(backend)
     # The earlier defaults, with a warning: same record type and metadata as before.
     target = tmp_path / "defaults.dss"
-    with pytest.warns(DeprecationWarning, match="Atlas 14 defaults"):
+    with pytest.warns(DeprecationWarning, match="earlier Atlas 14 default"):
         assert HmsDss.write_paired_data(target, path, x, y) is True
     record = engine.read_paired_data(str(target), path, dtype="stored")
     assert record.record_type == 200
@@ -828,11 +828,51 @@ def test_existing_paired_data_callers_keep_working(engine, java, tmp_path, backe
         back = _java_reads(lambda: HmsDss.read_paired_data(target, path))
         assert (back["x_label"], back["y_label"]) == ("XT", "YT")
         _use(backend)
-    # Some metadata: the rest is blank, as RasDss, and the call says so.
+    # Some metadata: each omitted field keeps main's Java default, and the record stays
+    # float32 (PD), as main's signature (x_units="HOURS", y_units="FRACTION",
+    # x_label="TIME", y_label="CUMULATIVE", float32) stored it. See
+    # test_partial_paired_data_metadata_matches_main_java below for every combination.
     target = tmp_path / "partial.dss"
-    with pytest.warns(DeprecationWarning, match="blank"):
+    with pytest.warns(DeprecationWarning, match="earlier Atlas 14 default"):
         HmsDss.write_paired_data(target, path, x, y, x_units="FT", y_units="CFS")
-    assert engine.read_paired_data(str(target), path, dtype="stored").type_dependent == ""
+    record = engine.read_paired_data(str(target), path, dtype="stored")
+    assert record.record_type == 200
+    assert (record.units_independent, record.units_dependent) == ("FT", "CFS")
+    assert (record.type_independent, record.type_dependent) == ("TIME", "CUMULATIVE")
+
+
+#: main's ``DssCore.write_paired_data`` (before #46): keyword defaults per field, and a
+#: float32 (PD, record type 200) record from HEC Monolith for every array call.
+_MAIN_JAVA_DEFAULTS = {"x_units": "HOURS", "y_units": "FRACTION",
+                       "x_label": "TIME", "y_label": "CUMULATIVE"}
+
+
+@pytest.mark.requires_java
+@pytest.mark.parametrize("backend", ["java", "native", "shadow"])
+@pytest.mark.parametrize("given", [
+    {"x_units": "FT"},
+    {"y_units": "CFS"},
+    {"x_label": "STAGE"},
+    {"y_label": "FLOW"},
+    {"x_units": "FT", "y_units": "CFS"},
+    {"x_units": "FT", "y_units": "CFS", "x_label": "STAGE"},
+    {"x_type": "STAGE", "y_type": "FLOW"},
+])
+def test_partial_paired_data_metadata_matches_main_java(engine, java, tmp_path, backend, given):
+    """Regression (PR #46 review): an array call that gives only some units or types
+    stores what main's Java writer stored: each omitted field keeps its default and the
+    record is float32. Read back through Java, on every backend."""
+    path, x, y = "//TEST/CURVE/TABLE///", np.array([0.0, 1.0]), np.array([0.0, 1.0])
+    expected = dict(_MAIN_JAVA_DEFAULTS)
+    for key, value in given.items():
+        expected[{"x_type": "x_label", "y_type": "y_label"}.get(key, key)] = value
+    _use(backend)
+    target = tmp_path / "partial.dss"
+    with pytest.warns(DeprecationWarning, match="earlier Atlas 14 default"):
+        assert HmsDss.write_paired_data(target, path, x, y, **given) is True
+    back = _java_reads(lambda: HmsDss.read_paired_data(target, path))
+    assert {key: back[key] for key in expected} == expected
+    assert engine.read_paired_data(str(target), path, dtype="stored").record_type == 200
 
 
 @pytest.mark.requires_java

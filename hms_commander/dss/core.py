@@ -2053,8 +2053,8 @@ class DssCore:
     def write_timeseries(
         dss_file: Union[str, Path],
         pathname: str,
-        times,
-        values,
+        times: Union[Sequence[Any], pd.DatetimeIndex, np.ndarray],
+        values: Union[Sequence[float], np.ndarray, pd.Series],
         units: str = "CFS",
         data_type: str = "INST-VAL",
         dss_version: Optional[int] = None,
@@ -2241,10 +2241,13 @@ class DssCore:
                 ``y_values``; its ``attrs`` supply any metadata argument left as ``None``.
             y_values: The curves: 1-D for one curve, or 2-D with shape
                 ``(len(x_values), n_curves)``.
-            x_units: Units of the ordinates. ``None``: from ``attrs``, otherwise blank.
-            y_units: Units of the curves. ``None``: as ``x_units``.
-            x_type: Axis type of the ordinates. ``None``: as ``x_units``.
-            y_type: Axis type of the curves. ``None``: as ``x_units``.
+            x_units: Units of the ordinates. ``None``: with a DataFrame or Series, from
+                ``attrs``, otherwise blank; with arrays, the earlier default ``HOURS``
+                (deprecated).
+            y_units: Units of the curves. ``None``: as ``x_units``, default ``FRACTION``.
+            x_type: Axis type of the ordinates. ``None``: as ``x_units``, default ``TIME``.
+            y_type: Axis type of the curves. ``None``: as ``x_units``, default
+                ``CUMULATIVE``.
             labels: Curve names, one per curve. ``None``: a DataFrame's string column names
                 (not the default ``curve_n`` names; then ``attrs["labels"]``), a Series'
                 name, otherwise no labels.
@@ -2279,10 +2282,11 @@ class DssCore:
         Compatibility:
             Before this signature, the writer had the defaults ``HOURS``, ``FRACTION``,
             ``TIME`` and ``CUMULATIVE``, always stored float32 and returned False on a
-            library error. A call with no units or types at all still stores exactly that
-            record, with a ``DeprecationWarning``. A call giving only some of them stores
-            the others blank, also with a ``DeprecationWarning``. Calls with metadata store
-            float64 for float64 input unless ``value_type="float"``.
+            library error. An array call that omits any unit or type still stores the
+            earlier default for each omitted field, as a float32 record unless
+            ``value_type`` says otherwise, with a ``DeprecationWarning``; this holds on
+            every backend. Calls giving all four store float64 for float64 input unless
+            ``value_type="float"``.
             ``write_multiple_paired_data`` keeps its record keys, defaults, float32
             records and per-record results.
 
@@ -2422,24 +2426,23 @@ class DssCore:
                 labels = None
 
         given = (x_units, y_units, x_type, y_type)
-        legacy = not is_frame and all(value is None for value in given)
-        if legacy:
+        legacy_defaults = ("HOURS", "FRACTION", "TIME", "CUMULATIVE")
+        if not is_frame and any(value is None for value in given):
+            # Arrays with an omitted unit or type: each omitted field keeps the earlier
+            # default and the record stays float32, exactly as before (every backend).
             warnings.warn(
-                "write_paired_data without units or types stores the Atlas 14 defaults "
-                "HOURS, FRACTION, TIME and CUMULATIVE as float32. This default is "
-                "deprecated, to match ras_commander.RasDss; pass the metadata explicitly.",
+                "write_paired_data with an omitted unit or type stores the earlier Atlas 14 "
+                "default there (HOURS, FRACTION, TIME or CUMULATIVE) and a float32 record. "
+                "This default is deprecated; ras_commander.RasDss stores blanks. Pass all "
+                "four units and types explicitly.",
                 DeprecationWarning, stacklevel=3,
             )
-            x_units, y_units, x_type, y_type = "HOURS", "FRACTION", "TIME", "CUMULATIVE"
+            x_units, y_units, x_type, y_type = (
+                default if value is None else value
+                for value, default in zip(given, legacy_defaults)
+            )
             if value_type == "auto":
                 value_type = "float"
-        elif not is_frame and any(value is None for value in given):
-            warnings.warn(
-                "write_paired_data stores an omitted unit or type as blank, as "
-                "ras_commander.RasDss does. Earlier versions stored HOURS, FRACTION, TIME "
-                "or CUMULATIVE there; pass them explicitly if the record needs them.",
-                DeprecationWarning, stacklevel=3,
-            )
 
         text: Dict[str, str] = {}
         for key, value in (("x_units", x_units), ("y_units", y_units),
