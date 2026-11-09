@@ -62,9 +62,10 @@ dss = [
     "ras-commander>=0.83.0",
     "pyjnius",
     # Optional native DSS engine (HMS_COMMANDER_DSS_BACKEND=native/shadow). The marker
-    # matches the published abi3 wheels, so pip never builds the Rust sdist; the Java
-    # backend stays the default and works without it.
-    'ras-commander-fast-dss>=0.1.0,<0.2; platform_python_implementation == "CPython" and ((platform_system == "Windows" and platform_machine == "AMD64") or (platform_system == "Linux" and (platform_machine == "x86_64" or platform_machine == "aarch64")) or platform_system == "Darwin")',
+    # matches the published abi3 wheels (no macOS wheels; macOS can build the engine from
+    # its sdist separately), so pip never builds the Rust sdist; the Java backend stays the
+    # default and works without it.
+    'ras-commander-fast-dss>=0.1.1,<0.2; platform_python_implementation == "CPython" and ((platform_system == "Windows" and platform_machine == "AMD64") or (platform_system == "Linux" and (platform_machine == "x86_64" or platform_machine == "aarch64")))',
 ]
 aorc = [
     "xarray>=2023.1.0",
