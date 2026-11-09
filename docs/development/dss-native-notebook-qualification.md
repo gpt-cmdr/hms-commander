@@ -76,9 +76,11 @@ failed at cell 14 with `Missing AORC dependencies: zarr, s3fs` because the fresh
 `aorc` extra. It passed after those packages were installed; this was not a backend problem.
 Committed notebook outputs were not re-executed. The executed copies and the `compare.py` and
 `summarize.py` outputs are kept outside the repository with the qualification evidence.
-In the saved outputs of legacy `01_multi_version_execution`, host-specific path prefixes were
-replaced with labelled placeholders (`<HEC-HMS install>`, `<HEC-HMS (x86) install>`, `<REPO>`,
-`<TEMP>\ipykernel`, `<JAVA_HOME>`). No other output text was changed.
+In legacy `01_multi_version_execution`, the saved outputs of code cells 5, 6, 13, 15, 16, 21,
+23, 27 and 31 (0-based cell indices) were cleared because they contained workstation paths
+(HEC-HMS and Java install locations, the repository clone and the kernel's temporary folder).
+Their code is unchanged; re-run the notebook to see those outputs. The outputs of the other
+cells were not edited.
 
 ## Environment
 
