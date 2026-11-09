@@ -22,6 +22,7 @@ import gc
 from pathlib import Path
 from typing import Dict, List, Optional, Union, Any, Sequence
 import pandas as pd
+import numpy as np
 
 from ..LoggingConfig import get_logger
 from ..Decorators import log_call
@@ -1150,8 +1151,8 @@ class HmsDss:
     def write_timeseries(
         dss_file: Union[str, Path],
         pathname: str,
-        times,
-        values,
+        times: Union[Sequence[Any], pd.DatetimeIndex, np.ndarray],
+        values: Union[Sequence[float], np.ndarray, pd.Series],
         units: str = "CFS",
         data_type: str = "INST-VAL",
         dss_version: Optional[int] = None,
