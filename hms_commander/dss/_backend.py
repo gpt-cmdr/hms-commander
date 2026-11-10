@@ -28,12 +28,15 @@ its extension) cannot break the Java backend.
 
 from __future__ import annotations
 
+import contextvars
 import importlib
+import inspect
 import logging
 import os
 import threading
 from collections import Counter, deque
 from collections.abc import Mapping
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
@@ -285,6 +288,157 @@ def require_native_gridded_import():
     return importlib.import_module(ENGINE_MODULE + ".gridded")
 
 
+def require_native_feature(name: str, what: str):
+    """The engine advertising ``name``, or ``DssCapabilityError`` (never Java).
+
+    ``what`` names the operation in the message. ``ImportError`` without the engine.
+    A capability check, not a version pin.
+    """
+    dc = import_native()
+    if name not in engine_features():
+        raise DssCapabilityError(
+            f"The installed ras-commander-fast-dss does not provide {what} "
+            f"(feature {name!r} is not in its FEATURES). Upgrade the engine "
+            "('pip install -U \"ras-commander-fast-dss>=0.1.1,<0.2\"')."
+        )
+    return dc
+
+
+def require_engine_function(name: str, feature: Optional[str] = None):
+    """``ras_commander_fast_dss.<name>``, or ``DssCapabilityError`` when the installed
+    engine has no such function or does not advertise ``feature``."""
+    dc = require_native_feature(feature, name) if feature else import_native()
+    function = getattr(dc, name, None)
+    if not callable(function):
+        raise DssCapabilityError(
+            f"The installed ras-commander-fast-dss has no {name}. Upgrade the engine "
+            "('pip install -U \"ras-commander-fast-dss>=0.1.1,<0.2\"')."
+        )
+    return function
+
+
+#: Engine FEATURES flags behind the engine-only wrappers.
+NATIVE_REPAIR_FEATURE = "repair_copy_out"
+NATIVE_PROFILE_WRITE_FEATURE = "write_profile"
+NATIVE_LOCATION_WRITE_FEATURE = "write_location"
+#: Engine FEATURES flag for the writers' ``sync=`` option.
+NATIVE_SYNC_FEATURE = "write_sync_policy"
+
+#: The ``sync=`` value a public writer was called with. ``None`` means the caller
+#: stated nothing and the engine's own default applies: hms-commander never names
+#: that default, because the engine may change it between releases.
+_WRITE_SYNC: contextvars.ContextVar = contextvars.ContextVar("hmsdss_write_sync", default=None)
+
+
+def native_sync_available() -> bool:
+    """True when the installed engine's writers take ``sync=``. Never raises."""
+    return NATIVE_SYNC_FEATURE in engine_features()
+
+
+@contextmanager
+def write_sync(sync: Any, backend: str):
+    """State ``sync`` for the native writes made inside the block.
+
+    ``None`` changes nothing, so a public writer called from inside another keeps the
+    outer caller's value. Under ``native`` a stated value needs an engine with
+    ``NATIVE_SYNC_FEATURE`` (``DssCapabilityError`` before any file is touched). The
+    Java writers have no such option: under ``java`` the value is not used. Under
+    ``shadow`` it reaches only the native repeat on the temporary copy.
+    """
+    if sync is None:
+        yield
+        return
+    if backend == "native":
+        require_native_feature(NATIVE_SYNC_FEATURE, "the writers' sync= flush option")
+    elif backend == "java":
+        logger.debug("sync=%r is not used by the java DSS backend (HEC's library "
+                     "manages its own flushing)", sync)
+    token = _WRITE_SYNC.set(sync)
+    try:
+        yield
+    finally:
+        _WRITE_SYNC.reset(token)
+
+
+def native_sync_kwargs(sync: Any = None) -> Dict[str, Any]:
+    """Keyword arguments that pass a stated ``sync`` to an engine writer unchanged.
+
+    ``sync`` is the value given directly; when it is ``None`` the value stated by an
+    enclosing :func:`write_sync` block is used. Empty when nothing was stated.
+    """
+    value = sync if sync is not None else _WRITE_SYNC.get()
+    return {} if value is None else {"sync": value}
+
+
+def takes_keyword(function: Any, name: str) -> bool:
+    """True when ``function`` accepts the keyword ``name`` (or any keyword). Never raises."""
+    try:
+        parameters = inspect.signature(function).parameters
+    except (TypeError, ValueError):
+        return True
+    return name in parameters or any(
+        p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values()
+    )
+
+
+def engine_sync_kwargs(function: Any, sync: Any, what: str) -> Dict[str, Any]:
+    """``{"sync": sync}`` for an engine function that takes it; empty when unstated.
+
+    ``DssCapabilityError`` when ``sync`` is stated and the installed engine's function
+    has no such option (a capability check on the function itself).
+    """
+    if sync is None:
+        return {}
+    if not takes_keyword(function, "sync"):
+        raise DssCapabilityError(
+            f"The installed ras-commander-fast-dss {what} takes no sync= option; omit "
+            "sync, or upgrade the engine."
+        )
+    return {"sync": sync}
+
+
+#: ``HmsDssGrid`` engine tool -> the FEATURES flag it needs.
+GRIDDED_FEATURES = {
+    "import_gridded": "gridded_import",
+    "import_arrays": "gridded_import",
+    "list_variables": "gridded_import",
+    "import_zarr": "gridded_zarr",
+    "read_zarr": "gridded_zarr",
+    "zarr_variables": "gridded_zarr",
+    "shift_times": "gridded_time_tools",
+    "resample_times": "gridded_time_tools",
+    "time_steps": "gridded_time_tools",
+    "series_info": "gridded_time_tools",
+    "read_window": "gridded_time_tools",
+    "read_nearest": "gridded_time_tools",
+    "read_min_max": "gridded_time_tools",
+    "calculate": "grid_tools",
+    "calculate_raster": "grid_tools",
+    "sanitize": "grid_tools",
+    "clip": "grid_tools",
+    "normalize": "grid_tools",
+    "grid_to_point": "grid_to_point",
+    "zonal_statistics": "grid_to_point",
+    "zone_masks": "grid_to_point",
+}
+
+
+def require_gridded(method: str):
+    """The engine's ``gridded`` function behind ``HmsDssGrid.<method>``.
+
+    ``ImportError`` without the engine; ``DssCapabilityError`` when the installed
+    engine does not advertise the feature or has no such function.
+    """
+    require_native_feature(GRIDDED_FEATURES[method], f"gridded.{method}")
+    module = importlib.import_module(ENGINE_MODULE + ".gridded")
+    function = getattr(module, method, None)
+    if not callable(function):
+        raise DssCapabilityError(
+            f"The installed ras-commander-fast-dss has no gridded.{method}; upgrade the engine."
+        )
+    return function
+
+
 #: Backend support per public DSS operation. Values: "yes"; "gated" (needs a
 #: qualified or writer-capable engine); "java" (runs on Java whatever the backend).
 CAPABILITIES = (
@@ -316,6 +470,25 @@ CAPABILITIES = (
     ("write_grid_timeseries(target_crs='SHG')", "gated", "gated", "gated",
      "warped to SHG by the engine's gridded importer whatever the backend; needs the "
      "'gridded_import' engine feature; no Java route and no shadow comparison"),
+    ("repair", "gated", "gated", "gated",
+     "DSS7 copy-out recovery into a new file; runs on the engine whatever the backend; "
+     "needs the 'repair_copy_out' engine feature"),
+    ("read_paired_data_all", "gated", "gated", "gated",
+     "every curve, labels and stored precision; runs on the engine whatever the backend"),
+    ("read_profile", "gated", "gated", "gated",
+     "DSS7 regular profiles (102/107); runs on the engine whatever the backend"),
+    ("write_profile", "gated", "gated", "gated",
+     "runs on the engine whatever the backend; needs 'write_profile'"),
+    ("read_location", "gated", "gated", "gated",
+     "DSS7 location records; runs on the engine whatever the backend"),
+    ("read_associated_location", "gated", "gated", "gated",
+     "location of a data record; runs on the engine whatever the backend"),
+    ("write_location", "gated", "gated", "gated",
+     "runs on the engine whatever the backend; needs 'write_location'"),
+    ("HmsDssGrid engine tools", "gated", "gated", "gated",
+     "import_gridded, import_arrays, import_zarr, calculate, calculate_raster, sanitize, "
+     "clip, normalize, shift_times, resample_times, grid_to_point and their readers; run "
+     "on the engine whatever the backend (HmsDssGrid.get_features())"),
 )
 
 

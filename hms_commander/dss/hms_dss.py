@@ -152,7 +152,8 @@ class HmsDss:
             and ``note``. Values: ``yes``; ``gated`` (needs a qualified or
             writer-capable engine). ``attrs`` report ``requested_backend``,
             ``native_available``, ``native_writes_available``,
-            ``native_grid_qualified``, ``native_gridded_import_available`` and
+            ``native_grid_qualified``, ``native_gridded_import_available``,
+            ``native_write_sync_available`` (the writers take ``sync=``) and
             ``engine_features``.
         """
         df = pd.DataFrame(list(_backend.CAPABILITIES),
@@ -167,6 +168,7 @@ class HmsDss:
             native_writes_available=_backend.native_writes_available(),
             native_grid_qualified=_backend.native_grid_qualified(),
             native_gridded_import_available=_backend.native_gridded_import_available(),
+            native_write_sync_available=_backend.native_sync_available(),
             engine_features=sorted(_backend.engine_features()),
         )
         return df
@@ -843,6 +845,7 @@ class HmsDss:
         y_precision: Optional[int] = None,
         value_type: str = "auto",
         dss_version: Optional[int] = None,
+        sync: Optional[Any] = None,
         x_label: Optional[str] = None,
         y_label: Optional[str] = None,
     ) -> bool:
@@ -853,7 +856,9 @@ class HmsDss:
         relationships. The arguments are those of
         ``ras_commander.RasDss.write_paired_data``; ``DssCore.write_paired_data`` documents
         each one, the backends and the refusals. A failed write raises. ``x_label`` and
-        ``y_label`` are the earlier names of ``x_type`` and ``y_type``.
+        ``y_label`` are the earlier names of ``x_type`` and ``y_type``. ``sync`` is the
+        native writer's flush policy, passed to the engine unchanged; ``None`` (default)
+        leaves the installed engine's own default (see ``DssCore.write_timeseries``).
 
         Returns:
             True when the record is written and in the file catalog
@@ -871,13 +876,16 @@ class HmsDss:
             dss_file, pathname, x_values, y_values, x_units, y_units, x_type, y_type, labels,
             create_if_missing, x_precision=x_precision, y_precision=y_precision,
             value_type=value_type, dss_version=dss_version, x_label=x_label, y_label=y_label,
+            sync=sync,
         )
 
     @staticmethod
     @log_call
     def write_multiple_paired_data(
         dss_file: Union[str, Path],
-        paired_data_records: List[Dict]
+        paired_data_records: List[Dict],
+        *,
+        sync: Optional[Any] = None,
     ) -> Dict[str, bool]:
         """
         Write multiple paired data records to DSS file.
@@ -930,7 +938,7 @@ class HmsDss:
             record['x_values'] = np.asarray(record['x_values'])
             record['y_values'] = np.asarray(record['y_values'])
 
-        return DssCore.write_multiple_paired_data(dss_file, paired_data_records)
+        return DssCore.write_multiple_paired_data(dss_file, paired_data_records, sync=sync)
 
     @staticmethod
     @log_call
@@ -938,7 +946,9 @@ class HmsDss:
         dss_file: Union[str, Path],
         temporal_distributions: Dict[str, 'pd.DataFrame'],
         region_code: str,
-        duration_hours: int = 24
+        duration_hours: int = 24,
+        *,
+        sync: Optional[Any] = None,
     ) -> Dict[str, bool]:
         """
         Import Atlas 14 temporal distributions to DSS file.
@@ -963,6 +973,10 @@ class HmsDss:
                 - Values: cumulative percentages (0-100)
             region_code: Atlas 14 region code (e.g., "TX_R3")
             duration_hours: Storm duration in hours (default: 24)
+            sync: Flush policy of the native writer, passed to
+                ras-commander-fast-dss unchanged; ``None`` (default) leaves the
+                installed engine's own default. The ``java`` backend does not use
+                it. See ``DssCore.write_timeseries``.
 
         Returns:
             Dict mapping pathname to success status
@@ -1040,7 +1054,7 @@ class HmsDss:
                 })
 
         logger.info(f"Importing {len(records)} temporal distributions to {dss_file}")
-        return DssCore.write_multiple_paired_data(dss_file, records)
+        return DssCore.write_multiple_paired_data(dss_file, records, sync=sync)
 
     @staticmethod
     @log_call
@@ -1156,6 +1170,8 @@ class HmsDss:
         units: str = "CFS",
         data_type: str = "INST-VAL",
         dss_version: Optional[int] = None,
+        *,
+        sync: Optional[Any] = None,
     ) -> Path:
         """
         Write a regular-interval time series (for example an observed flow gage).
@@ -1171,6 +1187,10 @@ class HmsDss:
             units: HEC units (default ``CFS``)
             data_type: ``INST-VAL`` (default), ``PER-AVER``, ``PER-CUM`` or ``INST-CUM``
             dss_version: 6 or 7 for a new file; for an existing file it must match
+            sync: Flush policy of the native writer, passed to
+                ras-commander-fast-dss unchanged; ``None`` (default) leaves the
+                installed engine's own default. The ``java`` backend does not use
+                it. See ``DssCore.write_timeseries``.
 
         Returns:
             Path to the DSS file
@@ -1185,4 +1205,332 @@ class HmsDss:
             ...                         times, [10.0, 12.5, 11.0])
         """
         return DssCore.write_timeseries(dss_file, pathname, times, values, units,
-                                        data_type, dss_version)
+                                        data_type, dss_version, sync=sync)
+
+    # ------------------------------------------------------------------
+    # Engine-only operations (ras-commander-fast-dss on every backend)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _existing_file(dss_file: Union[str, Path]) -> Path:
+        dss_path = Path(dss_file)
+        if not dss_path.exists():
+            raise FileNotFoundError(f"DSS file not found: {dss_path}")
+        if not dss_path.is_file():
+            raise IsADirectoryError(f"DSS path is not a file: {dss_path}")
+        return dss_path.resolve()
+
+    @staticmethod
+    @log_call
+    def repair(src: Union[str, Path], dest: Union[str, Path]) -> Dict[str, Any]:
+        """
+        Copy the readable records of a damaged DSS7 file into a new DSS7 file.
+
+        A thin wrapper around ``ras_commander_fast_dss.repair``. It always runs on the
+        native engine, whatever ``HmsDss.backend`` is; there is no Java equivalent.
+        ``src`` is opened read-only and never written. The engine copies each readable
+        record its discovery procedure reaches, reads the new file back, verifies
+        every copied record against its source, and then publishes ``dest``.
+
+        **A partial recovery is still published.** Always check ``result["complete"]``
+        and ``result["not_copied"]``. ``complete`` covers only what the discovery
+        procedure reached; it is not an integrity certificate for ``src``. A warning
+        is logged when ``complete`` is False.
+
+        Args:
+            src: Existing DSS7 file to recover from
+            dest: New file to create. It must not exist; nothing is replaced.
+
+        Returns:
+            The engine's result dict unchanged, including ``records_copied``,
+            ``not_copied`` (``(pathname, reason)`` pairs), ``ledger``,
+            ``src_listed_records``, ``src_interrupted_write`` and ``complete``
+
+        Raises:
+            FileNotFoundError: If ``src`` does not exist
+            FileExistsError: If ``dest`` already exists
+            ImportError: If ras-commander-fast-dss is not installed
+            DssCapabilityError: If the installed engine has no ``repair``
+
+        Example:
+            >>> result = HmsDss.repair("damaged.dss", "recovered.dss")
+            >>> if not result["complete"]:
+            ...     for pathname, reason in result["not_copied"]:
+            ...         print(pathname, reason)
+        """
+        src_path = HmsDss._existing_file(src)
+        dest_path = Path(dest)
+        if dest_path.exists():
+            raise FileExistsError(f"repair destination already exists: {dest_path}")
+        function = _backend.require_engine_function("repair", _backend.NATIVE_REPAIR_FEATURE)
+        result = dict(function(src_path, dest_path))
+        if not result.get("complete", False):
+            logger.warning(
+                "DSS repair of %s into %s is incomplete: %d record(s) not copied; "
+                "check result['not_copied']",
+                src_path, dest_path, len(result.get("not_copied") or ()),
+            )
+        return result
+
+    @staticmethod
+    @log_call
+    def read_paired_data_all(
+        dss_file: Union[str, Path],
+        pathname: str,
+        *,
+        ignore_d_part: bool = True,
+        dtype: str = "stored",
+    ) -> Any:
+        """
+        Read one paired-data record with every curve.
+
+        ``read_paired_data`` returns the HMS dict, which holds curve 0 only. This
+        method is a thin wrapper around ``ras_commander_fast_dss.read_paired_data``
+        and returns its ``PairedData`` unchanged. It always runs on the native
+        engine, whatever ``HmsDss.backend`` is.
+
+        Args:
+            dss_file: Existing DSS file. It is never created or modified.
+            pathname: Pathname of the paired-data record
+            ignore_d_part: Match a record whose D part differs when the exact
+                pathname is not found (default True)
+            dtype: ``"stored"`` (default) keeps the stored width; ``"float64"``
+                converts
+
+        Returns:
+            The engine's ``PairedData``: ``ordinates``, ``values`` (shape
+            ``(n_curves, n_ordinates)``), ``n_curves``, ``curve(i)``, ``labels``, ``units_independent``,
+            ``units_dependent``, ``type_independent``, ``type_dependent``,
+            ``x_precision``, ``y_precision`` and ``to_dataframe()``
+
+        Raises:
+            FileNotFoundError: If ``dss_file`` does not exist
+            ImportError: If ras-commander-fast-dss is not installed
+            ValueError: No record for ``pathname`` (the engine's
+                ``DssPathnameNotFoundError``)
+            RuntimeError: The record is not paired data (the engine's
+                ``DssUnsupportedRecordError``)
+
+        Example:
+            >>> pd_all = HmsDss.read_paired_data_all("tables.dss", "//DAM/ELEV-STOR-AREA///TABLE/")
+            >>> frame = pd_all.to_dataframe()      # index: ordinates; one column per curve
+        """
+        dss_path = HmsDss._existing_file(dss_file)
+        function = _backend.require_engine_function("read_paired_data")
+        return function(dss_path, pathname, ignore_d_part=ignore_d_part, dtype=dtype)
+
+    @staticmethod
+    @log_call
+    def read_profile(
+        dss_file: Union[str, Path],
+        pathname: str,
+        start_date: Optional[Any] = None,
+        end_date: Optional[Any] = None,
+        *,
+        raw: bool = False,
+        trim_missing: bool = True,
+    ) -> Any:
+        """
+        Read a regular-interval profile dataset (DSS7 record types 102 and 107).
+
+        A thin wrapper around ``ras_commander_fast_dss.read_profile``; it always runs
+        on the native engine, whatever ``HmsDss.backend`` is.
+
+        Args:
+            dss_file: Existing DSS file. It is never created or modified.
+            pathname: ``/A/B/C/D/E/F/`` with any D part: the whole dataset is read
+            start_date: Optional inclusive window start
+            end_date: Optional inclusive window end
+            raw: Keep HEC missing markers as stored instead of ``NaN``
+            trim_missing: Remove leading and trailing rows whose every depth is
+                missing (default)
+
+        Returns:
+            The engine's ``Profile`` unchanged: ``times``, ``depths``, ``values``
+            (``n_times`` by ``n_depths``), ``depth_units``, ``value_units``,
+            ``quality`` and ``to_dataframe()``
+
+        Raises:
+            FileNotFoundError: If ``dss_file`` does not exist
+            ImportError: If ras-commander-fast-dss is not installed
+            ValueError: No data for ``pathname``
+            RuntimeError: The record is not a regular profile (a scalar time series,
+                an irregular profile 112/117, any DSS6 record)
+
+        Example:
+            >>> profile = HmsDss.read_profile("lake.dss", "/LAKE/DAM/TEMP-WATER//1Day/OBS/")
+            >>> frame = profile.to_dataframe()
+        """
+        dss_path = HmsDss._existing_file(dss_file)
+        function = _backend.require_engine_function("read_profile")
+        return function(dss_path, pathname, start_date, end_date,
+                        raw=raw, trim_missing=trim_missing)
+
+    @staticmethod
+    @log_call
+    def write_profile(
+        dss_file: Union[str, Path],
+        pathname: str,
+        depths: Any,
+        values: Any,
+        *,
+        start: Any,
+        depth_units: str,
+        value_units: str,
+        data_type: str,
+        sync: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """
+        Store a regular-interval profile (values by time and depth) in a DSS7 file.
+
+        A thin wrapper around ``ras_commander_fast_dss.write_profile``; it always runs
+        on the native engine, whatever ``HmsDss.backend`` is. Profiles exist only in
+        DSS7.
+
+        Args:
+            dss_file: DSS7 file. A missing file is created as DSS7, and removed
+                again if the write fails.
+            pathname: ``/A/B/C/D/E/F/``; E is a standard regular interval and D is
+                replaced for each block
+            depths: The depth axis, 1-D, ``n_depths`` values
+            values: 2-D, shape ``(n_times, n_depths)``. Never flattened or reshaped.
+            start: Time of the first row; the rows follow at the E-part interval
+            depth_units: Units of the depth axis
+            value_units: Units of the values
+            data_type: HEC data type (``INST-VAL``, ``PER-AVER``, ...)
+            sync: Flush policy, passed to the engine unchanged; ``None`` (default)
+                leaves the installed engine's own default
+            **kwargs: Other ``ras_commander_fast_dss.write_profile`` options, passed
+                unchanged (``quality``, ``time_zone``, ``precision``,
+                ``value_type``, ``raw``, ``allow_undetectable_readers``)
+
+        Returns:
+            The engine's report dict unchanged
+
+        Raises:
+            ValueError: An existing file is not DSS7, or the engine refuses the input
+            ImportError: If ras-commander-fast-dss is not installed
+            DssCapabilityError: The installed engine does not advertise
+                ``write_profile``
+
+        Example:
+            >>> HmsDss.write_profile(
+            ...     "lake.dss", "/LAKE/DAM/TEMP-WATER//1Day/OBS/",
+            ...     depths=[0.0, 5.0, 10.0], values=temperatures,
+            ...     start="01JAN2024 2400", depth_units="ft", value_units="DEG F",
+            ...     data_type="INST-VAL",
+            ... )
+        """
+        function = _backend.require_engine_function(
+            "write_profile", _backend.NATIVE_PROFILE_WRITE_FEATURE)
+        dc = _backend.require_native_writes()
+        target, version, existed, created = DssCore._native_write_target(dss_file, 7)
+        with DssCore._native_new_file(dc, target, version, existed, created):
+            return function(
+                str(target), pathname, depths, values, start=start,
+                depth_units=depth_units, value_units=value_units, data_type=data_type,
+                **_backend.native_sync_kwargs(sync), **kwargs,
+            )
+
+    @staticmethod
+    @log_call
+    def read_location(dss_file: Union[str, Path], pathname: str) -> Any:
+        """
+        Read a DSS7 location record (``/A/B/Location Info////``).
+
+        A thin wrapper around ``ras_commander_fast_dss.read_location``; it always runs
+        on the native engine. Use ``read_associated_location`` for the location of a
+        data record.
+
+        Args:
+            dss_file: Existing DSS7 file. It is never created or modified.
+            pathname: Pathname of the location record
+
+        Returns:
+            The engine's ``Location`` unchanged (``x``, ``y``, ``z``, coordinate
+            system, units and datum codes and names, ``time_zone``,
+            ``supplemental``; ``to_dict()``)
+
+        Raises:
+            FileNotFoundError: If ``dss_file`` does not exist
+            ImportError: If ras-commander-fast-dss is not installed
+            ValueError: The record does not exist
+            RuntimeError: The record is not a location record, or the file is DSS6
+        """
+        dss_path = HmsDss._existing_file(dss_file)
+        return _backend.require_engine_function("read_location")(dss_path, pathname)
+
+    @staticmethod
+    @log_call
+    def read_associated_location(dss_file: Union[str, Path], pathname: str) -> Optional[Any]:
+        """
+        Return the location stored for a data record, or None when there is none.
+
+        A thin wrapper around ``ras_commander_fast_dss.read_associated_location``; it
+        always runs on the native engine. DSS7: the location record built from the A
+        and B parts of ``pathname``. DSS6: the coordinates in the time-series
+        record's own header.
+
+        Args:
+            dss_file: Existing DSS file. It is never created or modified.
+            pathname: Pathname of the data record (any D part)
+
+        Returns:
+            The engine's ``Location``, or None
+
+        Raises:
+            FileNotFoundError: If ``dss_file`` does not exist
+            ImportError: If ras-commander-fast-dss is not installed
+        """
+        dss_path = HmsDss._existing_file(dss_file)
+        return _backend.require_engine_function("read_associated_location")(dss_path, pathname)
+
+    @staticmethod
+    @log_call
+    def write_location(
+        dss_file: Union[str, Path],
+        pathname: str,
+        *,
+        sync: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """
+        Store location data (coordinates, datums, supplemental text) for a pathname.
+
+        A thin wrapper around ``ras_commander_fast_dss.write_location``; it always runs
+        on the native engine, whatever ``HmsDss.backend`` is. DSS7 stores the record
+        ``/A/B/Location Info////``. DSS6 rewrites the header of every block of the
+        time series named by ``pathname``, which must exist.
+
+        Args:
+            dss_file: Existing DSS6 or DSS7 file. This method does not create files.
+            pathname: DSS7: any pathname of the location (A and B are used). DSS6: a
+                time-series pathname.
+            sync: Flush policy, passed to the engine unchanged; ``None`` (default)
+                leaves the installed engine's own default
+            **kwargs: The ``ras_commander_fast_dss.write_location`` fields, passed
+                unchanged: ``x``, ``y``, ``z``, ``coordinate_system``,
+                ``coordinate_id``, ``horizontal_units``, ``horizontal_datum``,
+                ``vertical_units``, ``vertical_datum``, ``time_zone`` (DSS7),
+                ``supplemental``, ``keep_existing``. Supplemental text is
+                informational: a datum named in it is never applied to values.
+
+        Returns:
+            The engine's report dict unchanged
+
+        Raises:
+            FileNotFoundError: If ``dss_file`` does not exist
+            ImportError: If ras-commander-fast-dss is not installed
+            DssCapabilityError: The installed engine does not advertise
+                ``write_location``
+
+        Example:
+            >>> HmsDss.write_location("gages.dss", "//GAGE 1/FLOW//1HOUR/OBS/",
+            ...                       x=-90.07, y=29.95, z=3.2)
+        """
+        dss_path = HmsDss._existing_file(dss_file)
+        function = _backend.require_engine_function(
+            "write_location", _backend.NATIVE_LOCATION_WRITE_FEATURE)
+        return function(str(dss_path), pathname,
+                        **_backend.native_sync_kwargs(sync), **kwargs)

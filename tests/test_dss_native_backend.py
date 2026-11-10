@@ -662,12 +662,12 @@ def test_native_paired_data_refuses_long_dss6_type_before_writing(engine, java, 
 
 
 def test_write_paired_data_has_the_rasdss_arguments():
-    # ras_commander.RasDss.write_paired_data, plus the earlier HMS names at the end.
+    # ras_commander.RasDss.write_paired_data (sync included), plus the earlier HMS names at the end.
     import inspect
 
     canonical = ["dss_file", "pathname", "x_values", "y_values", "x_units", "y_units", "x_type",
                  "y_type", "labels", "create_if_missing", "x_precision", "y_precision",
-                 "value_type", "dss_version", "x_label", "y_label"]
+                 "value_type", "dss_version", "sync", "x_label", "y_label"]
     for method in (DssCore.write_paired_data, HmsDss.write_paired_data):
         parameters = inspect.signature(method).parameters
         assert list(parameters) == canonical

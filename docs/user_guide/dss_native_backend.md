@@ -94,7 +94,7 @@ pyjnius; `java` needs pyjnius; `shadow` needs the engine (without it, shadow run
 
 `HmsDss.get_capabilities()` returns this table as a DataFrame, with the installed engine's
 state in `attrs` (`native_available`, `native_writes_available`, `native_grid_qualified`,
-`native_gridded_import_available`, `engine_features`).
+`native_gridded_import_available`, `native_write_sync_available`, `engine_features`).
 
 | Operation | Native | Notes |
 |---|---|---|
@@ -109,6 +109,10 @@ state in `attrs` (`native_available`, `native_writes_available`, `native_grid_qu
 | `write_multiple_paired_data`, `import_atlas14_temporal` | gated | One curve per record, float32 (PD) records, a result per record |
 | `HmsDssGrid.write_grid_timeseries` | gated | All four data types; PER-CUM and PER-AVER grids need a period (see below) |
 | `write_grid_timeseries(target_crs="SHG")`, `HmsAorc.convert_to_dss_grid(target_crs="SHG")` | gated, on every backend | Needs the engine's `gridded_import` feature; no Java route (see below) |
+| `HmsDss.repair` | gated, on every backend | DSS7 copy-out recovery; needs `repair_copy_out` (see [Damaged files](#damaged-files-and-write-durability)) |
+| `HmsDss.read_paired_data_all` | gated, on every backend | Every curve, labels and stored precision (see [Engine-only operations](#engine-only-operations)) |
+| `HmsDss.read_profile`, `write_profile`, `read_location`, `read_associated_location`, `write_location` | gated, on every backend | Writers need `write_profile` / `write_location` |
+| `HmsDssGrid` engine tools (`import_gridded`, `calculate`, `grid_to_point`, ...) | gated, on every backend | The engine's `gridded` functions; `HmsDssGrid.get_features()` |
 
 "Gated" operations check the installed engine's capabilities, not its version. Writes need
 the complete writer API (`create`, `write_timeseries`, `write_paired_data`, `write_grid`,
@@ -162,42 +166,134 @@ differences remain:
 - **Grids.** See [Grid periods and AORC stamps](#grid-periods-and-aorc-stamps). Both
   backends store the same D and E parts.
 
+## Engine-only operations
+
+Some operations have no Java route in hms-commander. They run on
+ras-commander-fast-dss whatever `HmsDss.backend` is, pass their arguments to the engine
+and return its result unchanged. Each raises `ImportError` when the package is missing
+and `DssCapabilityError` when the installed version does not provide the operation.
+`help(ras_commander_fast_dss.<name>)` documents every option.
+
+### Every curve of a paired-data record
+
+`HmsDss.read_paired_data` returns the HMS dict, which holds the first curve.
+`HmsDss.read_paired_data_all` returns the engine's `PairedData` with every curve:
+
+```python
+from hms_commander import HmsDss
+
+table = HmsDss.read_paired_data_all("tables.dss", "//DAM/ELEV-STOR-AREA///TABLE/")
+print(table.n_curves, table.labels)      # 2 ['STORAGE', 'AREA']
+storage = table.curve(0)                 # table.values has shape (n_curves, n_ordinates)
+frame = table.to_dataframe()             # index: ordinates; one column per curve
+```
+
+### Profiles and locations
+
+```python
+# A regular-interval profile: values by time and depth (DSS7 record types 102/107).
+HmsDss.write_profile(
+    "lake.dss", "/LAKE/DAM/TEMP-WATER//1Day/OBS/",
+    depths=[0.0, 5.0, 10.0], values=temperatures,       # shape (n_times, n_depths)
+    start="01JAN2024 2400", depth_units="ft", value_units="DEG F", data_type="INST-VAL",
+)
+profile = HmsDss.read_profile("lake.dss", "/LAKE/DAM/TEMP-WATER//1Day/OBS/")
+frame = profile.to_dataframe()                           # rows are times, columns are depths
+
+# Location data: a DSS7 location record, or the header of a DSS6 time series.
+HmsDss.write_location("gages.dss", "//GAGE 1/FLOW//1HOUR/OBS/", x=-90.07, y=29.95, z=3.2)
+location = HmsDss.read_associated_location("gages.dss", "//GAGE 1/FLOW//1HOUR/OBS/")
+print(location.coordinates)
+```
+
+Profiles exist only in DSS7; irregular profiles (112/117) are not read or written.
+`write_location` needs an existing file. Supplemental location text is informational: a
+datum named in it is never applied to values.
+
+### Gridded import and grid tools
+
+`HmsDssGrid` wraps the engine's `gridded` namespace: importing gridded source files into
+DSS grid records, and processing DSS grids, without Java, HEC-Vortex or GDAL.
+
+| Method | What it does |
+|---|---|
+| `import_gridded`, `import_arrays`, `import_zarr` | GRIB2, NetCDF, HDF5, GeoTIFF, ASCII grid, a local Zarr v2 store, or arrays, to DSS grids |
+| `list_variables`, `zarr_variables`, `read_zarr` | What a source offers; a window of a Zarr variable |
+| `calculate`, `calculate_raster`, `sanitize`, `clip`, `normalize` | Grid calculator, raster calculator, sanitizer, clipper, normalizer |
+| `shift_times`, `resample_times`, `time_steps` | Time shift and time-step resampling |
+| `series_info`, `read_window`, `read_nearest`, `read_min_max` | Read a grid series without writing |
+| `grid_to_point`, `zonal_statistics`, `zone_masks` | Zonal statistics as DSS time series, or as a table |
+| `get_features` | Which of these groups the installed engine provides |
+
+```python
+from hms_commander import HmsDssGrid
+
+result = HmsDssGrid.import_gridded(
+    ["MRMS_MultiSensor_QPE_01H_Pass2_00.00_20240926-220000.grib2"],
+    "storm.dss",
+    product="mrms_qpe",
+    envelope=(-646000, 1922000, -444000, 2124000),
+    parts={"A": "SHG", "B": "MRMS_QPE", "F": "PASS2"},
+)
+HmsDssGrid.grid_to_point("storm.dss", "subbasins.geojson", "NAME", "subbasin_average.dss",
+                         parts={"A": "SHG", "F": "PASS2"})
+```
+
+The engine plans a run before it writes, so a refused run leaves the output untouched.
+Its documentation lists the supported source layouts, projections and resampling
+methods, and where its records differ from HEC-Vortex by design. Import `units=`
+relabels a record; it does not convert values. The importer's `cell_size` is in metres.
+`HmsDssGrid.write_grid_timeseries(target_crs="SHG")` and
+`HmsAorc.convert_to_dss_grid(target_crs="SHG")` remain the routes for AORC arrays on the
+SHG lattice (below).
+
 ## Damaged files and write durability
 
-Engine 0.1.1 adds two tools that hms-commander does not wrap. Call them from
-`ras_commander_fast_dss` directly; the `HmsDss` writers keep the engine defaults.
-
-- **Crash recovery.** 0.1.1 fixes DSS7 crash recovery in the native writers. The guarantee
-  covers a writing process that dies (it is killed or crashes) part way through a write: the
-  next native write reconciles the interrupted write when the file was consistent before it.
-  No claim is made for power loss or an operating-system crash, and a normal write does not
-  repair damage it did not cause. A DSS7 file that a 0.1.0 native write left with a catalog
-  *hole* after an interrupted write stays as it is; copy it with `repair` (engine
-  changelog, F1).
-- **`repair(src, dest)`** copies the readable records of a damaged DSS7 file into a new DSS7
-  file. `src` is opened read-only and never written, and an existing `dest` raises
-  `FileExistsError`. It copies only the records that its documented discovery procedure
-  reaches, and it publishes `dest` even when some records could not be copied. Always check
-  `complete` and `not_copied` in the result. A complete copy is not an integrity
-  certificate for `src`. Check `"repair_copy_out" in ras_commander_fast_dss.FEATURES`
-  first.
+- **Crash recovery.** Engine 0.1.1 fixes DSS7 crash recovery in the native writers. The
+  guarantee covers a writing process that dies (it is killed or crashes) part way through a
+  write: the next native write reconciles the interrupted write when the file was
+  consistent before it. No claim is made for power loss or an operating-system crash, and
+  a normal write does not repair damage it did not cause. A DSS7 file that a 0.1.0 native
+  write left with a catalog *hole* after an interrupted write stays as it is; copy it with
+  `repair` (engine changelog, F1).
+- **`HmsDss.repair(src, dest)`** copies the readable records of a damaged DSS7 file into a
+  new DSS7 file, on the engine, whatever the backend. `src` is opened read-only and never
+  written, and an existing `dest` raises `FileExistsError`. It copies only the records that
+  the engine's documented discovery procedure reaches, and it publishes `dest` even when
+  some records could not be copied. Always check `complete` and `not_copied` in the
+  result; a warning is logged when `complete` is false. A complete copy is not an
+  integrity certificate for `src`. An engine without the `repair_copy_out` feature raises
+  `DssCapabilityError`.
 
     ```python
-    import ras_commander_fast_dss as fdss
+    from hms_commander import HmsDss
 
-    if "repair_copy_out" in fdss.FEATURES:
-        report = fdss.repair("damaged.dss", "recovered.dss")
-        if not report["complete"]:
-            print(report["not_copied"])
+    report = HmsDss.repair("damaged.dss", "recovered.dss")
+    if not report["complete"]:
+        print(report["not_copied"])
     ```
 
-- **`sync=False`.** The engine writers (`write_timeseries`, `write_paired_data`,
-  `write_grid`) take an opt-in `sync=False` (feature `write_sync_policy`) that skips the
-  `fsync` calls of the default `sync=True`. Writes still reach the operating system in the
-  same order, so the process-death behavior is unchanged, but nothing is forced to storage.
-  The engine makes no power-loss claim for either setting and suggests `sync=False` for
-  scratch or regenerable files. The `HmsDss` and `HmsDssGrid` writers do not pass it and
-  always use the default.
+- **`sync=` (flush policy).** The engine's writers accept `sync=`, and the hms-commander
+  writers pass it through unchanged: `HmsDss`/`DssCore.write_timeseries`,
+  `write_paired_data`, `write_multiple_paired_data`, `HmsDss.import_atlas14_temporal`,
+  `write_profile`, `write_location`, `HmsDssGrid.write_grid_timeseries` (both routes) and
+  the `HmsDssGrid` engine tools that write. Left unstated (`sync=None`), hms-commander
+  sends nothing and the installed engine's own default applies; that default belongs to
+  the engine and can change between its releases, so state a value when a workflow
+  depends on one. In ras-commander-fast-dss 0.1.1, `True` keeps the `fsync` calls at the
+  transaction's flush points and `False` skips them: writes still reach the operating
+  system in the same order, so the process-death behavior is unchanged, but nothing is
+  forced to storage. No value is a power-loss guarantee. Use `False` only for scratch or
+  regenerable files. The `java` backend does not use `sync`; `shadow` applies it to the
+  native repeat. Stating it under `native` with an engine that lacks the
+  `write_sync_policy` feature raises `DssCapabilityError`
+  (`HmsDss.get_capabilities().attrs["native_write_sync_available"]`).
+
+    ```python
+    HmsDss.backend = "native"
+    HmsDss.write_timeseries("scratch.dss", "//GAGE 1/FLOW//1HOUR/OBS/", times, flows,
+                            sync=False)
+    ```
 
 ## Grid periods and AORC stamps
 

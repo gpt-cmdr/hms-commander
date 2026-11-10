@@ -62,7 +62,7 @@ References:
 """
 
 from pathlib import Path
-from typing import Union, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 from datetime import datetime
 import logging
 
@@ -72,6 +72,19 @@ from . import _backend
 from .core import DssCore
 
 logger = get_logger(__name__)
+
+PathLike = Union[str, Path]
+
+
+def _abs(value: PathLike) -> str:
+    """Absolute path string for the engine."""
+    return str(Path(value).resolve())
+
+
+def _abs_many(value: Union[PathLike, Sequence[PathLike]]) -> Union[str, List[str]]:
+    if isinstance(value, (str, Path)):
+        return _abs(value)
+    return [_abs(item) for item in value]
 
 
 def _check_dss_dependencies():
@@ -104,6 +117,26 @@ class HmsDssGrid:
     mirroring the implementation pattern found in HEC-Vortex.
 
     All methods are static - do not instantiate this class.
+
+    Engine tools:
+        ``import_gridded``, ``import_arrays``, ``import_zarr``, ``list_variables``,
+        ``zarr_variables``, ``read_zarr``, ``calculate``, ``calculate_raster``,
+        ``sanitize``, ``clip``, ``normalize``, ``shift_times``, ``resample_times``,
+        ``time_steps``, ``series_info``, ``read_window``, ``read_nearest``,
+        ``read_min_max``, ``grid_to_point``, ``zonal_statistics`` and ``zone_masks``
+        are thin wrappers around the functions of the same names in
+        ``ras_commander_fast_dss.gridded``. They run on the optional
+        ras-commander-fast-dss engine whatever ``HmsDss.backend`` is (there is no
+        Java route), pass their remaining arguments to the engine unchanged and
+        return its result unchanged. They raise ``ImportError`` without the engine
+        and ``DssCapabilityError`` when the installed version does not provide the
+        operation; ``get_features()`` reports what it provides.
+        ``help(ras_commander_fast_dss.gridded.<name>)`` documents every option.
+
+    ``sync``:
+        The engine's flush policy on the methods that write, passed through
+        unchanged. ``None`` (default) states nothing, so the installed engine's own
+        default applies; that default can change between engine releases.
 
     Technical Background:
         HMS requires gridded precipitation data in DSS format with specific
@@ -167,6 +200,7 @@ class HmsDssGrid:
         cell_size: Optional[float] = None,
         resample_method: str = "bilinear",
         envelope: Optional[Sequence[float]] = None,
+        sync: Optional[Any] = None,
     ) -> Path:
         """
         Write gridded precipitation time series to DSS file.
@@ -234,6 +268,10 @@ class HmsDssGrid:
             ``(min_x, min_y, max_x, max_y)`` of the SHG grid in metres. ``None``:
             the extent of the WGS 84 cells, projected and snapped to whole cells by
             the engine. Only with ``target_crs``.
+        sync : optional
+            Flush policy of the native writer (and of the SHG warp route), passed to
+            ras-commander-fast-dss unchanged. ``None`` (default) leaves the installed
+            engine's own default. The ``java`` backend does not use it.
 
         Returns
         -------
@@ -298,6 +336,13 @@ class HmsDssGrid:
         """
         import numpy as np
 
+        if sync is not None:
+            with _backend.write_sync(sync, DssCore.get_backend()):
+                return HmsDssGrid.write_grid_timeseries(
+                    dss_file, pathname, grid_data, lat_coords, lon_coords, timestamps,
+                    units, data_type, interval_minutes, target_crs=target_crs,
+                    cell_size=cell_size, resample_method=resample_method,
+                    envelope=envelope)
         grid_data = np.asarray(grid_data)
         dss_file = Path(dss_file)
 
@@ -638,6 +683,7 @@ class HmsDssGrid:
                     cell_zero=(0.0, 0.0), units=units, data_type=str(data_type).upper(),
                     srs_definition=HmsDssGrid.WKT_WGS84, srs_name="WGS 84",
                     is_interval=True, version=version,
+                    **_backend.native_sync_kwargs(),
                 )
         logger.info(f"DSS grid write complete (native): {target} ({len(writes)} grids)")
         return Path(dss_file)
@@ -756,6 +802,7 @@ class HmsDssGrid:
             parts={"A": parts[1], "B": parts[2], "C": parts[3], "F": parts[6]},
             units=units,
             data_type=str(data_type).upper(),
+            **_backend.native_sync_kwargs(),
         )
         first = result.records[0] if result.records else {}
         logger.info(
@@ -802,6 +849,477 @@ class HmsDssGrid:
             if not np.array_equal(np.asarray(getattr(java, key)), np.asarray(getattr(native, key))):
                 diffs.append(key)
         return diffs
+
+    # ------------------------------------------------------------------
+    # Engine tools: gridded import and grid processing
+    # (ras-commander-fast-dss on every backend)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _engine_tool(method: str, *args: Any, sync: Any = None, **kwargs: Any) -> Any:
+        function = _backend.require_gridded(method)
+        kwargs.update(_backend.engine_sync_kwargs(function, sync, f"gridded.{method}"))
+        return function(*args, **kwargs)
+
+    @staticmethod
+    @log_call
+    def get_features() -> Dict[str, bool]:
+        """Report which gridded feature groups the installed engine provides.
+
+        Does not raise when ras-commander-fast-dss is missing (every value is False).
+
+        Returns:
+            ``dict`` of engine feature name to ``bool``: ``gridded_import``,
+            ``gridded_netcdf``, ``gridded_zarr``, ``gridded_accumulation_window``,
+            ``gridded_time_tools``, ``grid_tools`` and ``grid_to_point``.
+        """
+        names = sorted(set(_backend.GRIDDED_FEATURES.values())
+                       | {"gridded_netcdf", "gridded_accumulation_window"})
+        features = _backend.engine_features()
+        return {name: name in features for name in names}
+
+    # ------------------------------------------------------------------ import
+
+    @staticmethod
+    @log_call
+    def import_gridded(
+        inputs: Union[PathLike, Sequence[PathLike]],
+        output: PathLike,
+        *,
+        sync: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Import grids from files into a DSS file, one frame at a time.
+
+        Args:
+            inputs: One path or a sequence, read in the order given: GRIB2, NetCDF
+                (classic and NetCDF-4), HDF5, GeoTIFF, ASCII grid, or the folder of
+                a local Zarr v2 store.
+            output: DSS file to write. It is created when the first record is written.
+            sync: Flush policy, passed to the engine unchanged (see the class notes on ``sync``).
+            **kwargs: Options of ``ras_commander_fast_dss.gridded.import_gridded``,
+                passed unchanged: ``variable``, ``product``, ``envelope``,
+                ``envelope_crs``, ``shapefile``, ``target_crs`` (default ``"SHG"``),
+                ``cell_size`` (metres, default 2000), ``method``, ``parts``,
+                ``units`` (relabels; it does not convert), ``data_type``,
+                ``version``, ``align``, ``window_rule``, ``duplicates``,
+                ``threads``, ``progress``, ``bbox``, ``times`` and the reader limits.
+
+        Returns:
+            The engine's ``ImportResult`` (``output``, ``records``, ``pathnames``).
+
+        Raises:
+            ImportError: ras-commander-fast-dss is not installed.
+            DssCapabilityError: The installed engine has no ``gridded_import``.
+            ValueError: The engine refuses the run (nothing is written).
+        """
+        return HmsDssGrid._engine_tool("import_gridded", _abs_many(inputs), _abs(output),
+                                sync=sync, **kwargs)
+
+    @staticmethod
+    @log_call
+    def import_arrays(
+        data: Any,
+        output: PathLike,
+        *,
+        times: Sequence[Any],
+        transform: Sequence[float],
+        crs: str,
+        variable: str,
+        source_units: str,
+        sync: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Import arrays through the same warp, unit, naming and writer steps as a file.
+
+        Args:
+            data: Shape ``(frames, rows, columns)``, or ``(rows, columns)``.
+            output: DSS file to write.
+            times: One per frame: ``None``, an instant, or ``(start, end)``.
+            transform: ``(origin_x, dx, origin_y, dy)``; the origin is the outer
+                corner of the first cell, and negative ``dy`` means row 0 is north.
+            crs: ``"SHG"``, ``"HRAP"`` or WKT of the arrays.
+            variable: Variable name; it sets the C part.
+            source_units: Units the cells are in.
+            sync: Flush policy, passed to the engine unchanged (see the class notes on ``sync``).
+            **kwargs: Other ``ras_commander_fast_dss.gridded.import_arrays`` options.
+
+        Returns:
+            The engine's ``ImportResult``.
+
+        Raises:
+            ImportError: ras-commander-fast-dss is not installed.
+            DssCapabilityError: The installed engine has no ``gridded_import``.
+        """
+        return HmsDssGrid._engine_tool(
+            "import_arrays", data, _abs(output), times=times, transform=transform,
+            crs=crs, variable=variable, source_units=source_units, sync=sync, **kwargs,
+        )
+
+    @staticmethod
+    @log_call
+    def import_zarr(
+        inputs: Union[PathLike, Sequence[PathLike]],
+        output: PathLike,
+        *,
+        variable: str,
+        sync: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Import a variable of local Zarr v2 stores (for example AORC v1.1) into DSS.
+
+        Args:
+            inputs: One store folder or a sequence of them.
+            output: DSS file to write.
+            variable: Variable name (see ``zarr_variables``).
+            sync: Flush policy, passed to the engine unchanged (see the class notes on ``sync``).
+            **kwargs: Other ``ras_commander_fast_dss.gridded.import_zarr`` options
+                (``bbox``, ``times``, ``envelope``, ``target_crs``, ``cell_size``,
+                ``parts``, ``window_rule``, ``limits``, ``stop``, ``strict``, ...).
+
+        Returns:
+            The engine's ``ImportResult``.
+
+        Raises:
+            ImportError: ras-commander-fast-dss is not installed.
+            DssCapabilityError: The installed engine has no ``gridded_zarr``.
+        """
+        return HmsDssGrid._engine_tool("import_zarr", _abs_many(inputs), _abs(output),
+                                variable=variable, sync=sync, **kwargs)
+
+    @staticmethod
+    @log_call
+    def list_variables(path: PathLike) -> List[str]:
+        """Variables a source file offers, by the names ``variable=`` takes.
+
+        Args:
+            path: A GRIB2, NetCDF, HDF5, GeoTIFF or ASCII grid file (not a DSS file).
+                Only metadata is read.
+
+        Returns:
+            List of variable names.
+        """
+        return HmsDssGrid._engine_tool("list_variables", _abs(path))
+
+    @staticmethod
+    @log_call
+    def zarr_variables(path: PathLike) -> List[Dict[str, Any]]:
+        """Variables of a local Zarr v2 store, one ``dict`` each.
+
+        Args:
+            path: The store's folder. Only metadata and axes are read.
+
+        Returns:
+            The engine's list of dicts (``name``, ``error``, ``steps``, ``ny``,
+            ``nx``, ``units``, ``crs``, ``first_time``, ``last_time``, ...).
+        """
+        return HmsDssGrid._engine_tool("zarr_variables", _abs(path))
+
+    @staticmethod
+    @log_call
+    def read_zarr(path: PathLike, variable: str, *, steps: Tuple[int, int], **kwargs: Any) -> Any:
+        """Read steps of a Zarr variable on a window, writing nothing.
+
+        Args:
+            path: The store's folder.
+            variable: Variable name.
+            steps: ``(first, end)`` step indexes.
+            **kwargs: ``bbox``, ``rows``, ``cols``, ``limits``, ``stop``, ``strict``.
+
+        Returns:
+            The engine's ``ZarrWindow`` (``cells``, ``transform``, ``crs``, ``times``).
+        """
+        return HmsDssGrid._engine_tool("read_zarr", _abs(path), variable, steps=steps, **kwargs)
+
+    # ------------------------------------------------------------- grid tools
+
+    @staticmethod
+    @log_call
+    def calculate(input: PathLike, output: PathLike, *, sync: Optional[Any] = None,
+                  **kwargs: Any) -> Any:
+        """Apply one operation by one constant to every valid cell of each grid.
+
+        Args:
+            input: Source grids (a DSS file or a gridded source file).
+            output: DSS file to write.
+            sync: Flush policy, passed to the engine unchanged (see the class notes on ``sync``).
+            **kwargs: Exactly one of ``multiply``, ``divide``, ``add``, ``subtract``;
+                and ``variables``, ``parts``, ``units``, ``data_type``, ``version``,
+                ``align``. A, B and F are empty unless ``parts`` states them.
+
+        Returns:
+            The engine's ``ImportResult``.
+        """
+        return HmsDssGrid._engine_tool("calculate", _abs(input), _abs(output), sync=sync, **kwargs)
+
+    @staticmethod
+    @log_call
+    def calculate_raster(input: PathLike, raster: PathLike, output: PathLike, *,
+                         operation: str, sync: Optional[Any] = None, **kwargs: Any) -> Any:
+        """Combine each grid, on the left, with a raster resampled to it.
+
+        Args:
+            input: Source grids.
+            raster: The raster operand (GeoTIFF, ASCII grid or a DSS grid).
+            output: DSS file to write.
+            operation: ``multiply``, ``divide``, ``add`` or ``subtract``.
+            sync: Flush policy, passed to the engine unchanged (see the class notes on ``sync``).
+            **kwargs: ``method``, ``raster_variable``, ``variables``, ``parts``,
+                ``units``, ``data_type``, ``version``, ``align``, ``static_raster``.
+
+        Returns:
+            The engine's ``ImportResult``.
+        """
+        return HmsDssGrid._engine_tool("calculate_raster", _abs(input), _abs(raster),
+                                _abs(output), operation=operation, sync=sync, **kwargs)
+
+    @staticmethod
+    @log_call
+    def sanitize(input: PathLike, output: PathLike, *, sync: Optional[Any] = None,
+                 **kwargs: Any) -> Any:
+        """Replace valid cells at or beyond thresholds.
+
+        Args:
+            input: Source grids.
+            output: DSS file to write.
+            sync: Flush policy, passed to the engine unchanged (see the class notes on ``sync``).
+            **kwargs: ``minimum``, ``maximum`` (inclusive), ``minimum_replacement``,
+                ``maximum_replacement`` (NaN, the default, makes the cell missing),
+                ``variables``, ``parts``, ``units``, ``data_type``, ``version``, ``align``.
+
+        Returns:
+            The engine's ``ImportResult``.
+        """
+        return HmsDssGrid._engine_tool("sanitize", _abs(input), _abs(output), sync=sync, **kwargs)
+
+    @staticmethod
+    @log_call
+    def clip(input: PathLike, output: PathLike, *, sync: Optional[Any] = None,
+             **kwargs: Any) -> Any:
+        """Clip grids to an envelope, by nearest neighbour, in their own CRS.
+
+        Args:
+            input: Source grids.
+            output: DSS file to write.
+            sync: Flush policy, passed to the engine unchanged (see the class notes on ``sync``).
+            **kwargs: ``envelope=(min_x, min_y, max_x, max_y)`` with
+                ``envelope_crs``, or ``shapefile`` (its features' combined extent;
+                not a polygon mask); ``variables``, ``parts``, ``units``,
+                ``data_type``, ``version``, ``align``.
+
+        Returns:
+            The engine's ``ImportResult``.
+        """
+        if kwargs.get("shapefile") is not None:
+            kwargs["shapefile"] = _abs(kwargs["shapefile"])
+        return HmsDssGrid._engine_tool("clip", _abs(input), _abs(output), sync=sync, **kwargs)
+
+    @staticmethod
+    @log_call
+    def normalize(input: PathLike, normals: PathLike, output: PathLike, *, start: Any,
+                  end: Any, interval: Any, sync: Optional[Any] = None, **kwargs: Any) -> Any:
+        """Scale each interval's source grids so their total matches its normals.
+
+        Args:
+            input: Source grids.
+            normals: Grids holding the totals to match.
+            output: DSS file to write.
+            start: Start of the first interval.
+            end: End of the last interval.
+            interval: A ``datetime.timedelta`` or a number of seconds.
+            sync: Flush policy, passed to the engine unchanged (see the class notes on ``sync``).
+            **kwargs: ``source_variables``, ``normals_variables``, ``parts``,
+                ``units``, ``data_type``, ``version``, ``align``.
+
+        Returns:
+            The engine's ``NormalizeResult``. Check ``sources_left_out``,
+            ``normals_left_out`` and ``cells_made_missing_by_normal``.
+        """
+        return HmsDssGrid._engine_tool(
+            "normalize", _abs(input), _abs(normals), _abs(output),
+            start=start, end=end, interval=interval, sync=sync, **kwargs,
+        )
+
+    # -------------------------------------------------------------- time tools
+
+    @staticmethod
+    @log_call
+    def shift_times(input: PathLike, output: PathLike, *, sync: Optional[Any] = None,
+                    **kwargs: Any) -> Any:
+        """Move grid records in time. Cell values are kept.
+
+        Args:
+            input: DSS file holding the grids.
+            output: DSS file to write.
+            sync: Flush policy, passed to the engine unchanged (see the class notes on ``sync``).
+            **kwargs: ``shift`` (a ``datetime.timedelta``), or ``shift_start`` and
+                ``shift_end``; ``select``, ``parts``, ``units``, ``data_type``,
+                ``version``, ``progress``. A source's A and B parts are not kept
+                unless ``parts`` states them.
+
+        Returns:
+            The engine's ``TimeToolResult``.
+        """
+        return HmsDssGrid._engine_tool("shift_times", _abs(input), _abs(output), sync=sync, **kwargs)
+
+    @staticmethod
+    @log_call
+    def resample_times(input: PathLike, output: PathLike, step_minutes: int, *,
+                       sync: Optional[Any] = None, **kwargs: Any) -> Any:
+        """Resample each grid series to a fixed time step.
+
+        Args:
+            input: DSS file holding the grids.
+            output: DSS file to write.
+            step_minutes: One of ``time_steps()``.
+            sync: Flush policy, passed to the engine unchanged (see the class notes on ``sync``).
+            **kwargs: ``rule`` (``"strict"`` or ``"vortex"``), ``select``, ``parts``,
+                ``units``, ``data_type``, ``version``, ``progress``.
+
+        Returns:
+            The engine's ``TimeToolResult``. ``dropped_tail_seconds`` is time after
+            the last whole window, which is not in the output.
+        """
+        return HmsDssGrid._engine_tool("resample_times", _abs(input), _abs(output),
+                                step_minutes, sync=sync, **kwargs)
+
+    @staticmethod
+    @log_call
+    def time_steps() -> List[int]:
+        """The steps ``resample_times`` takes, in minutes.
+
+        Returns:
+            List of ``int`` minutes.
+        """
+        return HmsDssGrid._engine_tool("time_steps")
+
+    @staticmethod
+    @log_call
+    def series_info(input: PathLike, pathname: str) -> Dict[str, Any]:
+        """What a grid series states: records, start, end, data type, units and grid.
+
+        Args:
+            input: DSS file.
+            pathname: Any record of the series.
+
+        Returns:
+            The engine's ``dict``.
+        """
+        return HmsDssGrid._engine_tool("series_info", _abs(input), pathname)
+
+    @staticmethod
+    @log_call
+    def read_window(input: PathLike, pathname: str, start: Any, end: Optional[Any] = None,
+                    **kwargs: Any) -> Any:
+        """One window of a grid series, computed as ``resample_times`` computes it.
+
+        Args:
+            input: DSS file.
+            pathname: Any record of the series.
+            start: Window start.
+            end: Window end; ``None`` asks for an instant.
+            **kwargs: ``rule`` and ``missing`` (``"nan"`` or ``"raw"``).
+
+        Returns:
+            The engine's ``WindowGrid`` (``data`` is ``(ny, nx)``, rows south to north).
+        """
+        return HmsDssGrid._engine_tool("read_window", _abs(input), pathname, start, end, **kwargs)
+
+    @staticmethod
+    @log_call
+    def read_nearest(input: PathLike, pathname: str, time: Any, **kwargs: Any) -> Any:
+        """The grid record of a series nearest a time.
+
+        Args:
+            input: DSS file.
+            pathname: Any record of the series.
+            time: The time to look near.
+            **kwargs: ``missing`` (``"nan"`` or ``"raw"``).
+
+        Returns:
+            The engine's ``WindowGrid``.
+        """
+        return HmsDssGrid._engine_tool("read_nearest", _abs(input), pathname, time, **kwargs)
+
+    @staticmethod
+    @log_call
+    def read_min_max(input: PathLike, pathname: str, start: Any, end: Any,
+                     **kwargs: Any) -> Tuple[Any, Any]:
+        """The minimum and maximum grids of a series over a window.
+
+        Args:
+            input: DSS file.
+            pathname: Any record of the series.
+            start: Window start.
+            end: Window end.
+            **kwargs: ``missing`` (``"nan"`` or ``"raw"``).
+
+        Returns:
+            ``(minimum, maximum)``, two engine ``WindowGrid`` objects.
+        """
+        return HmsDssGrid._engine_tool("read_min_max", _abs(input), pathname, start, end, **kwargs)
+
+    # ------------------------------------------------------------------ zonal
+
+    @staticmethod
+    @log_call
+    def grid_to_point(grids: PathLike, zones: PathLike, zone_field: str, output: PathLike, *,
+                      sync: Optional[Any] = None, **kwargs: Any) -> Any:
+        """Zonal statistics of each grid, written as one time series per zone and statistic.
+
+        Args:
+            grids: A DSS file, GRIB2 file, GeoTIFF or ASCII grid.
+            zones: A shapefile or GeoJSON file of zones.
+            zone_field: The field that names each zone; it becomes the B part.
+            output: DSS file to write the time series to.
+            sync: Flush policy, passed to the engine unchanged. ras-commander-fast-dss
+                0.1.1 has no such option on this function: stating it then raises
+                ``DssCapabilityError``.
+            **kwargs: ``statistics`` (default ``("average",)``), ``accumulate``,
+                ``parts`` (A and F), ``variables``, ``zones_crs``, ``area_weighted``,
+                ``compatibility``, ``version``, ``assume_no_datum_shift``,
+                ``allow_in_place``.
+
+        Returns:
+            The engine's ``GridToPointResult`` (``records``, ``zones``, ``pathnames``).
+        """
+        return HmsDssGrid._engine_tool("grid_to_point", _abs(grids), _abs(zones), zone_field,
+                                _abs(output), sync=sync, **kwargs)
+
+    @staticmethod
+    @log_call
+    def zonal_statistics(grids: PathLike, zones: PathLike, zone_field: str, **kwargs: Any) -> Any:
+        """The statistics of ``grid_to_point`` as a table, writing nothing.
+
+        Args:
+            grids: A DSS file, GRIB2 file, GeoTIFF or ASCII grid.
+            zones: A shapefile or GeoJSON file of zones.
+            zone_field: The field that names each zone.
+            **kwargs: ``variables``, ``zones_crs``, ``area_weighted``,
+                ``compatibility``, ``assume_no_datum_shift``, ``raw``.
+
+        Returns:
+            The engine's ``pandas.DataFrame``, one row per frame and zone, unchanged.
+            Missing statistics are NaN unless ``raw=True``.
+        """
+        return HmsDssGrid._engine_tool("zonal_statistics", _abs(grids), _abs(zones),
+                                zone_field, **kwargs)
+
+    @staticmethod
+    @log_call
+    def zone_masks(grids: PathLike, zones: PathLike, zone_field: str, **kwargs: Any) -> Dict[str, Any]:
+        """Each zone's flat cell indices on the source's last grid.
+
+        Args:
+            grids: A DSS file, GRIB2 file, GeoTIFF or ASCII grid.
+            zones: A shapefile or GeoJSON file of zones.
+            zone_field: The field that names each zone.
+            **kwargs: ``variables``, ``zones_crs``, ``assume_no_datum_shift``.
+
+        Returns:
+            ``dict`` of zone name to a NumPy index array.
+        """
+        return HmsDssGrid._engine_tool("zone_masks", _abs(grids), _abs(zones), zone_field, **kwargs)
 
     @staticmethod
     def get_info() -> dict:
