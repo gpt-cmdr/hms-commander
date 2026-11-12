@@ -1950,9 +1950,14 @@ class DssCore:
         made for the target are removed only while empty.
         """
         owned = False
+        # The stated sync= also reaches create() when the engine's create takes it
+        # (0.1.2 and later); an older create keeps its own flush.
+        create_sync = _backend.native_sync_kwargs()
+        if create_sync and not _backend.takes_keyword(dc.create, "sync"):
+            create_sync = {}
         try:
             if not existed:
-                dc.create(str(target), version)
+                dc.create(str(target), version, **create_sync)
                 owned = True
             yield
         except BaseException:
@@ -2089,9 +2094,12 @@ class DssCore:
             sync: Flush policy of the native writer, passed to
                 ras-commander-fast-dss unchanged. ``None`` (default) states nothing,
                 so the installed engine's own default applies; that default is the
-                engine's and can change between its releases. With
-                ras-commander-fast-dss 0.1.1, ``True`` flushes at each write step
-                and ``False`` does not flush. No value is a power-loss guarantee.
+                engine's and can change between its releases. ras-commander-fast-dss
+                0.1.2 takes ``"end"`` (its default; ``True`` means the same: one
+                flush at the end of the write call), ``"step"`` (a flush at every
+                flush point, the 0.1.1 meaning of ``True``) and ``"none"``
+                (``False`` means the same: no flush). No value is a power-loss
+                guarantee.
                 The ``java`` backend does not use it; ``shadow`` applies it to the
                 native repeat only.
 

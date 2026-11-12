@@ -25,25 +25,29 @@ pip install "hms-commander[dss]"
 !!! note "Availability"
     The engine is published on PyPI as
     [`ras-commander-fast-dss`](https://pypi.org/project/ras-commander-fast-dss/) from
-    release **0.1.0**; hms-commander requires **0.1.1** or later
-    ([0.1.1 on PyPI](https://pypi.org/project/ras-commander-fast-dss/0.1.1/); MIT AND
+    release **0.1.0**; hms-commander requires **0.1.2** or later
+    ([0.1.2 on PyPI](https://pypi.org/project/ras-commander-fast-dss/0.1.2/),
+    [release notes](https://github.com/gpt-cmdr/ras-commander-fast-dss/releases/tag/v0.1.2); MIT AND
     BSD-3-Clause; source:
     [gpt-cmdr/ras-commander-fast-dss](https://github.com/gpt-cmdr/ras-commander-fast-dss),
     [changelog](https://github.com/gpt-cmdr/ras-commander-fast-dss/blob/main/CHANGELOG.md)).
-    0.1.1 ships abi3 wheels for CPython 3.10 and later on Windows x86_64 and on Linux
+    0.1.2 ships abi3 wheels for CPython 3.10 and later on Windows x86_64 and on Linux
     x86_64 and aarch64 (manylinux and musllinux), and an sdist. The `dss` extra requests
-    `ras-commander-fast-dss>=0.1.1,<0.2` only on those platforms, so pip never builds the
+    `ras-commander-fast-dss>=0.1.2,<0.2` only on those platforms, so pip never builds the
     Rust source distribution; elsewhere the extra installs the Java stack alone.
 
     There are no macOS wheels. On macOS, install the engine from its sdist yourself
     (`pip install ras-commander-fast-dss`, which needs a Rust toolchain), or use the Java
     backend.
 
-Check the installed engine from Python:
+Check the installed engine from Python. The engine defines no `__version__`; ask the
+package metadata, and gate code on `FEATURES` rather than on a version:
 
 ```python
+from importlib.metadata import version
 from hms_commander import HmsDss
 
+print(version("ras-commander-fast-dss"))        # '0.1.2'
 caps = HmsDss.get_capabilities()
 print(caps.attrs["native_available"], caps.attrs["engine_features"])
 ```
@@ -217,7 +221,7 @@ DSS grid records, and processing DSS grids, without Java, HEC-Vortex or GDAL.
 
 | Method | What it does |
 |---|---|
-| `import_gridded`, `import_arrays`, `import_zarr` | GRIB2, NetCDF, HDF5, GeoTIFF, ASCII grid, a local Zarr v2 store, or arrays, to DSS grids |
+| `import_gridded`, `import_arrays`, `import_zarr` | GRIB2, Stage IV GRIB1, NetCDF, HDF5, GeoTIFF, ASCII grid, PRISM, SNODAS, a local Zarr v2 store, or arrays, to DSS grids |
 | `list_variables`, `zarr_variables`, `read_zarr` | What a source offers; a window of a Zarr variable |
 | `calculate`, `calculate_raster`, `sanitize`, `clip`, `normalize` | Grid calculator, raster calculator, sanitizer, clipper, normalizer |
 | `shift_times`, `resample_times`, `time_steps` | Time shift and time-step resampling |
@@ -239,6 +243,28 @@ HmsDssGrid.grid_to_point("storm.dss", "subbasins.geojson", "NAME", "subbasin_ave
                          parts={"A": "SHG", "F": "PASS2"})
 ```
 
+Engine 0.1.2 adds these sources to `import_gridded` (feature flags in brackets):
+
+- **NCEP Stage IV GRIB1** (2002 to July 2020) total precipitation over 1, 6 or 24 hours
+  on the polar stereographic HRAP grid (`gridded_grib1_stage4`). Other GRIB1 variants are
+  refused.
+- **PRISM** ESRI BIL beside its `.hdr`, `*_bil.zip` and `*_asc.zip` packages, and PRISM's
+  2025 GeoTIFF or BIL packages (`gridded_prism_bil`).
+- **SNODAS** daily tars and `.dat` / `.dat.gz` members with their NOHRSC header
+  (`gridded_snodas`). Times come from the checked header by default
+  (`snodas_times="header"`): a daily total is PER-CUM over the 24 hours ending at 06:00
+  UTC of the file's date, and SWE and snow depth are INST-VAL at 06:00 UTC.
+  `snodas_times="vortex"` gives HEC-Vortex 1.1.0's timing and types for compatibility
+  (daily totals one day later, typed PER-AVER). Products without a qualified
+  interpretation (the snowpack average temperature, historical melt and sublimation files)
+  are refused unless the call names one of those options. The whole SNODAS grid is larger
+  than one DSS grid record can hold, so clip it with `envelope`.
+- **A loose GeoTIFF with a `<name>.aux.xml`** that supplies only nodata and statistics.
+
+`import_gridded`, `import_arrays` and `import_zarr` use every core by default
+(`threads=None`, feature `gridded_threads_all_cores`); the file written is byte-identical
+to `threads=1`. Kilometre axes are converted to metres exactly as HEC-Vortex does.
+
 The engine plans a run before it writes, so a refused run leaves the output untouched.
 Its documentation lists the supported source layouts, projections and resampling
 methods, and where its records differ from HEC-Vortex by design. Import `units=`
@@ -249,7 +275,7 @@ SHG lattice (below).
 
 ## Damaged files and write durability
 
-- **Crash recovery.** Engine 0.1.1 fixes DSS7 crash recovery in the native writers. The
+- **Crash recovery.** Engine 0.1.1 fixed DSS7 crash recovery in the native writers. The
   guarantee covers a writing process that dies (it is killed or crashes) part way through a
   write: the next native write reconciles the interrupted write when the file was
   consistent before it. No claim is made for power loss or an operating-system crash, and
@@ -276,24 +302,45 @@ SHG lattice (below).
 - **`sync=` (flush policy).** The engine's writers accept `sync=`, and the hms-commander
   writers pass it through unchanged: `HmsDss`/`DssCore.write_timeseries`,
   `write_paired_data`, `write_multiple_paired_data`, `HmsDss.import_atlas14_temporal`,
-  `write_profile`, `write_location`, `HmsDssGrid.write_grid_timeseries` (both routes) and
-  the `HmsDssGrid` engine tools that write. Left unstated (`sync=None`), hms-commander
-  sends nothing and the installed engine's own default applies; that default belongs to
-  the engine and can change between its releases, so state a value when a workflow
-  depends on one. In ras-commander-fast-dss 0.1.1, `True` keeps the `fsync` calls at the
-  transaction's flush points and `False` skips them: writes still reach the operating
-  system in the same order, so the process-death behavior is unchanged, but nothing is
-  forced to storage. No value is a power-loss guarantee. Use `False` only for scratch or
-  regenerable files. The `java` backend does not use `sync`; `shadow` applies it to the
-  native repeat. Stating it under `native` with an engine that lacks the
-  `write_sync_policy` feature raises `DssCapabilityError`
-  (`HmsDss.get_capabilities().attrs["native_write_sync_available"]`).
+  `write_profile`, `write_location`, `HmsDss.repair`, `HmsDssGrid.write_grid_timeseries`
+  (both routes) and the `HmsDssGrid` engine tools that write. When a writer creates a new
+  file, the stated value also reaches the engine's `create()`. Left unstated
+  (`sync=None`), hms-commander sends nothing and the installed engine's own default
+  applies. Engine 0.1.2 has three modes:
+
+    | Value | Engine 0.1.2 behaviour |
+    |---|---|
+    | `"end"` (default) or `True` | One flush to disk at the end of each write call. A call that stores several records (the importer, grid tools, `grid_to_point`) flushes once, after its last record. |
+    | `"step"` | A flush at every flush point of the transaction. This is what `True` meant up to 0.1.1; pass `"step"` to keep that behaviour. |
+    | `"none"` or `False` | No flush; the operating system writes the data in its own time. |
+
+    All three modes make the same writes in the same order, so the process-death
+    behaviour above is the same in each. No mode is a power-loss guarantee. Use `"none"`
+    only for scratch or regenerable files. The `java` backend does not use `sync`;
+    `shadow` applies it to the native repeat. Under `native`, a stated value needs the
+    engine's `write_sync_policy` feature, and a named mode (`"end"`, `"step"`, `"none"`)
+    also needs `write_sync_modes`; otherwise `DssCapabilityError` is raised before any
+    file is touched (`HmsDss.get_capabilities().attrs["native_write_sync_available"]`).
 
     ```python
     HmsDss.backend = "native"
     HmsDss.write_timeseries("scratch.dss", "//GAGE 1/FLOW//1HOUR/OBS/", times, flows,
-                            sync=False)
+                            sync="none")
     ```
+
+- **Held handles.** In engine 0.1.2 a `ras_commander_fast_dss.DssFile` session keeps one
+  native read+write handle from its first write until `close()` or the end of its `with`
+  block. **Close the session before renaming, replacing or deleting its file.** On
+  Windows, `os.replace` onto a file a session holds fails. The hms-commander writers
+  (including the shadow repeat on a temporary copy, and the removal of a new file after a
+  refused write) use the engine's module-level functions, which open and close the file
+  within each call, so they hold no session between calls. The rule matters when your own
+  code opens a `DssFile` on a file that hms-commander, HEC-HMS or another tool will also
+  write, rename or delete.
+- **DSS6 irregular patterns.** Engine 0.1.2 refuses to write a DSS6 irregular-pattern time
+  series (an `IR-` E part with a `TS-` D part) unless the engine call opts in. The
+  hms-commander time-series writers write regular intervals only, so they do not expose
+  the opt-in.
 
 ## Grid periods and AORC stamps
 
@@ -480,8 +527,43 @@ HEC-HMS acceptance runs, all through `HmsCmdr`:
 
 ## Performance
 
-!!! note "Placeholder"
-    Measured timings for the native backend are added here after the release benchmark.
+The engine's performance is qualified internally against HEC's DSS C library,
+pydsstools, hecdss, HEC Monolith and HEC-Vortex on a private corpus of production model
+files; those files and the detailed results are not published. The statements below
+summarize those evaluations. To measure on your own machine, run
+`benchmarks/bench_public.py` from the
+[engine repository](https://github.com/gpt-cmdr/ras-commander-fast-dss), which generates
+its own data and checks every result. Absolute times depend on storage, antivirus
+scanning and file layout. hms-commander's own wrappers have not been benchmarked
+separately, and the run times in the
+[notebook qualification](../development/dss-native-notebook-qualification.md) are
+incidental wall times, not measurements.
+
+**Which engine runs.** The default `java` backend reads and writes through HEC Monolith
+(the Java path). The `native` backend uses the engine. `shadow` runs both on every call,
+so it is slower than either; use it to qualify, not for production runs. The SHG route
+(`target_crs="SHG"`) and the `HmsDssGrid` engine tools always use the engine.
+
+- **Reads and catalogs** on the native backend are on par with HEC's C library and
+  pydsstools. On very large DSS7 catalogs pydsstools is somewhat faster, because the
+  engine validates and normalizes every pathname it returns.
+- **Compared with the default Java backend (HEC Monolith),** whole-dataset reads on the
+  native backend are many times faster, because the engine decodes records directly into
+  NumPy arrays without a per-record Python or Java crossing. The native backend also
+  starts no JVM.
+- **Gridded import** (`HmsDssGrid.import_gridded` and the SHG route) is on par with
+  HEC-Vortex for continental grids and faster for smaller imports, with no JVM start-up.
+  The grid tools and `grid_to_point` are slower than Vortex, because each output record
+  is written separately.
+- **Native writes are durable by default and therefore slower.** By default the engine
+  flushes to disk at the end of every write call, so that a killed process leaves a file
+  HEC can read. The other tools leave flushing to the operating system. The hms-commander
+  writers open the file for each call; for regenerable bulk output, pass `sync="none"`.
+  The engine's fastest bulk route, a `ras_commander_fast_dss.DssFile` session with
+  `sync="none"`, brings bulk series writes on par with the C-based tools; it is an engine
+  call, not an hms-commander wrapper. Writing many small records or paired-data records
+  one call at a time remains noticeably slower than the C libraries, because of per-call
+  overhead; reducing it is planned.
 
 ## Attributions
 

@@ -1222,7 +1222,8 @@ class HmsDss:
 
     @staticmethod
     @log_call
-    def repair(src: Union[str, Path], dest: Union[str, Path]) -> Dict[str, Any]:
+    def repair(src: Union[str, Path], dest: Union[str, Path], *,
+               sync: Optional[Any] = None) -> Dict[str, Any]:
         """
         Copy the readable records of a damaged DSS7 file into a new DSS7 file.
 
@@ -1240,6 +1241,11 @@ class HmsDss:
         Args:
             src: Existing DSS7 file to recover from
             dest: New file to create. It must not exist; nothing is replaced.
+            sync: Flush policy, passed to the engine unchanged; ``None`` (default)
+                leaves the installed engine's own default. In ras-commander-fast-dss
+                0.1.2 the new file is built under a temporary name and flushed once
+                before it is verified and published (``"end"``, the default, and
+                ``"step"``); ``"none"`` does not flush it.
 
         Returns:
             The engine's result dict unchanged, including ``records_copied``,
@@ -1263,7 +1269,8 @@ class HmsDss:
         if dest_path.exists():
             raise FileExistsError(f"repair destination already exists: {dest_path}")
         function = _backend.require_engine_function("repair", _backend.NATIVE_REPAIR_FEATURE)
-        result = dict(function(src_path, dest_path))
+        result = dict(function(src_path, dest_path,
+                               **_backend.engine_sync_kwargs(function, sync, "repair")))
         if not result.get("complete", False):
             logger.warning(
                 "DSS repair of %s into %s is incomplete: %d record(s) not copied; "

@@ -136,7 +136,15 @@ class HmsDssGrid:
     ``sync``:
         The engine's flush policy on the methods that write, passed through
         unchanged. ``None`` (default) states nothing, so the installed engine's own
-        default applies; that default can change between engine releases.
+        default applies; that default can change between engine releases. In
+        ras-commander-fast-dss 0.1.2 the modes are ``"end"`` (default; ``True``),
+        ``"step"`` and ``"none"`` (``False``); a call that stores several records
+        flushes once, after its last record, under ``"end"``.
+
+    Threads:
+        In ras-commander-fast-dss 0.1.2, ``import_gridded``, ``import_arrays`` and
+        ``import_zarr`` use every core by default (``threads=None``); the file
+        written is byte-identical whatever the count. Pass ``threads=1`` to limit it.
 
     Technical Background:
         HMS requires gridded precipitation data in DSS format with specific
@@ -1272,9 +1280,9 @@ class HmsDssGrid:
             zones: A shapefile or GeoJSON file of zones.
             zone_field: The field that names each zone; it becomes the B part.
             output: DSS file to write the time series to.
-            sync: Flush policy, passed to the engine unchanged. ras-commander-fast-dss
-                0.1.1 has no such option on this function: stating it then raises
-                ``DssCapabilityError``.
+            sync: Flush policy, passed to the engine unchanged (see the class notes on
+                ``sync``). ras-commander-fast-dss 0.1.1 has no such option on this
+                function: stating it with 0.1.1 raises ``DssCapabilityError``.
             **kwargs: ``statistics`` (default ``("average",)``), ``accumulate``,
                 ``parts`` (A and F), ``variables``, ``zones_crs``, ``area_weighted``,
                 ``compatibility``, ``version``, ``assume_no_datum_shift``,

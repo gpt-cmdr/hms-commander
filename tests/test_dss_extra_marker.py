@@ -1,6 +1,6 @@
 """The ``dss`` extra requests the native engine only where it has published wheels.
 
-ras-commander-fast-dss 0.1.1 ships abi3 wheels for CPython on Windows AMD64 and Linux
+ras-commander-fast-dss 0.1.1 and 0.1.2 ship abi3 wheels for CPython on Windows AMD64 and Linux
 x86_64/aarch64, and no macOS wheels. The marker must match, so pip never builds the Rust
 sdist of this optional engine.
 """
@@ -29,11 +29,12 @@ def _env(system, machine, impl="CPython"):
             "platform_python_implementation": impl}
 
 
-def test_engine_floor_is_0_1_1_below_0_2():
+def test_engine_floor_is_0_1_2_below_0_2():
     req = _engine_requirement()
-    assert str(req.specifier) in {">=0.1.1,<0.2", "<0.2,>=0.1.1"}
+    assert str(req.specifier) in {">=0.1.2,<0.2", "<0.2,>=0.1.2"}
     assert not req.specifier.contains("0.1.0")
-    assert req.specifier.contains("0.1.1")
+    assert not req.specifier.contains("0.1.1")
+    assert req.specifier.contains("0.1.2")
     assert not req.specifier.contains("0.2.0")
 
 

@@ -249,7 +249,7 @@ NATIVE_WRITES_GATE_MESSAGE = (
     "The installed ras-commander-fast-dss does not provide the native DSS writers "
     "(create, write_timeseries, write_paired_data and write_grid with DSS6 support). "
     "hms-commander does not fall back to Java. Upgrade the engine "
-    "('pip install -U \"ras-commander-fast-dss>=0.1.1,<0.2\"'; check "
+    "('pip install -U \"ras-commander-fast-dss>=0.1.2,<0.2\"'; check "
     "HmsDss.get_capabilities().attrs['native_writes_available']), or use "
     "HmsDss.backend = 'java'."
 )
@@ -270,7 +270,7 @@ NATIVE_GRIDDED_GATE_MESSAGE = (
     "A warped grid write (target_crs='SHG') needs the gridded importer of "
     "ras-commander-fast-dss, and the installed engine does not advertise the "
     "'gridded_import' feature. HEC Monolith has no equivalent route, so there is no "
-    "Java fallback. Upgrade the engine ('pip install -U \"ras-commander-fast-dss>=0.1.1,<0.2\"'), or leave "
+    "Java fallback. Upgrade the engine ('pip install -U \"ras-commander-fast-dss>=0.1.2,<0.2\"'), or leave "
     "target_crs unset to write the WGS 84 grid."
 )
 
@@ -299,7 +299,7 @@ def require_native_feature(name: str, what: str):
         raise DssCapabilityError(
             f"The installed ras-commander-fast-dss does not provide {what} "
             f"(feature {name!r} is not in its FEATURES). Upgrade the engine "
-            "('pip install -U \"ras-commander-fast-dss>=0.1.1,<0.2\"')."
+            "('pip install -U \"ras-commander-fast-dss>=0.1.2,<0.2\"')."
         )
     return dc
 
@@ -312,7 +312,7 @@ def require_engine_function(name: str, feature: Optional[str] = None):
     if not callable(function):
         raise DssCapabilityError(
             f"The installed ras-commander-fast-dss has no {name}. Upgrade the engine "
-            "('pip install -U \"ras-commander-fast-dss>=0.1.1,<0.2\"')."
+            "('pip install -U \"ras-commander-fast-dss>=0.1.2,<0.2\"')."
         )
     return function
 
@@ -323,6 +323,9 @@ NATIVE_PROFILE_WRITE_FEATURE = "write_profile"
 NATIVE_LOCATION_WRITE_FEATURE = "write_location"
 #: Engine FEATURES flag for the writers' ``sync=`` option.
 NATIVE_SYNC_FEATURE = "write_sync_policy"
+#: Engine FEATURES flag for the named ``sync=`` modes ``"end"``, ``"step"`` and
+#: ``"none"`` (ras-commander-fast-dss 0.1.2).
+NATIVE_SYNC_MODES_FEATURE = "write_sync_modes"
 
 #: The ``sync=`` value a public writer was called with. ``None`` means the caller
 #: stated nothing and the engine's own default applies: hms-commander never names
@@ -350,6 +353,7 @@ def write_sync(sync: Any, backend: str):
         return
     if backend == "native":
         require_native_feature(NATIVE_SYNC_FEATURE, "the writers' sync= flush option")
+        require_sync_mode(sync)
     elif backend == "java":
         logger.debug("sync=%r is not used by the java DSS backend (HEC's library "
                      "manages its own flushing)", sync)
@@ -358,6 +362,15 @@ def write_sync(sync: Any, backend: str):
         yield
     finally:
         _WRITE_SYNC.reset(token)
+
+
+def require_sync_mode(sync: Any) -> None:
+    """``DssCapabilityError`` when ``sync`` is a named mode (``"end"``, ``"step"``,
+    ``"none"``) and the installed engine does not provide named modes. Booleans and
+    ``None`` pass; the engine itself validates the value."""
+    if isinstance(sync, str):
+        require_native_feature(NATIVE_SYNC_MODES_FEATURE,
+                               f"the named sync= mode {sync!r}")
 
 
 def native_sync_kwargs(sync: Any = None) -> Dict[str, Any]:
@@ -394,6 +407,7 @@ def engine_sync_kwargs(function: Any, sync: Any, what: str) -> Dict[str, Any]:
             f"The installed ras-commander-fast-dss {what} takes no sync= option; omit "
             "sync, or upgrade the engine."
         )
+    require_sync_mode(sync)
     return {"sync": sync}
 
 

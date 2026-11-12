@@ -1,4 +1,4 @@
-"""Wrappers over ras-commander-fast-dss 0.1.1: ``HmsDss.repair``, the all-curve
+"""Wrappers over ras-commander-fast-dss (0.1.1 and 0.1.2): ``HmsDss.repair``, the all-curve
 paired-data read, profile and location methods, the ``HmsDssGrid`` engine tools, and
 ``sync=`` on the writers.
 
@@ -89,7 +89,7 @@ def test_unstated_sync_is_not_passed_so_the_engine_default_applies(tmp_path, mon
 
 
 @pytest.mark.parametrize("writer", [HmsDss.write_timeseries, DssCore.write_timeseries])
-@pytest.mark.parametrize("sync", [False, True])
+@pytest.mark.parametrize("sync", [False, True, "end", "step", "none"])
 def test_write_timeseries_passes_sync_unchanged_and_stores_the_data(
     tmp_path, monkeypatch, writer, sync
 ):
@@ -103,7 +103,8 @@ def test_write_timeseries_passes_sync_unchanged_and_stores_the_data(
 
 
 def test_sync_is_the_engines_value_not_a_bool_this_wrapper_checks(tmp_path, monkeypatch):
-    """A value a later engine may add reaches the engine as given (0.1.1 refuses it)."""
+    """A value the wrapper does not know reaches the engine as given; the engine
+    refuses it (0.1.1 with TypeError, 0.1.2 with ValueError naming the modes)."""
     target = tmp_path / "a.dss"
     HmsDss.write_timeseries(target, TS_PATH, TIMES, np.arange(24.0))
     seen = []
@@ -113,7 +114,7 @@ def test_sync_is_the_engines_value_not_a_bool_this_wrapper_checks(tmp_path, monk
     assert seen == ["per_step"]
     monkeypatch.undo()
     monkeypatch.setattr(HmsDss, "backend", "native")
-    with pytest.raises(TypeError, match="sync"):  # the engine's own refusal, unchanged
+    with pytest.raises((TypeError, ValueError), match="sync"):  # the engine's refusal
         HmsDss.write_timeseries(target, TS_PATH, TIMES, np.arange(24.0), sync="per_step")
 
 
@@ -178,6 +179,27 @@ def test_stated_sync_needs_the_engine_feature_and_touches_no_file(tmp_path, monk
     assert _backend.native_sync_available() is True
 
 
+def test_named_sync_mode_needs_the_modes_feature_and_touches_no_file(tmp_path, monkeypatch):
+    """A named mode ("end", "step", "none") needs an engine with write_sync_modes;
+    booleans need only write_sync_policy."""
+    monkeypatch.setattr(dc, "FEATURES", frozenset(dc.FEATURES) - {"write_sync_modes"})
+    target = tmp_path / "gated.dss"
+    with pytest.raises(DssCapabilityError, match="write_sync_modes"):
+        HmsDss.write_timeseries(target, TS_PATH, TIMES, np.arange(24.0), sync="step")
+    assert not target.exists()
+    HmsDss.write_timeseries(target, TS_PATH, TIMES, np.arange(24.0), sync=False)
+    assert target.exists()
+
+
+@pytest.mark.skipif(not _backend.takes_keyword(dc.create, "sync"),
+                    reason="the installed engine's create() takes no sync=")
+def test_stated_sync_reaches_create_for_a_new_file(tmp_path, monkeypatch):
+    calls = _spy(monkeypatch, dc, "create")
+    HmsDss.write_timeseries(tmp_path / "a.dss", TS_PATH, TIMES, np.arange(24.0), sync="none")
+    HmsDss.write_timeseries(tmp_path / "b.dss", TS_PATH, TIMES, np.arange(24.0))
+    assert calls[0]["sync"] == "none" and "sync" not in calls[1]
+
+
 def test_java_backend_does_not_use_sync_and_a_nested_unstated_call_keeps_it():
     with _backend.write_sync(False, "java"):
         assert _backend.native_sync_kwargs() == {"sync": False}
@@ -232,6 +254,16 @@ def test_repair_publishes_a_partial_recovery_and_warns(dss7, tmp_path, caplog):
     assert result["complete"] is False and result["not_copied"]
     assert dest.exists() and _digest(damaged) == before
     assert "incomplete" in caplog.text
+
+
+@pytest.mark.skipif(not _backend.takes_keyword(dc.repair, "sync"),
+                    reason="the installed engine's repair() takes no sync=")
+@pytest.mark.parametrize("sync", [None, "end", "step", "none"])
+def test_repair_passes_sync(dss7, tmp_path, monkeypatch, sync):
+    calls = _spy(monkeypatch, dc, "repair")
+    result = HmsDss.repair(dss7, tmp_path / "out.dss", sync=sync)
+    assert result["complete"] is True
+    assert calls[0].get("sync") == sync if sync is not None else "sync" not in calls[0]
 
 
 def test_repair_file_rules_and_gate(dss7, tmp_path, monkeypatch):

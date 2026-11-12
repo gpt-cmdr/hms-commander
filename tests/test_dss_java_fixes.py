@@ -108,8 +108,9 @@ def test_missing_pathnames_is_case_insensitive():
 def test_atlas14_import_builds_one_six_part_pathname_per_probability(monkeypatch, tmp_path):
     captured = {}
 
-    def fake_write(dss_file, records):
+    def fake_write(dss_file, records, sync=None):
         captured["records"] = records
+        captured["sync"] = sync
         return {record["pathname"]: True for record in records}
 
     monkeypatch.setattr(DssCore, "write_multiple_paired_data", staticmethod(fake_write))
@@ -120,6 +121,7 @@ def test_atlas14_import_builds_one_six_part_pathname_per_probability(monkeypatch
     }
     HmsDss.import_atlas14_temporal(tmp_path / "a14.dss", temporal, region_code="SYN_R1")
 
+    assert captured["sync"] is None  # unstated: the engine default applies
     paths = [record["pathname"] for record in captured["records"]]
     assert paths == ["//SYN_R1/FIRST-QUARTILE/24HR//50%/", "//SYN_R1/FIRST-QUARTILE/24HR//90%/"]
     for path in paths:
