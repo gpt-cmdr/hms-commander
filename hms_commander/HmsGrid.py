@@ -16,6 +16,9 @@ Classes:
 Key Functions:
     create_grid_definition: Generate HMS .grid file
     map_grid_to_subbasins: Create grid cell mapping file
+    get_cell_polygons: Place a grid cell file's cells on the map (HRAP, SHG)
+    remap_cell_file: Move a grid cell file to another lattice (HRAP to SHG)
+    check_cells_on_grid: Check cells against a DSS grid record
     calculate_travel_lengths: Compute flow distances
     get_grid_info: Read .grid file metadata
 
@@ -680,6 +683,259 @@ End:
 
         logger.info(f"Read hrapcells: {hrapcells_path} ({len(result)} subbasins)")
         return result
+
+    # ------------------------------------------------------------------
+    # Cell lattices: geographic cells, remapping and checks
+    # ------------------------------------------------------------------
+
+    #: HEC's HRAP lattice: polar stereographic on the LFM sphere, with false easting and
+    #: northing of 401 and 1601 cells, so cell (i, j) has its lower-left corner at
+    #: (i * 4762.5, j * 4762.5). This is the WKT HEC-HMS sample grids store.
+    HRAP_WKT = (
+        'PROJCS["Stereographic_CONUS_HRAP",GEOGCS["GCS_Sphere_LFM",DATUM["D_Sphere_LFM",'
+        'SPHEROID["Shpere_LFM",6371200.0,0.0]],PRIMEM["Greenwich",0.0],'
+        'UNIT["Degree",0.0174532925199433]],PROJECTION["Stereographic_North_Pole"],'
+        'PARAMETER["False_Easting",1909762.5],PARAMETER["False_Northing",7624762.5],'
+        'PARAMETER["Central_Meridian",-105.0],PARAMETER["Standard_Parallel_1",60.0],'
+        'UNIT["Meter",1.0]]'
+    )
+    #: HRAP cell size in metres (at 60 degrees N, its true-scale latitude).
+    HRAP_CELL_SIZE = 4762.5
+    #: The Standard Hydrologic Grid: USGS CONUS Albers on NAD 83 (EPSG:5070), in metres.
+    #: Cell (i, j) has its lower-left corner at (i * cell_size, j * cell_size).
+    SHG_CRS = "EPSG:5070"
+
+    @staticmethod
+    def _lattice(lattice, cell_size: Optional[float]):
+        """``(crs, cell_size)`` of a cell lattice: ``"HRAP"``, ``"SHG"``, a grid dict from
+        ``HmsDss.read_grid`` (its ``crs`` and ``cell_size``), or any CRS with ``cell_size``."""
+        if isinstance(lattice, dict):
+            crs, size = lattice.get("crs"), lattice.get("cell_size")
+            if not crs or not size:
+                raise ValueError("a grid dict needs 'crs' and 'cell_size' (HmsDss.read_grid)")
+            if cell_size is not None and float(cell_size) != float(size):
+                raise ValueError(f"cell_size {cell_size} differs from the grid's {size}")
+            return crs, float(size)
+        if isinstance(lattice, str) and lattice.upper() == "HRAP":
+            if cell_size is not None and float(cell_size) != HmsGrid.HRAP_CELL_SIZE:
+                raise ValueError("the HRAP lattice has a fixed cell size of 4762.5 m")
+            return HmsGrid.HRAP_WKT, HmsGrid.HRAP_CELL_SIZE
+        if isinstance(lattice, str) and lattice.upper() == "SHG":
+            size = 2000.0 if cell_size is None else float(cell_size)
+            if not size > 0:
+                raise ValueError("cell_size must be positive")
+            return HmsGrid.SHG_CRS, size
+        if cell_size is None or not float(cell_size) > 0:
+            raise ValueError("a CRS lattice needs a positive cell_size in its units")
+        return lattice, float(cell_size)
+
+    @staticmethod
+    @log_call
+    def get_cell_polygons(
+        cell_file: Union[str, Path],
+        lattice: Union[str, dict] = "HRAP",
+        cell_size: Optional[float] = None,
+    ) -> 'gpd.GeoDataFrame':
+        """
+        Return the cells of a grid cell file (hrapcells format) as polygons.
+
+        A cell file gives each cell by its integer lattice index; cell ``(x, y)`` covers
+        ``x * cell_size`` to ``(x + 1) * cell_size`` east and the same north, in the
+        lattice's coordinates. This places the cells of a file such as the tenk sample's
+        ``regions/hrapcells`` on the map.
+
+        Args:
+            cell_file: Grid cell file (``Parameter Order: xCoord yCoord TravelLength Area``).
+            lattice: ``"HRAP"`` (default; HEC's HRAP, cell size 4762.5 m), ``"SHG"``
+                (EPSG:5070, cell size ``cell_size``, default 2000 m), a grid dict from
+                ``HmsDss.read_grid`` (its ``crs`` and ``cell_size``), or any CRS accepted
+                by pyproj with ``cell_size`` in its units.
+            cell_size: Cell size for ``"SHG"`` or a CRS lattice.
+
+        Returns:
+            GeoDataFrame with ``subbasin``, ``x``, ``y``, ``travel_length`` (km),
+            ``area`` (km2, the cell's area inside the subbasin, as the file states) and
+            the whole cell as ``geometry``, in the lattice CRS.
+
+        Example:
+            >>> cells = HmsGrid.get_cell_polygons("tenk/regions/hrapcells", "HRAP")
+            >>> basins = cells.dissolve("subbasin")   # the cells each subbasin uses
+        """
+        try:
+            import geopandas as gpd
+            from shapely.geometry import box
+        except ImportError:
+            raise ImportError(
+                "HmsGrid.get_cell_polygons() requires geopandas and shapely.\n"
+                "Install with: pip install hms-commander[gis]"
+            )
+        crs, size = HmsGrid._lattice(lattice, cell_size)
+        rows = []
+        for subbasin, cells in HmsGrid.read_hrapcells(cell_file).items():
+            for c in cells:
+                x, y = c["x"], c["y"]
+                rows.append({
+                    "subbasin": subbasin, "x": x, "y": y,
+                    "travel_length": c["travel_length"], "area": c["area"],
+                    "geometry": box(x * size, y * size, (x + 1) * size, (y + 1) * size),
+                })
+        if not rows:
+            raise ValueError(f"no GRIDCELL entries in {cell_file}")
+        return gpd.GeoDataFrame(rows, geometry="geometry", crs=crs)
+
+    @staticmethod
+    @log_call
+    def remap_cell_file(
+        cell_file: Union[str, Path],
+        output_file: Union[str, Path],
+        source_lattice: Union[str, dict] = "HRAP",
+        target_lattice: Union[str, dict] = "SHG",
+        target_cell_size: Optional[float] = None,
+        source_cell_size: Optional[float] = None,
+    ) -> Path:
+        """
+        Move a grid cell file onto another lattice, keeping each subbasin's area.
+
+        Each source cell's area inside its subbasin (the file's ``Area``) is spread over
+        the target cells it overlaps, in proportion to the overlap, assuming that area is
+        spread evenly over the source cell. A file does not say where inside a partly
+        covered cell the subbasin lies, so boundary cells are approximate; whole cells
+        are exact. Overlaps are measured in EPSG:5070 (equal-area). Each subbasin's total
+        area is preserved to rounding. A target cell's travel length is the
+        area-weighted mean of the travel lengths of the source cells it receives area
+        from. Use it, for example, to run the tenk sample on SHG grids: the result has
+        SHG indexes, which the SHG grid records of ``HmsDssGrid.write_grid_timeseries(
+        target_crs="SHG")`` and ``HmsAorc.convert_to_dss_grid(target_crs="SHG")`` use.
+
+        Args:
+            cell_file: Source grid cell file (hrapcells format).
+            output_file: New cell file to write. An existing file is replaced.
+            source_lattice: Lattice of ``cell_file`` (see ``get_cell_polygons``).
+            target_lattice: Lattice of the output (default ``"SHG"``).
+            target_cell_size: Target cell size (``"SHG"`` default 2000 m).
+            source_cell_size: Source cell size for a CRS lattice.
+
+        Returns:
+            Path to the new cell file.
+
+        Raises:
+            ValueError: If the file has no cells, or a lattice is not understood.
+        """
+        try:
+            import numpy as np
+            import geopandas as gpd
+            from shapely.geometry import box
+        except ImportError:
+            raise ImportError(
+                "HmsGrid.remap_cell_file() requires geopandas and shapely.\n"
+                "Install with: pip install hms-commander[gis]"
+            )
+        source = HmsGrid.get_cell_polygons(cell_file, source_lattice, source_cell_size)
+        target_crs, tsize = HmsGrid._lattice(target_lattice, target_cell_size)
+        # Densify before reprojecting, so curved cell edges keep their shape.
+        source_size = HmsGrid._lattice(source_lattice, source_cell_size)[1]
+        source["geometry"] = source.geometry.segmentize(source_size / 20.0)
+        in_target = source.to_crs(target_crs)
+
+        lines = ["Parameter Order: xCoord yCoord TravelLength Area", "End:"]
+        total_cells = 0
+        for subbasin in dict.fromkeys(source["subbasin"]):
+            acc: Dict[Tuple[int, int], List[float]] = {}
+            for idx in source.index[source["subbasin"] == subbasin]:
+                cell_t = in_target.geometry[idx]
+                area_in = float(source.at[idx, "area"])
+                travel = float(source.at[idx, "travel_length"])
+                minx, miny, maxx, maxy = cell_t.bounds
+                parts = []
+                for ix in range(int(np.floor(minx / tsize)), int(np.floor(maxx / tsize)) + 1):
+                    for iy in range(int(np.floor(miny / tsize)), int(np.floor(maxy / tsize)) + 1):
+                        piece = cell_t.intersection(
+                            box(ix * tsize, iy * tsize, (ix + 1) * tsize, (iy + 1) * tsize))
+                        if not piece.is_empty:
+                            parts.append(((ix, iy), piece))
+                if not parts:
+                    continue
+                pieces = gpd.GeoSeries([pc for _, pc in parts], crs=target_crs)
+                areas = pieces.to_crs(HmsGrid.SHG_CRS).area.to_numpy()
+                # Shares of the source cell; they sum to 1, so the subbasin area is kept.
+                shares = areas / areas.sum() if areas.sum() > 0 else areas
+                for ((ix, iy), _), share in zip(parts, shares):
+                    a = area_in * float(share)
+                    entry = acc.setdefault((ix, iy), [0.0, 0.0])
+                    entry[0] += a
+                    entry[1] += a * travel
+            cells = [(k, v) for k, v in acc.items() if v[0] > 0]
+            if not cells:
+                continue
+            lines.append(f"SUBBASIN:  {subbasin}")
+            for (ix, iy), (a, at) in sorted(cells, key=lambda kv: (-kv[0][1], kv[0][0])):
+                lines.append(f"GRIDCELL:  {ix}  {iy}  {at / a:.2f}  {a:.4f}")
+                total_cells += 1
+            lines.append("END:")
+
+        out = Path(output_file)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        logger.info(f"Remapped cell file to {out.name} ({total_cells} cells)")
+        return out
+
+    @staticmethod
+    @log_call
+    def check_cells_on_grid(
+        cell_file: Union[str, Path],
+        grid: dict,
+    ) -> 'pd.DataFrame':
+        """
+        Check that a grid cell file's cells fall on a DSS grid, and weight its values.
+
+        HEC-HMS looks each cell up by its index in the grid record. A cell outside the
+        record, or on a missing value, gets no precipitation, and HEC-HMS can still report
+        a successful run (look for ``WARNING 40503`` in its log). Use this check before a
+        run, and its ``weighted_value`` to compare with the subbasin's ``PRECIP-INC``.
+
+        Args:
+            cell_file: Grid cell file (hrapcells format), on the grid's lattice.
+            grid: A grid dict from ``HmsDss.read_grid`` (``data``, ``lower_left_cell``).
+                Row 0 of ``data`` is the southern row.
+
+        Returns:
+            DataFrame, one row per subbasin: ``cells``, ``area_km2``,
+            ``cells_outside`` (not in the record), ``cells_missing`` (NaN in the record),
+            ``area_outside_km2``, ``area_missing_km2`` and ``weighted_value`` (the
+            area-weighted mean of the cells' values, in the grid's units, over the cells
+            that have one; NaN when none has).
+        """
+        import numpy as np
+        import pandas as pd
+
+        data = np.asarray(grid["data"], dtype=float)
+        x0, y0 = grid["lower_left_cell"]
+        ny, nx = data.shape
+        rows = []
+        for subbasin, cells in HmsGrid.read_hrapcells(cell_file).items():
+            area = a_out = a_miss = wsum = asum = 0.0
+            n_out = n_miss = 0
+            for c in cells:
+                col, row = c["x"] - int(x0), c["y"] - int(y0)
+                area += c["area"]
+                if not (0 <= col < nx and 0 <= row < ny):
+                    n_out += 1
+                    a_out += c["area"]
+                    continue
+                value = data[row, col]
+                if not np.isfinite(value):
+                    n_miss += 1
+                    a_miss += c["area"]
+                    continue
+                wsum += c["area"] * value
+                asum += c["area"]
+            rows.append({
+                "subbasin": subbasin, "cells": len(cells), "area_km2": area,
+                "cells_outside": n_out, "cells_missing": n_miss,
+                "area_outside_km2": a_out, "area_missing_km2": a_miss,
+                "weighted_value": wsum / asum if asum > 0 else float("nan"),
+            })
+        return pd.DataFrame(rows).set_index("subbasin")
 
     @staticmethod
     def get_info() -> dict:
