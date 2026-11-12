@@ -126,6 +126,12 @@ nav:
       - Catalog: examples/overview.md
       - Rendered Benchmarks:
           - 21 - TauDEM to HMS Atlas 14 Bootstrap: notebooks/21_taudem_to_hms_atlas14.ipynb
+      - Native DSS and Gridded Precipitation:
+          - 06 - DSS Results, Native Records, and Recovery: https://github.com/gpt-cmdr/hms-commander/blob/main/examples/06_results_dss.ipynb
+          - 14a - AORC Download and Storm Catalog: https://github.com/gpt-cmdr/hms-commander/blob/main/examples/14a_aorc_download.ipynb
+          - 14b - AORC HMS Grid Setup: https://github.com/gpt-cmdr/hms-commander/blob/main/examples/14b_aorc_grid_setup.ipynb
+          - 14c - AORC HMS Execution and Results: https://github.com/gpt-cmdr/hms-commander/blob/main/examples/14c_aorc_hms_execution.ipynb
+          - 23 - Native Gridded Import and Grid Tools: https://github.com/gpt-cmdr/hms-commander/blob/main/examples/23_native_gridded_import_and_grid_tools.ipynb
       - Official HEC-HMS Guide Mirrors:
           - 101 - Basic Model Setup: notebooks/101_guide_basic_model_setup.ipynb
           - 102 - Meteorologic Methods: notebooks/102_guide_meteorologic_methods.ipynb

@@ -1,6 +1,6 @@
 # DSS Native Backend: Example Notebook Qualification
 
-**Date:** 2026-11-06, updated 2026-11-07 (see [Update: fixed notebooks](#update-2026-11-07-fixed-notebooks)) and 2026-11-09 (see [Update: engine 0.1.1 from PyPI](#update-2026-11-09-engine-011-from-pypi))
+**Date:** 2026-11-06, updated 2026-11-07 (see [Update: fixed notebooks](#update-2026-11-07-fixed-notebooks)) and 2026-11-09 (see [Update: engine 0.1.1 from PyPI](#update-2026-11-09-engine-011-from-pypi)), and 2026-11-12 (see [Update: engine 0.1.2 and revised notebooks](#update-2026-11-12-engine-012-and-revised-notebooks))
 **Branch:** `feat/fast-dss-notebooks`, from `feat/fast-dss-native-engine` (draft PR #46) after the merge of `origin/main`
 **Scope:** every example notebook that reads or writes DSS through hms-commander, run on the
 `java`, `native` and `shadow` DSS backends (`HMS_COMMANDER_DSS_BACKEND`). This was the final round of
@@ -48,6 +48,79 @@ HEC-HMS 4.13, 4.8 and 4.4.1 on every backend. Before the fix it printed "Could n
 flow" on `java` and a unit-hydrograph ordinate dated year 3000 on `native`. The legacy notebooks are
 archived: they are not in the docs navigation, and their committed outputs come from an older
 library. Only the selection was fixed, and its outputs were not refreshed.
+
+## Update 2026-11-12: engine 0.1.2 and revised notebooks
+
+The `dss` extra now requires `ras-commander-fast-dss>=0.1.2,<0.2`. Notebooks `06_results_dss`,
+`14a_aorc_download`, `14b_aorc_grid_setup` and `14c_aorc_hms_execution` were revised, and
+`23_native_gridded_import_and_grid_tools` is new. Each was run to completion on three settings of
+`HMS_COMMANDER_DSS_BACKEND`: unset (the default, `java`), `native` and `shadow`. The committed
+outputs are the unset (Java) run. 14a, 14b and 14c ran in one folder per setting, in that order,
+because 14b and 14c use 14a's files.
+
+| Item | Value |
+|---|---|
+| Engine | `ras-commander-fast-dss` **0.1.2** from PyPI (`cp310-abi3-win_amd64` wheel), in a fresh uv venv (Python 3.12.11) |
+| Java backend | HEC Monolith 3.3.27, pyjnius 1.9.0, OpenJDK 17.0.20.1 |
+| HEC-HMS | 4.13 (06, 14c), named explicitly through `HmsExamples.get_hms_exe("4.13")`; all runs through `HmsCmdr` |
+| Runner | nbclient; the `native` and `shadow` runs append a cell that records the backend, the engine version and the shadow summary |
+
+Wall times in seconds (incidental, shared workstation; not benchmarks):
+
+| Notebook | Outcome (unset / native / shadow) | Wall s (unset / native / shadow) | Shadow comparisons |
+|---|---|---|---|
+| 06 - DSS Results, Native Records, and Recovery | pass / pass / pass | 18 / 8 / 9 | 56, all identical |
+| 14a - AORC Download and Storm Catalog | pass / pass / pass | 66 / 48 / 69 | 248, all identical |
+| 14b - AORC HMS Grid Setup | pass / pass / pass | 22 / 13 / 16 | 122, all identical |
+| 14c - AORC HMS Execution and Results | pass / pass / pass | 20 / 18 / 19 | 175: 174 identical, 1 `expected` D1 (observed flow with missing hours) |
+| 23 - Native Gridded Import, Zonal Rainfall, and Grid Tools | pass / pass / pass | 137 / 104 / 132 | 157, all identical |
+
+The key results were the same on every setting:
+
+- **06.** The tifton outflow written to new DSS6 and DSS7 files reads back identical; the
+  four-curve HEC-DSSVue `sample7.dss` frequency record (fetched from the engine's public
+  repository at tag v0.1.2, SHA-256 checked) is copied to DSS6 and DSS7 with every curve and
+  label identical; `repair` of the healthy DSS7 copy reports `complete` with 6 of 6 records
+  and refuses an existing destination; the three `sync` modes store the same values.
+- **14a.** The tenk storm of January 1996 (AORC v1.1, 119 hours) is written on the 2 km SHG
+  lattice through `HmsAorc.convert_to_dss_grid` and through `HmsDssGrid.import_gridded`
+  (the engine's NetCDF reader). 118 of 119 grids are identical cell for cell; in the other,
+  one cell differs by one float32 step (2.4e-7 mm), from unpacking the file's 16-bit packed
+  values in two readers.
+- **14b.** After `HmsGrid.remap_cell_file`, no tenk cell falls outside any of the 119 SHG
+  grid records or on a missing value; the HRAP cell file misses every cell. Each subbasin keeps
+  its area (largest change 0.0006 km2). The Bald Eagle Creek cell file needs `grid_origin`
+  from the grid record; without it, every cell misses the WGS84 grid.
+- **14c.** HEC-HMS 4.13 runs the tenk sample with the new AORC SHG grids with no
+  missing-precipitation warning, and each subbasin's `PRECIP-INC` equals the area-weighted
+  depth of its grid cells for every hour (largest difference 5.6e-16 in). Tenkiller peak:
+  8,283 cfs (AORC) against 7,656 cfs (the shipped Stage III control).
+- **23.** MRMS 6-hour and 24-hour Pass 2 products equal the sums of the 1-hour grids in their
+  windows (largest difference 0.0 mm); all cores and `threads=1` give records with identical
+  cells (the files differ only in write times); 1-hour and 3-hour series hold the same event
+  volume; the normalized MRMS series sums to the AORC zone totals.
+
+**Correction to earlier 14c runs.** Before this update, 14c called `init_hms_project` without
+`hms_exe_path`. `HmsJython.find_hms_executable()` then chose HEC-HMS 4.10 on this
+workstation, and 4.10 aborted the 4.13 tenk project (`ERROR 20137`, `WARNING 15303`).
+`HmsCmdr.compute_run` still returned `True`, because it reports how the HEC-HMS process
+ended, not whether the run finished, and the notebook went on to read the results file that
+ships with the sample. The earlier "pass" rows for 14c therefore show the shipped results, not
+a computed run. 14c now names HEC-HMS 4.13, removes the shipped results first and reports the
+run's outcome from its log. Both library behaviours are recorded as open items for a separate
+change.
+
+**External services during the runs.** The USGS WBD service returned `502 Bad Gateway` to
+14a's HUC12 query in three attempts (two shadow, one native); each notebook passed on a later
+attempt, and only passing runs are listed. NSIDC returned `HTTP 500` for SNODAS during the runs,
+so the three SNODAS daily tars (16, 20 and 22 February 2021), downloaded from the same NSIDC
+URLs earlier the same day, were placed in each run folder beforehand; notebook 23 checks each
+file's SHA-256 before use.
+
+**Not demonstrated, for lack of public data or a library downloader:** HRRR and Stage IV
+(no hms-commander downloader for archived cycles), HDF5, GeoTIFF, ASCII, PRISM and local Zarr v2
+sources over the tenk basin, irregular-interval series, profiles and DSS7 location records
+(none in the public HEC-HMS or HEC-DSSVue samples used).
 
 ## Update 2026-11-09: engine 0.1.1 from PyPI
 
@@ -252,6 +325,12 @@ use, so this branch adds no library change and no new test. Committed on this br
    test venvs, because TLS to PyPI failed (`invalid peer certificate: UnknownIssuer`). The engine's
    own `tests/python` suite was therefore not re-run by that script. The wheel was installed with
    `uv --offline`.
+7. **Added 2026-11-12. HEC-HMS version auto-detection and run outcome (library, not DSS).**
+   `HmsJython.find_hms_executable()` chose HEC-HMS 4.10 on this workstation although 4.13 is
+   installed, and 4.10 aborts a 4.13 project. `HmsCmdr.compute_run` returned `True` for that
+   aborted run, because it reports the HEC-HMS process's exit, not the run's outcome in its log
+   (`NOTE 15302` finished, `WARNING 15303` aborted). Notebook 14c now names the version and
+   reads the log; a library change is outside this branch.
 
 ## Notebooks not run on the three backends
 

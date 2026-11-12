@@ -171,6 +171,7 @@ Other `HecDss` objects on the same file reopen it on their next access.
 
 - [API Reference: HmsDss](../api/hms_dss.md) - Complete method documentation
 - [Native DSS Backend](dss_native_backend.md) - Java, native and shadow backends
+- [06 - DSS Results, Native Records, and Recovery](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/06_results_dss.ipynb) - Example notebook
 - [Results Analysis](results_analysis.md) - Processing HMS results
 - [Time-Series Gages](gages.md) - Linking DSS data to models
 - [Data Formats: DSS Integration](../data_formats/dss_integration.md) - DSS file format

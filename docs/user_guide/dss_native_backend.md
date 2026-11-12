@@ -500,6 +500,13 @@ holds no other DSS file open during a read, and the damage is also reported in t
 
 The example notebooks that use DSS were run on all three backends; see
 [Native DSS Notebook Qualification](../development/dss-native-notebook-qualification.md).
+The engine-only operations are shown on public data in
+[06 - DSS Results, Native Records, and Recovery](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/06_results_dss.ipynb) (every curve,
+`repair`, `sync`),
+[14a](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/14a_aorc_download.ipynb)-[14c](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/14c_aorc_hms_execution.ipynb) (AORC on the
+SHG lattice, checked in HEC-HMS) and
+[23 - Native Gridded Import and Grid Tools](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/23_native_gridded_import_and_grid_tools.ipynb)
+(MRMS, AORC and SNODAS import, every grid tool and zonal statistic).
 
 `tests/test_dss_native_backend.py` compares the two backends on the HEC-HMS example
 projects that `HmsExamples` extracts (castro, tenk and river_bend from the HEC-HMS 4.13
