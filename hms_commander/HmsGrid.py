@@ -71,6 +71,7 @@ from pathlib import Path
 from typing import Union, Optional, Tuple, Dict, List
 from datetime import datetime
 import logging
+import math
 import re
 
 from .LoggingConfig import get_logger
@@ -707,27 +708,43 @@ End:
 
     @staticmethod
     def _lattice(lattice, cell_size: Optional[float]):
-        """``(crs, cell_size)`` of a cell lattice: ``"HRAP"``, ``"SHG"``, a grid dict from
-        ``HmsDss.read_grid`` (its ``crs`` and ``cell_size``), or any CRS with ``cell_size``."""
+        """``(crs, cell_size, cell_zero)`` of a cell lattice: ``"HRAP"``, ``"SHG"``, a grid
+        dict from ``HmsDss.read_grid`` (its ``crs``, ``cell_size`` and ``cell_zero``), or any
+        CRS with ``cell_size``.
+
+        ``cell_zero`` is the coordinate of the corner of cell (0, 0), so cell ``(i, j)`` has
+        its lower-left corner at ``cell_zero + (i, j) * cell_size``, as in ``HmsDss.read_grid``
+        (``origin = cell_zero + lower_left_cell * cell_size``). It is ``(0, 0)`` for HRAP,
+        SHG and a plain CRS. A grid dict without ``cell_zero`` takes it from ``origin`` and
+        ``lower_left_cell`` when both are given."""
         if isinstance(lattice, dict):
             crs, size = lattice.get("crs"), lattice.get("cell_size")
             if not crs or not size:
                 raise ValueError("a grid dict needs 'crs' and 'cell_size' (HmsDss.read_grid)")
-            if cell_size is not None and float(cell_size) != float(size):
+            size = float(size)
+            if cell_size is not None and float(cell_size) != size:
                 raise ValueError(f"cell_size {cell_size} differs from the grid's {size}")
-            return crs, float(size)
+            zero = lattice.get("cell_zero")
+            if zero is None and lattice.get("origin") is not None \
+                    and lattice.get("lower_left_cell") is not None:
+                (ox, oy), (lx, ly) = lattice["origin"], lattice["lower_left_cell"]
+                zero = (float(ox) - float(lx) * size, float(oy) - float(ly) * size)
+            zx, zy = (0.0, 0.0) if zero is None else (float(zero[0]), float(zero[1]))
+            if not (math.isfinite(zx) and math.isfinite(zy)):
+                raise ValueError(f"cell_zero must be finite, not {zero!r}")
+            return crs, size, (zx, zy)
         if isinstance(lattice, str) and lattice.upper() == "HRAP":
             if cell_size is not None and float(cell_size) != HmsGrid.HRAP_CELL_SIZE:
                 raise ValueError("the HRAP lattice has a fixed cell size of 4762.5 m")
-            return HmsGrid.HRAP_WKT, HmsGrid.HRAP_CELL_SIZE
+            return HmsGrid.HRAP_WKT, HmsGrid.HRAP_CELL_SIZE, (0.0, 0.0)
         if isinstance(lattice, str) and lattice.upper() == "SHG":
             size = 2000.0 if cell_size is None else float(cell_size)
             if not size > 0:
                 raise ValueError("cell_size must be positive")
-            return HmsGrid.SHG_CRS, size
+            return HmsGrid.SHG_CRS, size, (0.0, 0.0)
         if cell_size is None or not float(cell_size) > 0:
             raise ValueError("a CRS lattice needs a positive cell_size in its units")
-        return lattice, float(cell_size)
+        return lattice, float(cell_size), (0.0, 0.0)
 
     @staticmethod
     @log_call
@@ -740,16 +757,17 @@ End:
         Return the cells of a grid cell file (hrapcells format) as polygons.
 
         A cell file gives each cell by its integer lattice index; cell ``(x, y)`` covers
-        ``x * cell_size`` to ``(x + 1) * cell_size`` east and the same north, in the
-        lattice's coordinates. This places the cells of a file such as the tenk sample's
+        ``x0 + x * cell_size`` to ``x0 + (x + 1) * cell_size`` east and the same north, in
+        the lattice's coordinates, where ``(x0, y0)`` is the lattice's ``cell_zero``: the
+        corner of cell (0, 0). It is (0, 0) for HRAP and SHG. This places the cells of a file such as the tenk sample's
         ``regions/hrapcells`` on the map.
 
         Args:
             cell_file: Grid cell file (``Parameter Order: xCoord yCoord TravelLength Area``).
             lattice: ``"HRAP"`` (default; HEC's HRAP, cell size 4762.5 m), ``"SHG"``
                 (EPSG:5070, cell size ``cell_size``, default 2000 m), a grid dict from
-                ``HmsDss.read_grid`` (its ``crs`` and ``cell_size``), or any CRS accepted
-                by pyproj with ``cell_size`` in its units.
+                ``HmsDss.read_grid`` (its ``crs``, ``cell_size`` and ``cell_zero``), or
+                any CRS accepted by pyproj with ``cell_size`` in its units.
             cell_size: Cell size for ``"SHG"`` or a CRS lattice.
 
         Returns:
@@ -769,7 +787,7 @@ End:
                 "HmsGrid.get_cell_polygons() requires geopandas and shapely.\n"
                 "Install with: pip install hms-commander[gis]"
             )
-        crs, size = HmsGrid._lattice(lattice, cell_size)
+        crs, size, (zx, zy) = HmsGrid._lattice(lattice, cell_size)
         rows = []
         for subbasin, cells in HmsGrid.read_hrapcells(cell_file).items():
             for c in cells:
@@ -777,7 +795,8 @@ End:
                 rows.append({
                     "subbasin": subbasin, "x": x, "y": y,
                     "travel_length": c["travel_length"], "area": c["area"],
-                    "geometry": box(x * size, y * size, (x + 1) * size, (y + 1) * size),
+                    "geometry": box(zx + x * size, zy + y * size,
+                                    zx + (x + 1) * size, zy + (y + 1) * size),
                 })
         if not rows:
             raise ValueError(f"no GRIDCELL entries in {cell_file}")
@@ -811,7 +830,9 @@ End:
             cell_file: Source grid cell file (hrapcells format).
             output_file: New cell file to write. An existing file is replaced.
             source_lattice: Lattice of ``cell_file`` (see ``get_cell_polygons``).
-            target_lattice: Lattice of the output (default ``"SHG"``).
+            target_lattice: Lattice of the output (default ``"SHG"``). A grid dict from
+                ``HmsDss.read_grid`` puts the output on that grid's lattice, ``cell_zero``
+                included, so its indexes are the ones the grid record uses.
             target_cell_size: Target cell size (``"SHG"`` default 2000 m).
             source_cell_size: Source cell size for a CRS lattice.
 
@@ -831,7 +852,7 @@ End:
                 "Install with: pip install hms-commander[gis]"
             )
         source = HmsGrid.get_cell_polygons(cell_file, source_lattice, source_cell_size)
-        target_crs, tsize = HmsGrid._lattice(target_lattice, target_cell_size)
+        target_crs, tsize, (tzx, tzy) = HmsGrid._lattice(target_lattice, target_cell_size)
         # Densify before reprojecting, so curved cell edges keep their shape.
         source_size = HmsGrid._lattice(source_lattice, source_cell_size)[1]
         source["geometry"] = source.geometry.segmentize(source_size / 20.0)
@@ -847,10 +868,14 @@ End:
                 travel = float(source.at[idx, "travel_length"])
                 minx, miny, maxx, maxy = cell_t.bounds
                 parts = []
-                for ix in range(int(np.floor(minx / tsize)), int(np.floor(maxx / tsize)) + 1):
-                    for iy in range(int(np.floor(miny / tsize)), int(np.floor(maxy / tsize)) + 1):
+                # Target indices are counted from the target lattice's cell (0, 0).
+                for ix in range(int(np.floor((minx - tzx) / tsize)),
+                                int(np.floor((maxx - tzx) / tsize)) + 1):
+                    for iy in range(int(np.floor((miny - tzy) / tsize)),
+                                    int(np.floor((maxy - tzy) / tsize)) + 1):
                         piece = cell_t.intersection(
-                            box(ix * tsize, iy * tsize, (ix + 1) * tsize, (iy + 1) * tsize))
+                            box(tzx + ix * tsize, tzy + iy * tsize,
+                                tzx + (ix + 1) * tsize, tzy + (iy + 1) * tsize))
                         if not piece.is_empty:
                             parts.append(((ix, iy), piece))
                 if not parts:
