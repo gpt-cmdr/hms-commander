@@ -2068,6 +2068,8 @@ class DssCore:
         units: str = "CFS",
         data_type: str = "INST-VAL",
         dss_version: Optional[int] = None,
+        *,
+        sync: Optional[Any] = None,
     ) -> Path:
         """
         Write a regular-interval time series to a DSS file (created if missing).
@@ -2084,6 +2086,14 @@ class DssCore:
             units: HEC units (default ``CFS``)
             data_type: HEC type: ``INST-VAL``, ``PER-AVER``, ``PER-CUM`` or ``INST-CUM``
             dss_version: 6 or 7 for a new file; for an existing file it must match
+            sync: Flush policy of the native writer, passed to
+                ras-commander-fast-dss unchanged. ``None`` (default) states nothing,
+                so the installed engine's own default applies; that default is the
+                engine's and can change between its releases. With
+                ras-commander-fast-dss 0.1.1, ``True`` flushes at each write step
+                and ``False`` does not flush. No value is a power-loss guarantee.
+                The ``java`` backend does not use it; ``shadow`` applies it to the
+                native repeat only.
 
         Returns:
             Path to the DSS file
@@ -2099,6 +2109,10 @@ class DssCore:
             >>> DssCore.write_timeseries("obs.dss", "//GAGE 1/FLOW//1HOUR/OBS/",
             ...                          times, flows)
         """
+        if sync is not None:
+            with _backend.write_sync(sync, DssCore.get_backend()):
+                return DssCore.write_timeseries(dss_file, pathname, times, values, units,
+                                                data_type, dss_version)
         DssCore._prepare_timeseries(pathname, times, values)
         DssCore._validate_dss_version(dss_version)
         backend = DssCore.get_backend()
@@ -2194,7 +2208,8 @@ class DssCore:
         target, version, existed, created = DssCore._native_write_target(dss_file, dss_version)
         with DssCore._native_new_file(dc, target, version, existed, created):
             dc.write_timeseries(str(target), pathname, values, times=stamps, units=units,
-                                data_type=data_type, version=version, value_type="double")
+                                data_type=data_type, version=version, value_type="double",
+                                **_backend.native_sync_kwargs())
         logger.info(f"Wrote {len(values)} values to {pathname}")
         return target
 
@@ -2232,6 +2247,7 @@ class DssCore:
         y_precision: Optional[int] = None,
         value_type: str = "auto",
         dss_version: Optional[int] = None,
+        sync: Optional[Any] = None,
         x_label: Optional[str] = None,
         y_label: Optional[str] = None,
     ) -> bool:
@@ -2272,6 +2288,10 @@ class DssCore:
                 existing file must match an explicit value.
             x_label: Earlier name of ``x_type``; give one or the other.
             y_label: Earlier name of ``y_type``; give one or the other.
+            sync: Flush policy of the native writer, passed to
+                ras-commander-fast-dss unchanged; ``None`` (default) leaves the
+                installed engine's own default. The ``java`` backend does not use
+                it. See ``DssCore.write_timeseries``.
 
         Returns:
             True. As with ``write_timeseries``, a failed write raises.
@@ -2320,6 +2340,14 @@ class DssCore:
             ...     x_units="HOURS", y_units="FRACTION", x_type="TIME", y_type="CUMULATIVE",
             ... )
         """
+        if sync is not None:
+            with _backend.write_sync(sync, DssCore.get_backend()):
+                return DssCore.write_paired_data(
+                    dss_file, pathname, x_values, y_values, x_units, y_units, x_type,
+                    y_type, labels, create_if_missing, x_precision=x_precision,
+                    y_precision=y_precision, value_type=value_type,
+                    dss_version=dss_version, x_label=x_label, y_label=y_label,
+                )
         spec = DssCore._paired_data_spec(
             pathname, x_values, y_values, x_units, y_units, x_type, y_type, labels,
             x_precision, y_precision, value_type, x_label, y_label,
@@ -2557,6 +2585,7 @@ class DssCore:
                 y_units=spec["y_units"], y_type=spec["y_type"],
                 labels=spec["labels"], value_type=spec["value_type"], raw=True,
                 x_precision=x_precision, y_precision=y_precision, version=version,
+                **_backend.native_sync_kwargs(),
             )
         logger.info(f"Wrote paired data to {pathname}")
         return True
@@ -2587,7 +2616,9 @@ class DssCore:
     @log_call
     def write_multiple_paired_data(
         dss_file: Union[str, Path],
-        paired_data_records: List[Dict[str, Any]]
+        paired_data_records: List[Dict[str, Any]],
+        *,
+        sync: Optional[Any] = None,
     ) -> Dict[str, bool]:
         """
         Write multiple paired data records to DSS file.
@@ -2602,6 +2633,10 @@ class DssCore:
                 - y_units: (optional) Y units
                 - x_label: (optional) X axis type
                 - y_label: (optional) Y axis type
+            sync: Flush policy of the native writer, passed to
+                ras-commander-fast-dss unchanged; ``None`` (default) leaves the
+                installed engine's own default. The ``java`` backend does not use
+                it. See ``DssCore.write_timeseries``.
 
         Returns:
             Dict mapping pathname to success status. True means the record was
@@ -2624,6 +2659,9 @@ class DssCore:
             ... ]
             >>> results = DssCore.write_multiple_paired_data("file.dss", records)
         """
+        if sync is not None:
+            with _backend.write_sync(sync, DssCore.get_backend()):
+                return DssCore.write_multiple_paired_data(dss_file, paired_data_records)
         DssCore._check_paired_data_records(paired_data_records)
 
         def java_call():
@@ -2688,6 +2726,7 @@ class DssCore:
                         x_units=spec['x_units'], x_type=spec['x_type'],
                         y_units=spec['y_units'], y_type=spec['y_type'],
                         value_type="float", raw=True, version=version,
+                        **_backend.native_sync_kwargs(),
                     )
                     results[pathname] = True
                 except Exception as e:

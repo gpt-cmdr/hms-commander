@@ -1,6 +1,6 @@
 # HmsDssGrid
 
-DSS grid writing operations for gridded precipitation workflows.
+DSS grid writing for gridded precipitation workflows, and the engine's gridded import and grid tools.
 
 ::: hms_commander.HmsDssGrid
     options:
