@@ -262,8 +262,14 @@ Engine 0.1.2 adds these sources to `import_gridded` (feature flags in brackets):
 - **A loose GeoTIFF with a `<name>.aux.xml`** that supplies only nodata and statistics.
 
 `import_gridded`, `import_arrays` and `import_zarr` use every core by default
-(`threads=None`, feature `gridded_threads_all_cores`); the file written is byte-identical
-to `threads=1`. Kilometre axes are converted to metres exactly as HEC-Vortex does.
+(`threads=None`, feature `gridded_threads_all_cores`). The thread count does not change
+the records: compared with `threads=1`, every grid holds the same cell values, the same
+grid metadata (lattice, cell size, units, data type, times) and the same pathnames in the
+same order. The file bytes can still differ, because a DSS file stores the time each record
+was written. Notebook 23 shows equal cells and catalogs for the two thread counts, and
+files of equal length whose bytes differ along with the records' write times. Compare
+records, not file hashes. Kilometre axes are
+converted to metres exactly as HEC-Vortex does.
 
 The engine plans a run before it writes, so a refused run leaves the output untouched.
 Its documentation lists the supported source layouts, projections and resampling

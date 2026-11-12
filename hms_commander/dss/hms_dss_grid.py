@@ -143,8 +143,10 @@ class HmsDssGrid:
 
     Threads:
         In ras-commander-fast-dss 0.1.2, ``import_gridded``, ``import_arrays`` and
-        ``import_zarr`` use every core by default (``threads=None``); the file
-        written is byte-identical whatever the count. Pass ``threads=1`` to limit it.
+        ``import_zarr`` use every core by default (``threads=None``). The records
+        (cell values, grid metadata and pathnames) do not depend on the count, but
+        the file bytes can differ, because DSS stores each record's write time.
+        Pass ``threads=1`` to limit it.
 
     Technical Background:
         HMS requires gridded precipitation data in DSS format with specific
