@@ -567,6 +567,27 @@ def test_zonal_statistics_and_grid_to_point(grids, zones, tmp_path):
         np.testing.assert_allclose(df["value"].to_numpy(), expected, rtol=1e-6)
 
 
+@pytest.mark.parametrize("method", ["near", "bilinear", "average"])
+def test_resampling_method_reaches_the_engine(grids, tmp_path, monkeypatch, method):
+    """The engine's ``method=`` keyword is passed through, not taken by the wrapper."""
+    target, _ = grids
+    calls = _spy(monkeypatch, dc.gridded, "import_arrays")
+    out = tmp_path / f"{method}.dss"
+    HmsDssGrid.import_arrays(FRAMES, out, times=WINDOWS, transform=TRANSFORM, crs="SHG",
+                             variable="precipitation", source_units="mm",
+                             target_crs="SHG", cell_size=2000.0, method=method,
+                             parts=GRID_PARTS)
+    assert calls[-1]["method"] == method
+    assert len(HmsDss.get_catalog(out)) == 3
+    raster_calls = _spy(monkeypatch, dc.gridded, "calculate_raster")
+    HmsDssGrid.calculate_raster(target, out, tmp_path / "r.dss", operation="add",
+                                method=method, parts=GRID_PARTS,
+                                raster_variable=HmsDss.get_catalog(out)[0],
+                                static_raster=True)
+    assert raster_calls[-1]["method"] == method
+    assert len(HmsDss.get_catalog(tmp_path / "r.dss")) == 3
+
+
 def test_tools_sync_gates_and_refusals(grids, zones, tmp_path, monkeypatch):
     target, _ = grids
     calls = _spy(monkeypatch, dc.gridded, "calculate")

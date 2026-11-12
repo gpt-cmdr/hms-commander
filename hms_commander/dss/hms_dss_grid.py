@@ -864,9 +864,12 @@ class HmsDssGrid:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _engine_tool(method: str, *args: Any, sync: Any = None, **kwargs: Any) -> Any:
-        function = _backend.require_gridded(method)
-        kwargs.update(_backend.engine_sync_kwargs(function, sync, f"gridded.{method}"))
+    def _engine_tool(tool: str, /, *args: Any, sync: Any = None, **kwargs: Any) -> Any:
+        # ``tool`` is positional-only: the engine's own keywords, such as the resampling
+        # ``method=`` of import_gridded, import_arrays and calculate_raster, must reach
+        # the engine unchanged.
+        function = _backend.require_gridded(tool)
+        kwargs.update(_backend.engine_sync_kwargs(function, sync, f"gridded.{tool}"))
         return function(*args, **kwargs)
 
     @staticmethod
