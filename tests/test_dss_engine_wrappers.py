@@ -112,7 +112,8 @@ def test_sync_is_the_engines_value_not_a_bool_this_wrapper_checks(tmp_path, monk
                         lambda *args, **kwargs: seen.append(kwargs.get("sync")) or {})
     HmsDss.write_timeseries(target, TS_PATH, TIMES, np.arange(24.0), sync="per_step")
     assert seen == ["per_step"]
-    monkeypatch.undo()
+    monkeypatch.undo()  # also restores the environment variable, which outranks the attribute
+    monkeypatch.delenv(_backend.ENV_VAR, raising=False)
     monkeypatch.setattr(HmsDss, "backend", "native")
     with pytest.raises((TypeError, ValueError), match="sync"):  # the engine's refusal
         HmsDss.write_timeseries(target, TS_PATH, TIMES, np.arange(24.0), sync="per_step")
