@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-14
+
+### ⚠️ Behaviour changes (read before upgrading)
+
+Java (HEC Monolith) remains the default DSS backend; the native engine is used only when selected or by the engine-only wrappers.
+
+**`HmsCmdr` compute methods (#50).** `compute_run()`, `compute_parallel()`, `compute_batch()` and `compute_with_parameters()`:
+
+- **Return `False` for runs that cannot be verified from the run's own outputs**, including runs HEC-HMS aborted (which returned `True` before) and runs missing from a `.run` file or with no `Log File:` or `DSS File:`. Recheck results from runs reported as successful without an explicit `hms_exe_path`.
+- **Raise `RuntimeError` when no installed HEC-HMS suits the project's `.hms` `Version:`**, such as when only older versions are installed. Without `hms_exe_path` they no longer fall back to the first installation found. Pass `hms_exe_path` to run anyway.
+- **Select the HEC-HMS version the project declares** (exact or equal, then a newer patch, then the nearest newer minor). Versions now compare numerically; 4.10 no longer sorts before 4.13. `HmsJython.find_hms_executable(version=...)` returns `None` instead of an older version.
+- **Raise `TimeoutError`** when a run's log or DSS files are still locked by another compute after `timeout`. `timeout` is now one budget for waiting and running.
+- **Leave `<file>.hms-commander-lock` files** beside each run's log and DSS files and in copied or worker folders. They are kept on purpose; do not delete them while a compute may be running.
+- **Move an existing run log aside** to `<log name>.hms-commander-prev-<32 hex>` during a compute; it is deleted or restored afterwards.
+- **`compute_batch()` runs that share a `Log File:` run in separate HEC-HMS sessions**, one per run, in order.
+- **`compute_parallel()` gives each task a free worker folder** (it could overwrite a folder still in use).
+
+**DSS (#46 and related fixes).**
+
+- `write_paired_data()` raises `RuntimeError` on a library error instead of returning `False`, and calls that give all four units and types store float64 input as float64 (PDD) unless `value_type="float"`.
+- Java `write_timeseries()` raises `RuntimeError` when the library refuses a write.
+- PER-CUM and PER-AVER AORC grids are stamped as periods (D = T - 1h, E = T). Earlier AORC DSS grids give no rain in HEC-HMS: regenerate them and do not merge old and new files.
+- `HmsAorc.download()` keeps the requested hours; a date-only `end_time` now means 00:00 of that date.
+- HEC Monolith messages no longer reach stdout, which could corrupt DSS files; failure lines are logged at WARNING.
+- The `dss` extra now installs `ras-commander-fast-dss>=0.1.2,<0.2` on CPython for Windows AMD64 and Linux x86_64/aarch64 (not macOS).
+
+**Compatibility:** `hms-commander-mcp` 0.1.1 requires `hms-commander>=0.4.0,<0.5`, so it does not install with 0.5.0 until it widens that range.
+
+The sections below give the full detail.
+
 ### Added
 
 - `HmsArfTexas`: Texas 1-day areal-reduction factors per Asquith (1999), USGS WRIR 99-4267 (Austin, Dallas, Houston; 1-day, T >= 2 yr, 0-50 mi radius).
