@@ -13,11 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pygeohydro runs its requests on async-retriever's event-loop thread, and the atexit
   cleanup of async-retriever 0.19.3 can wait for ever when that thread ends at the wrong
   moment. Once an `HmsHuc` query has started that thread, hms-commander registers its
-  own exit hook. The hook runs before async-retriever's cleanup, stops the thread with a
-  bounded join, and leaves the cleanup nothing to wait for. It never raises, and it does
-  nothing when async-retriever is not loaded or its `stop()` no longer has the unbounded
-  wait. The test session's stop of the loop thread (added with the native CI) now calls
-  the same code.
+  own exit hook, which runs before async-retriever's cleanup and leaves it nothing to
+  wait for.
+  - Every wait in the hook, including taking async-retriever's lock, is bounded: 30 s in
+    total by default. If another thread holds that lock, the hook replaces it so
+    async-retriever's own cleanup cannot block on it either.
+  - Tasks already on the loop get up to 20 s to finish. Tasks still running after that
+    are cancelled and given 2 s for their cleanup. Work that ignores cancellation, timers
+    not yet due, and a loop thread stuck in blocking code are abandoned at exit, so a
+    caller that needs a result must wait for it before the interpreter exits.
+  - It acts only on async-retriever 0.19.3 whose compiled `stop()`, `_cleanup()` and
+    `run()` match that release, whether or not the source is readable. For any other
+    version or a changed implementation it does nothing and logs the reason at DEBUG.
+  - It never raises an `Exception`.
+
+  The test session's stop of the loop thread (added with the native CI) now calls the
+  same code.
 
 ## [0.5.0] - 2026-11-14
 
