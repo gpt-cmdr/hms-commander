@@ -32,6 +32,23 @@ exception_classes:
       libraries used by DSS operations. Not exported from hms_commander.
     category: utilities
 
+  - class_name: OutputLock
+    module: hms_commander._run_lock
+    reason: |
+      Internal context manager in a private module. Each instance holds the
+      open operating-system file handles of the cross-process locks that
+      HmsCmdr takes on a run's log and DSS files from snapshot to
+      verification; the handles must live for the duration of the `with`
+      block. Not exported from hms_commander.
+    category: execution
+
+  - class_name: _OneLock
+    module: hms_commander._run_lock
+    reason: |
+      Private helper of OutputLock: one lock file and its open handle,
+      acquired and released as a unit. Not exported from hms_commander.
+    category: execution
+
 # ============================================================================
 # Static classes that use @classmethod for class-level caches (HMS-API-02)
 # ============================================================================

@@ -29,3 +29,5 @@ jobs:
         run: python -m pytest tests/test_hms_text.py -q
       - name: Check DSS read and write contracts without Java
         run: python -m pytest tests/test_dss_java_fixes.py -m "not requires_java" -q
+      - name: Check HEC-HMS run verification and version selection without HEC-HMS
+        run: python -m pytest tests/test_compute_run_verification.py -m "not requires_hms and not local_hms and not slow" --basetemp "${{ runner.temp }}/compute-run-verification" -q

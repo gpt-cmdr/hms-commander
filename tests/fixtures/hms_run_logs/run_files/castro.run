@@ -1,0 +1,36 @@
+Run: Current
+     Description: Current conditions for storm of 16 January 1973
+     Log File: Current.log
+     DSS File: Current.dss
+     Is Save Spatial Results: No
+     Last Modified Date: 11 September 2018
+     Last Modified Time: 02:53:27
+     Last Execution Date: 1 April 2021
+     Last Execution Time: 22:48:46
+     Basin: Castro 1
+     Precip: GageWts
+     Control: Jan73
+     Save State Type: None
+     Time-Series Output: Save All
+     Time Series Results Manager Start:
+     Time Series Results Manager End:
+End:
+
+Run: Future
+     Description: Future conditions for storm of 16 January 1973
+     Log File: Future.log
+     DSS File: Future.dss
+     Is Save Spatial Results: No
+     Last Modified Date: 11 September 2018
+     Last Modified Time: 02:53:33
+     Last Execution Date: 1 April 2021
+     Last Execution Time: 22:48:47
+     Basin: Castro 2
+     Precip: GageWts
+     Control: Jan73
+     Save State Type: None
+     Time-Series Output: Save All
+     Time Series Results Manager Start:
+     Time Series Results Manager End:
+End:
+

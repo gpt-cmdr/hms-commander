@@ -1,0 +1,5 @@
+ 
+Project opened successfully: tenk
+ERROR 20137:  Data source is not defined for precipitation grid "Grid 1".
+ERROR 20358:  Found "1" errors in meteorologic model "Stage3-HRAP".
+Error during computation: Simulation run "Jan 96 storm" failed.
