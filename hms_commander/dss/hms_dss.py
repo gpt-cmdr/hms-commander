@@ -20,8 +20,9 @@ All methods are static and designed to be used without instantiation.
 
 import gc
 from pathlib import Path
-from typing import Dict, List, Optional, Union, Any
+from typing import Dict, List, Optional, Union, Any, Sequence
 import pandas as pd
+import numpy as np
 
 from ..LoggingConfig import get_logger
 from ..Decorators import log_call
@@ -34,6 +35,8 @@ from .catalog import (
 )
 
 logger = get_logger(__name__)
+
+from . import _backend
 
 # Import standalone DSS core from same subpackage
 try:
@@ -55,10 +58,24 @@ class HmsDss:
 
     All methods are static - no instantiation required.
 
+    Backends:
+        ``HmsDss.backend`` selects how DSS files are read and written (the
+        environment variable ``HMS_COMMANDER_DSS_BACKEND`` overrides it):
+
+        - ``"java"`` (default): HEC Monolith through pyjnius.
+        - ``"native"``: the optional ``ras_commander_fast_dss`` engine; no Java.
+        - ``"shadow"``: reads return the native result and are compared with
+          Java (grids return Java's grid); writes run on Java and are repeated
+          natively on a temporary copy. Differences are logged; the comparison
+          never raises.
+
+        See ``docs/user_guide/dss_native_backend.md``.
+
     Dependencies:
-        - pyjnius (pip install pyjnius)
-        - Java 8+ (JRE or JDK)
-        - HEC Monolith libraries (auto-downloaded on first use)
+        - Java backend: pyjnius, Java 8+ (JRE or JDK), HEC Monolith libraries
+          (auto-downloaded on first use)
+        - Native backend: the optional ``ras-commander-fast-dss`` engine
+          (``pip install ras-commander-fast-dss`` or ``pip install "hms-commander[dss]"``)
 
     Example:
         >>> from hms_commander import HmsDss
@@ -66,6 +83,15 @@ class HmsDss:
         >>> ts = HmsDss.read_timeseries("results.dss", "/BASIN/OUTLET/FLOW//15MIN/RUN:RUN1/")
         >>> print(f"Units: {ts.attrs['units']}")
     """
+
+    #: DSS backend: ``"java"`` (default when None), ``"native"`` or ``"shadow"``.
+    #: The environment variable ``HMS_COMMANDER_DSS_BACKEND`` overrides it.
+    backend: Optional[str] = None
+
+    #: Shadow writes copy an existing target file up to this size (MB) to repeat the
+    #: write natively; larger files skip the comparison. The environment variable
+    #: ``HMS_COMMANDER_DSS_SHADOW_COPY_LIMIT_MB`` overrides it.
+    shadow_copy_limit_mb: float = _backend.SHADOW_COPY_LIMIT_MB_DEFAULT
 
     # Common HMS DSS path patterns (C-part matching)
     # HMS uses formats like FLOW, FLOW-OBSERVED, FLOW-DIRECT, FLOW-BASE, etc.
@@ -95,12 +121,82 @@ class HmsDss:
     }
 
     @staticmethod
+    @log_call
+    def get_backend() -> str:
+        """
+        DSS backend for the next call: ``"java"``, ``"native"`` or ``"shadow"``.
+
+        ``HMS_COMMANDER_DSS_BACKEND`` overrides ``HmsDss.backend``. ``shadow``
+        without the engine runs Java only and logs one warning.
+
+        Raises:
+            ValueError: If the backend name is invalid
+            ImportError: If ``native`` is requested and ras_commander_fast_dss is
+                not installed (or fails to load)
+
+        Example:
+            >>> HmsDss.backend = "native"
+            >>> HmsDss.get_backend()
+            'native'
+        """
+        return DssCore.get_backend()
+
+    @staticmethod
+    @log_call
+    def get_capabilities() -> pd.DataFrame:
+        """
+        Backend support per DSS operation.
+
+        Returns:
+            DataFrame with columns ``operation``, ``java``, ``native``, ``shadow``
+            and ``note``. Values: ``yes``; ``gated`` (needs a qualified or
+            writer-capable engine). ``attrs`` report ``requested_backend``,
+            ``native_available``, ``native_writes_available``,
+            ``native_grid_qualified``, ``native_gridded_import_available``,
+            ``native_write_sync_available`` (the writers take ``sync=``) and
+            ``engine_features``.
+        """
+        df = pd.DataFrame(list(_backend.CAPABILITIES),
+                          columns=["operation", "java", "native", "shadow", "note"])
+        try:
+            requested = _backend.requested_backend(HmsDss.backend)
+        except ValueError as exc:
+            requested = f"invalid: {exc}"
+        df.attrs.update(
+            requested_backend=requested,
+            native_available=_backend.native_available(),
+            native_writes_available=_backend.native_writes_available(),
+            native_grid_qualified=_backend.native_grid_qualified(),
+            native_gridded_import_available=_backend.native_gridded_import_available(),
+            native_write_sync_available=_backend.native_sync_available(),
+            engine_features=sorted(_backend.engine_features()),
+        )
+        return df
+
+    @staticmethod
+    @log_call
+    def get_shadow_summary(reset: bool = False) -> Dict[str, int]:
+        """
+        Counts of shadow comparisons as ``{"operation|outcome|label": n}``.
+
+        Args:
+            reset: Clear the counters and records after reading them
+        """
+        result = _backend.summary()
+        if reset:
+            _backend.reset_shadow_stats()
+        return result
+
+    @staticmethod
+    @log_call
     def is_available() -> bool:
         """
         Check if full DSS functionality is available.
 
         Returns:
-            True if pyjnius can be imported and DSS operations will work
+            True if the selected backend can run: ``native`` needs the
+            ras_commander_fast_dss engine; ``java`` needs pyjnius; ``shadow``
+            needs the engine (it falls back to ``java`` without it)
 
         Example:
             >>> if HmsDss.is_available():
@@ -736,73 +832,60 @@ class HmsDss:
     def write_paired_data(
         dss_file: Union[str, Path],
         pathname: str,
-        x_values,
-        y_values,
-        x_units: str = "HOURS",
-        y_units: str = "FRACTION",
-        x_label: str = "TIME",
-        y_label: str = "CUMULATIVE"
+        x_values: Any,
+        y_values: Any = None,
+        x_units: Optional[str] = None,
+        y_units: Optional[str] = None,
+        x_type: Optional[str] = None,
+        y_type: Optional[str] = None,
+        labels: Optional[Sequence[str]] = None,
+        create_if_missing: bool = True,
+        *,
+        x_precision: Optional[int] = None,
+        y_precision: Optional[int] = None,
+        value_type: str = "auto",
+        dss_version: Optional[int] = None,
+        sync: Optional[Any] = None,
+        x_label: Optional[str] = None,
+        y_label: Optional[str] = None,
     ) -> bool:
         """
-        Write paired data (X-Y curve) to DSS file.
+        Write one paired-data record with one or more curves.
 
-        This is used for Atlas 14 temporal distributions, rating curves,
-        and other X-Y relationships.
-
-        Args:
-            dss_file: Path to DSS file (created if doesn't exist)
-            pathname: DSS pathname with exactly six parts
-                (e.g., "//TX_R3/FIRST-QUARTILE/24HR//50%/")
-            x_values: X coordinates (e.g., time in hours) - numpy array or list
-            y_values: Y coordinates (e.g., cumulative fraction 0-1) - numpy array or list
-            x_units: Units for X values (default: "HOURS")
-            y_units: Units for Y values (default: "FRACTION")
-            x_label: Label for X axis (default: "TIME")
-            y_label: Label for Y axis (default: "CUMULATIVE")
+        Used for Atlas 14 temporal distributions, rating curves and other X-Y
+        relationships. The arguments are those of
+        ``ras_commander.RasDss.write_paired_data``; ``DssCore.write_paired_data`` documents
+        each one, the backends and the refusals. A failed write raises. ``x_label`` and
+        ``y_label`` are the earlier names of ``x_type`` and ``y_type``. ``sync`` is the
+        native writer's flush policy, passed to the engine unchanged; ``None`` (default)
+        leaves the installed engine's own default (see ``DssCore.write_timeseries``).
 
         Returns:
-            True if the record was written and found in the file catalog,
-            False if the HEC library raised an error during the write
-
-        Raises:
-            ValueError: If ``pathname`` does not have exactly six parts
-            RuntimeError: If the write reported no error but the record is not
-                in the file catalog afterwards
+            True when the record is written and in the file catalog
 
         Example:
-            >>> import numpy as np
-            >>> x = np.linspace(0, 24, 49)  # 0 to 24 hours
-            >>> y = np.linspace(0, 1, 49)   # 0 to 100% cumulative
+            >>> x = np.linspace(0, 24, 49)  # Hours
+            >>> y = np.linspace(0, 1, 49)   # Cumulative fraction
             >>> HmsDss.write_paired_data(
-            ...     "temporal.dss",
-            ...     "//TX_R3/ALL-CASES/24HR//50%/",
-            ...     x, y
+            ...     "temporal.dss", "//TX_R3/FIRST-QUARTILE/24HR//50%/", x, y,
+            ...     x_units="HOURS", y_units="FRACTION", x_type="TIME", y_type="CUMULATIVE",
             ... )
+            True
         """
-        import numpy as np
-        dss_file = Path(dss_file)
-
-        if not DSS_AVAILABLE:
-            raise ImportError(
-                "DSS functionality requires pyjnius.\n"
-                "Install with: pip install pyjnius\n"
-                "Also requires Java 8+ (JRE or JDK)"
-            )
-
-        # Convert to numpy arrays if needed
-        x_values = np.asarray(x_values)
-        y_values = np.asarray(y_values)
-
         return DssCore.write_paired_data(
-            dss_file, pathname, x_values, y_values,
-            x_units, y_units, x_label, y_label
+            dss_file, pathname, x_values, y_values, x_units, y_units, x_type, y_type, labels,
+            create_if_missing, x_precision=x_precision, y_precision=y_precision,
+            value_type=value_type, dss_version=dss_version, x_label=x_label, y_label=y_label,
+            sync=sync,
         )
 
     @staticmethod
     @log_call
     def write_multiple_paired_data(
         dss_file: Union[str, Path],
-        paired_data_records: List[Dict]
+        paired_data_records: List[Dict],
+        *,
+        sync: Optional[Any] = None,
     ) -> Dict[str, bool]:
         """
         Write multiple paired data records to DSS file.
@@ -855,7 +938,7 @@ class HmsDss:
             record['x_values'] = np.asarray(record['x_values'])
             record['y_values'] = np.asarray(record['y_values'])
 
-        return DssCore.write_multiple_paired_data(dss_file, paired_data_records)
+        return DssCore.write_multiple_paired_data(dss_file, paired_data_records, sync=sync)
 
     @staticmethod
     @log_call
@@ -863,7 +946,9 @@ class HmsDss:
         dss_file: Union[str, Path],
         temporal_distributions: Dict[str, 'pd.DataFrame'],
         region_code: str,
-        duration_hours: int = 24
+        duration_hours: int = 24,
+        *,
+        sync: Optional[Any] = None,
     ) -> Dict[str, bool]:
         """
         Import Atlas 14 temporal distributions to DSS file.
@@ -874,6 +959,11 @@ class HmsDss:
         For example, the 50% curve of the first quartile for region ``TX_R3``
         is ``//TX_R3/FIRST-QUARTILE/24HR//50%/``.
 
+        Units are ``HOURS``/``FRACTION`` and the axis types ``TIME`` and
+        ``CUMULATIVE``. A DSS6 file stores at most 8 characters per type, so on
+        DSS6 the Y type is ``CUMULATI``: the value HEC Monolith stores there for
+        ``CUMULATIVE``. Both backends write the same record. New files are DSS7.
+
         Args:
             dss_file: Output DSS file path
             temporal_distributions: Dict mapping quartile names to DataFrames
@@ -883,6 +973,10 @@ class HmsDss:
                 - Values: cumulative percentages (0-100)
             region_code: Atlas 14 region code (e.g., "TX_R3")
             duration_hours: Storm duration in hours (default: 24)
+            sync: Flush policy of the native writer, passed to
+                ras-commander-fast-dss unchanged; ``None`` (default) leaves the
+                installed engine's own default. The ``java`` backend does not use
+                it. See ``DssCore.write_timeseries``.
 
         Returns:
             Dict mapping pathname to success status
@@ -925,6 +1019,12 @@ class HmsDss:
 
         duration_str = f"{duration_hours}HR"
         records = []
+        # DSS6 stores at most 8 characters per type; "CUMULATI" is what HEC
+        # Monolith stores for "CUMULATIVE" there (the native writer refuses a
+        # longer string rather than truncate it).
+        y_type = "CUMULATIVE"
+        if dss_file.exists() and DssCore.get_file_version(dss_file) == 6:
+            y_type = "CUMULATIVE"[:DssCore.DSS6_TEXT_LIMIT]
 
         for quartile_name, df in temporal_distributions.items():
             dss_quartile = quartile_dss_names.get(quartile_name)
@@ -950,11 +1050,11 @@ class HmsDss:
                     'x_units': 'HOURS',
                     'y_units': 'FRACTION',
                     'x_label': 'TIME',
-                    'y_label': 'CUMULATIVE'
+                    'y_label': y_type
                 })
 
         logger.info(f"Importing {len(records)} temporal distributions to {dss_file}")
-        return DssCore.write_multiple_paired_data(dss_file, records)
+        return DssCore.write_multiple_paired_data(dss_file, records, sync=sync)
 
     @staticmethod
     @log_call
@@ -1004,3 +1104,440 @@ class HmsDss:
             )
 
         return DssCore.read_paired_data(dss_file, pathname)
+
+    @staticmethod
+    @log_call
+    def get_file_version(dss_file: Union[str, Path]) -> int:
+        """
+        HEC-DSS version of an existing file: 6 or 7.
+
+        Args:
+            dss_file: Path to an existing DSS file
+
+        Returns:
+            6 or 7
+
+        Raises:
+            FileNotFoundError: If the file does not exist
+            ValueError: If the file is not a DSS6 or DSS7 file
+
+        Example:
+            >>> HmsDss.get_file_version("results.dss")
+            6
+        """
+        return DssCore.get_file_version(dss_file)
+
+    @staticmethod
+    @log_call
+    def read_grid(
+        dss_file: Union[str, Path],
+        pathname: str
+    ) -> Dict[str, Any]:
+        """
+        Read one grid record (HRAP, Albers/SHG or specified) from a DSS file.
+
+        Args:
+            dss_file: Path to the DSS file
+            pathname: Full grid pathname, including its D and E parts
+
+        Returns:
+            Dictionary with ``data`` (float32, shape ``(ny, nx)``, row 0 south,
+            missing cells NaN), ``pathname``, ``dss_file``, ``shape``, ``units``,
+            ``data_type``, ``grid_type``, ``cell_size``, ``lower_left_cell``,
+            ``cell_zero``, ``origin``, ``crs``, ``start_time`` and ``end_time``.
+            See ``DssCore.read_grid``.
+
+        Raises:
+            FileNotFoundError: If the file does not exist
+            ValueError: If the record does not exist or is not a grid
+            DssCapabilityError: With the native backend, when the engine does not
+                advertise qualified grid CRS strings
+
+        Example:
+            >>> paths = HmsDss.get_catalog("hrap.dss")
+            >>> grid = HmsDss.read_grid("hrap.dss", paths[0])
+            >>> print(grid["grid_type"], grid["shape"], grid["units"])
+        """
+        return DssCore.read_grid(dss_file, pathname)
+
+    @staticmethod
+    @log_call
+    def write_timeseries(
+        dss_file: Union[str, Path],
+        pathname: str,
+        times: Union[Sequence[Any], pd.DatetimeIndex, np.ndarray],
+        values: Union[Sequence[float], np.ndarray, pd.Series],
+        units: str = "CFS",
+        data_type: str = "INST-VAL",
+        dss_version: Optional[int] = None,
+        *,
+        sync: Optional[Any] = None,
+    ) -> Path:
+        """
+        Write a regular-interval time series (for example an observed flow gage).
+
+        Args:
+            dss_file: Path to the DSS file (created as DSS7 unless ``dss_version``
+                is 6)
+            pathname: ``/A/B/C/D/E/F/`` with a regular E part (``15MIN``, ``1HOUR``,
+                ``1DAY``, ...); D may be empty
+            times: One naive end-of-period stamp per value, whole minutes, strictly
+                increasing and regular for the E part
+            values: Numeric values; ``NaN`` is stored as HEC's missing value
+            units: HEC units (default ``CFS``)
+            data_type: ``INST-VAL`` (default), ``PER-AVER``, ``PER-CUM`` or ``INST-CUM``
+            dss_version: 6 or 7 for a new file; for an existing file it must match
+            sync: Flush policy of the native writer, passed to
+                ras-commander-fast-dss unchanged; ``None`` (default) leaves the
+                installed engine's own default. The ``java`` backend does not use
+                it. See ``DssCore.write_timeseries``.
+
+        Returns:
+            Path to the DSS file
+
+        Raises:
+            ValueError: Invalid pathname, times or values, or a version mismatch
+
+        Example:
+            >>> import pandas as pd
+            >>> times = pd.date_range("2020-01-01 01:00", periods=3, freq="h")
+            >>> HmsDss.write_timeseries("obs.dss", "//GAGE 1/FLOW//1HOUR/OBS/",
+            ...                         times, [10.0, 12.5, 11.0])
+        """
+        return DssCore.write_timeseries(dss_file, pathname, times, values, units,
+                                        data_type, dss_version, sync=sync)
+
+    # ------------------------------------------------------------------
+    # Engine-only operations (ras-commander-fast-dss on every backend)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _existing_file(dss_file: Union[str, Path]) -> Path:
+        dss_path = Path(dss_file)
+        if not dss_path.exists():
+            raise FileNotFoundError(f"DSS file not found: {dss_path}")
+        if not dss_path.is_file():
+            raise IsADirectoryError(f"DSS path is not a file: {dss_path}")
+        return dss_path.resolve()
+
+    @staticmethod
+    @log_call
+    def repair(src: Union[str, Path], dest: Union[str, Path], *,
+               sync: Optional[Any] = None) -> Dict[str, Any]:
+        """
+        Copy the readable records of a damaged DSS7 file into a new DSS7 file.
+
+        A thin wrapper around ``ras_commander_fast_dss.repair``. It always runs on the
+        native engine, whatever ``HmsDss.backend`` is; there is no Java equivalent.
+        ``src`` is opened read-only and never written. The engine copies each readable
+        record its discovery procedure reaches, reads the new file back, verifies
+        every copied record against its source, and then publishes ``dest``.
+
+        **A partial recovery is still published.** Always check ``result["complete"]``
+        and ``result["not_copied"]``. ``complete`` covers only what the discovery
+        procedure reached; it is not an integrity certificate for ``src``. A warning
+        is logged when ``complete`` is False.
+
+        Args:
+            src: Existing DSS7 file to recover from
+            dest: New file to create. It must not exist; nothing is replaced.
+            sync: Flush policy, passed to the engine unchanged; ``None`` (default)
+                leaves the installed engine's own default. In ras-commander-fast-dss
+                0.1.2 the new file is built under a temporary name and flushed once
+                before it is verified and published (``"end"``, the default, and
+                ``"step"``); ``"none"`` does not flush it.
+
+        Returns:
+            The engine's result dict unchanged, including ``records_copied``,
+            ``not_copied`` (``(pathname, reason)`` pairs), ``ledger``,
+            ``src_listed_records``, ``src_interrupted_write`` and ``complete``
+
+        Raises:
+            FileNotFoundError: If ``src`` does not exist
+            FileExistsError: If ``dest`` already exists
+            ImportError: If ras-commander-fast-dss is not installed
+            DssCapabilityError: If the installed engine has no ``repair``
+
+        Example:
+            >>> result = HmsDss.repair("damaged.dss", "recovered.dss")
+            >>> if not result["complete"]:
+            ...     for pathname, reason in result["not_copied"]:
+            ...         print(pathname, reason)
+        """
+        src_path = HmsDss._existing_file(src)
+        dest_path = Path(dest)
+        if dest_path.exists():
+            raise FileExistsError(f"repair destination already exists: {dest_path}")
+        function = _backend.require_engine_function("repair", _backend.NATIVE_REPAIR_FEATURE)
+        result = dict(function(src_path, dest_path,
+                               **_backend.engine_sync_kwargs(function, sync, "repair")))
+        if not result.get("complete", False):
+            logger.warning(
+                "DSS repair of %s into %s is incomplete: %d record(s) not copied; "
+                "check result['not_copied']",
+                src_path, dest_path, len(result.get("not_copied") or ()),
+            )
+        return result
+
+    @staticmethod
+    @log_call
+    def read_paired_data_all(
+        dss_file: Union[str, Path],
+        pathname: str,
+        *,
+        ignore_d_part: bool = True,
+        dtype: str = "stored",
+    ) -> Any:
+        """
+        Read one paired-data record with every curve.
+
+        ``read_paired_data`` returns the HMS dict, which holds curve 0 only. This
+        method is a thin wrapper around ``ras_commander_fast_dss.read_paired_data``
+        and returns its ``PairedData`` unchanged. It always runs on the native
+        engine, whatever ``HmsDss.backend`` is.
+
+        Args:
+            dss_file: Existing DSS file. It is never created or modified.
+            pathname: Pathname of the paired-data record
+            ignore_d_part: Match a record whose D part differs when the exact
+                pathname is not found (default True)
+            dtype: ``"stored"`` (default) keeps the stored width; ``"float64"``
+                converts
+
+        Returns:
+            The engine's ``PairedData``: ``ordinates``, ``values`` (shape
+            ``(n_curves, n_ordinates)``), ``n_curves``, ``curve(i)``, ``labels``, ``units_independent``,
+            ``units_dependent``, ``type_independent``, ``type_dependent``,
+            ``x_precision``, ``y_precision`` and ``to_dataframe()``
+
+        Raises:
+            FileNotFoundError: If ``dss_file`` does not exist
+            ImportError: If ras-commander-fast-dss is not installed
+            ValueError: No record for ``pathname`` (the engine's
+                ``DssPathnameNotFoundError``)
+            RuntimeError: The record is not paired data (the engine's
+                ``DssUnsupportedRecordError``)
+
+        Example:
+            >>> pd_all = HmsDss.read_paired_data_all("tables.dss", "//DAM/ELEV-STOR-AREA///TABLE/")
+            >>> frame = pd_all.to_dataframe()      # index: ordinates; one column per curve
+        """
+        dss_path = HmsDss._existing_file(dss_file)
+        function = _backend.require_engine_function("read_paired_data")
+        return function(dss_path, pathname, ignore_d_part=ignore_d_part, dtype=dtype)
+
+    @staticmethod
+    @log_call
+    def read_profile(
+        dss_file: Union[str, Path],
+        pathname: str,
+        start_date: Optional[Any] = None,
+        end_date: Optional[Any] = None,
+        *,
+        raw: bool = False,
+        trim_missing: bool = True,
+    ) -> Any:
+        """
+        Read a regular-interval profile dataset (DSS7 record types 102 and 107).
+
+        A thin wrapper around ``ras_commander_fast_dss.read_profile``; it always runs
+        on the native engine, whatever ``HmsDss.backend`` is.
+
+        Args:
+            dss_file: Existing DSS file. It is never created or modified.
+            pathname: ``/A/B/C/D/E/F/`` with any D part: the whole dataset is read
+            start_date: Optional inclusive window start
+            end_date: Optional inclusive window end
+            raw: Keep HEC missing markers as stored instead of ``NaN``
+            trim_missing: Remove leading and trailing rows whose every depth is
+                missing (default)
+
+        Returns:
+            The engine's ``Profile`` unchanged: ``times``, ``depths``, ``values``
+            (``n_times`` by ``n_depths``), ``depth_units``, ``value_units``,
+            ``quality`` and ``to_dataframe()``
+
+        Raises:
+            FileNotFoundError: If ``dss_file`` does not exist
+            ImportError: If ras-commander-fast-dss is not installed
+            ValueError: No data for ``pathname``
+            RuntimeError: The record is not a regular profile (a scalar time series,
+                an irregular profile 112/117, any DSS6 record)
+
+        Example:
+            >>> profile = HmsDss.read_profile("lake.dss", "/LAKE/DAM/TEMP-WATER//1Day/OBS/")
+            >>> frame = profile.to_dataframe()
+        """
+        dss_path = HmsDss._existing_file(dss_file)
+        function = _backend.require_engine_function("read_profile")
+        return function(dss_path, pathname, start_date, end_date,
+                        raw=raw, trim_missing=trim_missing)
+
+    @staticmethod
+    @log_call
+    def write_profile(
+        dss_file: Union[str, Path],
+        pathname: str,
+        depths: Any,
+        values: Any,
+        *,
+        start: Any,
+        depth_units: str,
+        value_units: str,
+        data_type: str,
+        sync: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """
+        Store a regular-interval profile (values by time and depth) in a DSS7 file.
+
+        A thin wrapper around ``ras_commander_fast_dss.write_profile``; it always runs
+        on the native engine, whatever ``HmsDss.backend`` is. Profiles exist only in
+        DSS7.
+
+        Args:
+            dss_file: DSS7 file. A missing file is created as DSS7, and removed
+                again if the write fails.
+            pathname: ``/A/B/C/D/E/F/``; E is a standard regular interval and D is
+                replaced for each block
+            depths: The depth axis, 1-D, ``n_depths`` values
+            values: 2-D, shape ``(n_times, n_depths)``. Never flattened or reshaped.
+            start: Time of the first row; the rows follow at the E-part interval
+            depth_units: Units of the depth axis
+            value_units: Units of the values
+            data_type: HEC data type (``INST-VAL``, ``PER-AVER``, ...)
+            sync: Flush policy, passed to the engine unchanged; ``None`` (default)
+                leaves the installed engine's own default
+            **kwargs: Other ``ras_commander_fast_dss.write_profile`` options, passed
+                unchanged (``quality``, ``time_zone``, ``precision``,
+                ``value_type``, ``raw``, ``allow_undetectable_readers``)
+
+        Returns:
+            The engine's report dict unchanged
+
+        Raises:
+            ValueError: An existing file is not DSS7, or the engine refuses the input
+            ImportError: If ras-commander-fast-dss is not installed
+            DssCapabilityError: The installed engine does not advertise
+                ``write_profile``
+
+        Example:
+            >>> HmsDss.write_profile(
+            ...     "lake.dss", "/LAKE/DAM/TEMP-WATER//1Day/OBS/",
+            ...     depths=[0.0, 5.0, 10.0], values=temperatures,
+            ...     start="01JAN2024 2400", depth_units="ft", value_units="DEG F",
+            ...     data_type="INST-VAL",
+            ... )
+        """
+        function = _backend.require_engine_function(
+            "write_profile", _backend.NATIVE_PROFILE_WRITE_FEATURE)
+        dc = _backend.require_native_writes()
+        target, version, existed, created = DssCore._native_write_target(dss_file, 7)
+        with DssCore._native_new_file(dc, target, version, existed, created):
+            return function(
+                str(target), pathname, depths, values, start=start,
+                depth_units=depth_units, value_units=value_units, data_type=data_type,
+                **_backend.native_sync_kwargs(sync), **kwargs,
+            )
+
+    @staticmethod
+    @log_call
+    def read_location(dss_file: Union[str, Path], pathname: str) -> Any:
+        """
+        Read a DSS7 location record (``/A/B/Location Info////``).
+
+        A thin wrapper around ``ras_commander_fast_dss.read_location``; it always runs
+        on the native engine. Use ``read_associated_location`` for the location of a
+        data record.
+
+        Args:
+            dss_file: Existing DSS7 file. It is never created or modified.
+            pathname: Pathname of the location record
+
+        Returns:
+            The engine's ``Location`` unchanged (``x``, ``y``, ``z``, coordinate
+            system, units and datum codes and names, ``time_zone``,
+            ``supplemental``; ``to_dict()``)
+
+        Raises:
+            FileNotFoundError: If ``dss_file`` does not exist
+            ImportError: If ras-commander-fast-dss is not installed
+            ValueError: The record does not exist
+            RuntimeError: The record is not a location record, or the file is DSS6
+        """
+        dss_path = HmsDss._existing_file(dss_file)
+        return _backend.require_engine_function("read_location")(dss_path, pathname)
+
+    @staticmethod
+    @log_call
+    def read_associated_location(dss_file: Union[str, Path], pathname: str) -> Optional[Any]:
+        """
+        Return the location stored for a data record, or None when there is none.
+
+        A thin wrapper around ``ras_commander_fast_dss.read_associated_location``; it
+        always runs on the native engine. DSS7: the location record built from the A
+        and B parts of ``pathname``. DSS6: the coordinates in the time-series
+        record's own header.
+
+        Args:
+            dss_file: Existing DSS file. It is never created or modified.
+            pathname: Pathname of the data record (any D part)
+
+        Returns:
+            The engine's ``Location``, or None
+
+        Raises:
+            FileNotFoundError: If ``dss_file`` does not exist
+            ImportError: If ras-commander-fast-dss is not installed
+        """
+        dss_path = HmsDss._existing_file(dss_file)
+        return _backend.require_engine_function("read_associated_location")(dss_path, pathname)
+
+    @staticmethod
+    @log_call
+    def write_location(
+        dss_file: Union[str, Path],
+        pathname: str,
+        *,
+        sync: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """
+        Store location data (coordinates, datums, supplemental text) for a pathname.
+
+        A thin wrapper around ``ras_commander_fast_dss.write_location``; it always runs
+        on the native engine, whatever ``HmsDss.backend`` is. DSS7 stores the record
+        ``/A/B/Location Info////``. DSS6 rewrites the header of every block of the
+        time series named by ``pathname``, which must exist.
+
+        Args:
+            dss_file: Existing DSS6 or DSS7 file. This method does not create files.
+            pathname: DSS7: any pathname of the location (A and B are used). DSS6: a
+                time-series pathname.
+            sync: Flush policy, passed to the engine unchanged; ``None`` (default)
+                leaves the installed engine's own default
+            **kwargs: The ``ras_commander_fast_dss.write_location`` fields, passed
+                unchanged: ``x``, ``y``, ``z``, ``coordinate_system``,
+                ``coordinate_id``, ``horizontal_units``, ``horizontal_datum``,
+                ``vertical_units``, ``vertical_datum``, ``time_zone`` (DSS7),
+                ``supplemental``, ``keep_existing``. Supplemental text is
+                informational: a datum named in it is never applied to values.
+
+        Returns:
+            The engine's report dict unchanged
+
+        Raises:
+            FileNotFoundError: If ``dss_file`` does not exist
+            ImportError: If ras-commander-fast-dss is not installed
+            DssCapabilityError: The installed engine does not advertise
+                ``write_location``
+
+        Example:
+            >>> HmsDss.write_location("gages.dss", "//GAGE 1/FLOW//1HOUR/OBS/",
+            ...                       x=-90.07, y=29.95, z=3.2)
+        """
+        dss_path = HmsDss._existing_file(dss_file)
+        function = _backend.require_engine_function(
+            "write_location", _backend.NATIVE_LOCATION_WRITE_FEATURE)
+        return function(str(dss_path), pathname,
+                        **_backend.native_sync_kwargs(sync), **kwargs)

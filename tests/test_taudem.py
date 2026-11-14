@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -73,7 +74,7 @@ def _create_fake_taudem_tools(tmp_path: Path) -> Path:
         ]
     )
 
-    for tool in (
+    tools = (
         "pitremove",
         "d8flowdir",
         "aread8",
@@ -81,7 +82,25 @@ def _create_fake_taudem_tools(tmp_path: Path) -> Path:
         "moveoutletstostrm",
         "streamnet",
         "gridnet",
-    ):
+    )
+    if os.name != "nt":
+        # POSIX: executable shell wrappers named like the TauDEM tools (no extension),
+        # which HmsTauDEM.find_executable tries before the Windows extensions.
+        def posix_wrapper(name: str, script: str, *fixed: str) -> None:
+            path = tools_dir / name
+            quoted = " ".join(f'"{arg}"' for arg in fixed)
+            path.write_text(
+                f'#!/bin/sh\nexec "{sys.executable}" "{tools_dir / script}" {quoted} "$@"\n',
+                encoding="utf-8",
+            )
+            path.chmod(0o755)
+
+        for tool in tools:
+            posix_wrapper(tool, "fake_taudem_tool.py", tool)
+        posix_wrapper("mpiexec", "fake_mpiexec.py")
+        return tools_dir
+
+    for tool in tools:
         (tools_dir / f"{tool}.cmd").write_text(wrapper_template, encoding="utf-8")
 
     (tools_dir / "mpiexec.cmd").write_text(
@@ -108,10 +127,10 @@ def test_find_executable_and_validate_environment(tmp_path):
     )
 
     assert pitremove is not None
-    assert pitremove.name == "pitremove.cmd"
+    assert pitremove.name == ("pitremove.cmd" if os.name == "nt" else "pitremove")
     assert validation["available"] is True
     assert validation["missing_tools"] == []
-    assert validation["tools"]["streamnet"].endswith("streamnet.cmd")
+    assert validation["tools"]["streamnet"].endswith("streamnet.cmd" if os.name == "nt" else "streamnet")
 
 
 def test_run_standard_delineation_creates_manifest_and_outputs(tmp_path):
@@ -234,6 +253,7 @@ def test_run_standard_delineation_uses_mpiexec_when_processes_are_explicit(tmp_p
     )
 
     assert result["status"] == "completed"
-    assert manifest["environment"]["tools"]["mpiexec"].endswith("mpiexec.cmd")
-    assert manifest["steps"][0]["command"][0].endswith("mpiexec.cmd")
+    mpiexec_name = "mpiexec.cmd" if os.name == "nt" else "mpiexec"
+    assert manifest["environment"]["tools"]["mpiexec"].endswith(mpiexec_name)
+    assert manifest["steps"][0]["command"][0].endswith(mpiexec_name)
     assert manifest["steps"][0]["command"][1:3] == ["-n", "1"]
