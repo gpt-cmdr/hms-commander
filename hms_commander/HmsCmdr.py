@@ -14,6 +14,7 @@ import os
 import re
 import shutil
 import tempfile
+import time
 import concurrent.futures
 from pathlib import Path
 from typing import Dict, List, Optional, Union, Tuple, Any
@@ -55,6 +56,10 @@ def _run_markers(run_name: str) -> Tuple["re.Pattern", "re.Pattern", "re.Pattern
 # (coarse FAT or network-share timestamps). Larger files are compared by
 # size and modification time only.
 _DSS_HASH_LIMIT_BYTES = 512 * 1024 * 1024
+
+# The prior run log is moved to "<log name>" + this suffix while a run
+# executes (see HmsCmdr._snapshot_run).
+_LOG_BACKUP_SUFFIX = ".hms-commander-prev"
 
 
 class HmsCmdr:
@@ -103,21 +108,24 @@ class HmsCmdr:
         Returns:
             True only if HEC-HMS computed the run in this call. The log file
             and results DSS file are those the run's ``.run`` entry names
-            (``Log File:``, ``DSS File:``), recorded before launch, and:
+            (``Log File:``, ``DSS File:``). Before launch, an existing log is
+            moved to ``<log name>.hms-commander-prev`` (deleted afterwards if
+            the run wrote a new log, moved back if not), and the DSS file's
+            size, modification time and hash (up to 512 MB) are recorded.
+            Then:
 
             - the generated script reported no error;
-            - the run log changed, and the text written since launch has a
-              section for this run (``NOTE 15301 ... "<run_name>"``) with the
-              "Finished computing" note for it (NOTE 15302), no ERROR line and
-              no "Aborted run" warning (WARNING 15303);
+            - a run log exists (so this run wrote it) and has a section for
+              this run (``NOTE 15301 ... "<run_name>"``) with the "Finished
+              computing" note for it (NOTE 15302), no ERROR line and no
+              "Aborted run" warning (WARNING 15303);
             - the results DSS file is new, or its size, modification time or
               content hash changed.
 
-            Changes are compared with the pre-launch record, not with the
-            clock. If the run, its ``Log File:`` or its ``DSS File:`` entry
-            cannot be found, the run cannot be verified and False is
-            returned. False otherwise as well; the reason and the relevant
-            log lines are logged at ERROR level.
+            Nothing is compared with the clock. If the run, its ``Log File:``
+            or its ``DSS File:`` entry cannot be found, the run cannot be
+            verified and False is returned. False otherwise as well; the
+            reason and the relevant log lines are logged at ERROR level.
 
         Raises:
             RuntimeError: If the project is not initialized, or if no
@@ -168,18 +176,14 @@ class HmsCmdr:
         )
 
         # Execute
-        snapshot = HmsCmdr._snapshot_run(working_project, run_name)
-        success, stdout, stderr = HmsJython.execute_script(
-            script_content=script,
+        success, stdout, stderr = HmsCmdr._execute_and_verify(
+            run_name, working_project, script,
             hms_exe_path=hms_obj.hms_exe_path,
-            working_dir=working_project,
             timeout=timeout,
             max_memory=max_memory,
             initial_memory=initial_memory,
             additional_java_opts=additional_java_opts
         )
-
-        success = HmsCmdr._verify_run(success, snapshot, stdout)
 
         if success:
             logger.info(f"Run '{run_name}' completed successfully")
@@ -285,18 +289,14 @@ class HmsCmdr:
                     save_project=True
                 )
 
-                snapshot = HmsCmdr._snapshot_run(working_project, run_name)
-                success, stdout, stderr = HmsJython.execute_script(
-                    script_content=script,
+                success, stdout, stderr = HmsCmdr._execute_and_verify(
+                    run_name, working_project, script,
                     hms_exe_path=hms_obj.hms_exe_path,
-                    working_dir=working_project,
                     timeout=timeout_per_run,
                     max_memory=max_memory,
                     initial_memory=initial_memory,
                     additional_java_opts=additional_java_opts
                 )
-
-                success = HmsCmdr._verify_run(success, snapshot, stdout)
                 return run_name, success
 
             except Exception as e:
@@ -339,7 +339,8 @@ class HmsCmdr:
         Execute multiple runs sequentially in a single HMS session.
 
         This is more efficient than compute_parallel when runs don't conflict
-        and don't need separate output files.
+        and don't need separate output files. Runs that share a run log are
+        computed one HMS session per run instead (see Returns).
 
         Args:
             run_names: List of run names to execute
@@ -357,10 +358,12 @@ class HmsCmdr:
             record). If no ``hms_exe_path`` is set, the HEC-HMS version is
             chosen as in :meth:`compute_run`; RuntimeError is raised when no
             installation suits the project's ``Version:``.
-            Runs that share a ``Log File:`` are each judged from their own
-            section; a run whose section a later run overwrites is reported
-            as failed. Runs that share a ``DSS File:`` cannot tell from the
-            DSS file which of them wrote it, so the log decides.
+            When runs share a ``Log File:``, HEC-HMS would keep only the last
+            run's section in one session, so each run is computed in its own
+            HEC-HMS session, in the given order, and verified before the next
+            starts. ``timeout`` then covers all of these sessions together.
+            Runs that share a ``DSS File:`` cannot tell from the DSS file
+            which of them wrote it, so the log decides.
 
         Example:
             >>> results = HmsCmdr.compute_batch(["Run 1", "Run 2", "Run 3"])
@@ -379,53 +382,86 @@ class HmsCmdr:
 
         logger.info(f"Starting batch execution of {len(run_names)} runs")
 
-        # Generate batch script
-        script = HmsJython.generate_batch_compute_script(
-            project_path=hms_obj.project_folder,
-            run_names=run_names,
-            save_after_each=save_after_each
-        )
+        project_folder = hms_obj.project_folder
+        shared = HmsCmdr._shared_log_runs(project_folder, run_names)
+        results: Dict[str, bool] = {}
 
-        shared = HmsCmdr._shared_log_runs(hms_obj.project_folder, run_names)
-        for names in shared.values():
-            logger.warning(
-                f"Runs {', '.join(repr(n) for n in names)} write the same run log. "
-                "Each run is judged only from its own section of that log; a run "
-                "whose section a later run overwrites is reported as failed."
-            )
-        snapshots = {
-            name: HmsCmdr._snapshot_run(hms_obj.project_folder, name)
-            for name in run_names
-        }
-
-        # Execute
-        success, stdout, stderr = HmsJython.execute_script(
-            script_content=script,
-            hms_exe_path=hms_obj.hms_exe_path,
-            working_dir=hms_obj.project_folder,
-            timeout=timeout,
-            max_memory=max_memory,
-            initial_memory=initial_memory,
-            additional_java_opts=additional_java_opts
-        )
-
-        # Parse results from stdout
-        results = {}
-        for run_name in run_names:
-            # Default to overall success status
-            results[run_name] = success
-
-            # Try to parse individual status from output
-            if stdout:
-                if f"Completed: {run_name}" in stdout:
-                    results[run_name] = True
-                elif f"Error computing {run_name}" in stdout:
+        if shared:
+            # HEC-HMS rewrites a run log for every run it computes, so in one
+            # session a shared log keeps only the last run's section. Compute
+            # each run in its own session, in the given order, and verify it
+            # before the next run can overwrite its log.
+            for names in shared.values():
+                logger.info(
+                    f"Runs {', '.join(repr(n) for n in names)} write the same run log; "
+                    "computing each run in its own HEC-HMS session so that each "
+                    "can be verified before the next."
+                )
+            deadline = time.monotonic() + timeout
+            for run_name in run_names:
+                remaining = int(deadline - time.monotonic())
+                if remaining <= 0:
+                    logger.error(
+                        f"Run '{run_name}' not computed: the batch timeout of "
+                        f"{timeout} s was used up by earlier runs."
+                    )
                     results[run_name] = False
-
-            # Confirm each run from its own run log and results DSS
-            results[run_name] = HmsCmdr._verify_run(
-                results[run_name], snapshots[run_name]
+                    continue
+                script = HmsJython.generate_batch_compute_script(
+                    project_path=project_folder,
+                    run_names=[run_name],
+                    save_after_each=save_after_each
+                )
+                verified, stdout, _ = HmsCmdr._execute_and_verify(
+                    run_name, project_folder, script,
+                    hms_exe_path=hms_obj.hms_exe_path,
+                    timeout=remaining,
+                    max_memory=max_memory,
+                    initial_memory=initial_memory,
+                    additional_java_opts=additional_java_opts,
+                )
+                results[run_name] = verified
+        else:
+            # Generate batch script
+            script = HmsJython.generate_batch_compute_script(
+                project_path=project_folder,
+                run_names=run_names,
+                save_after_each=save_after_each
             )
+            snapshots = {
+                name: HmsCmdr._snapshot_run(project_folder, name)
+                for name in run_names
+            }
+
+            # Execute
+            try:
+                success, stdout, stderr = HmsJython.execute_script(
+                    script_content=script,
+                    hms_exe_path=hms_obj.hms_exe_path,
+                    working_dir=project_folder,
+                    timeout=timeout,
+                    max_memory=max_memory,
+                    initial_memory=initial_memory,
+                    additional_java_opts=additional_java_opts
+                )
+            except BaseException:
+                for snapshot in snapshots.values():
+                    HmsCmdr._release_snapshot(snapshot)
+                raise
+
+            for run_name in run_names:
+                # Default to overall success status
+                status = success
+
+                # Try to parse individual status from output
+                if stdout:
+                    if f"Completed: {run_name}" in stdout:
+                        status = True
+                    elif f"Error computing {run_name}" in stdout:
+                        status = False
+
+                # Confirm each run from its own run log and results DSS
+                results[run_name] = HmsCmdr._verify_run(status, snapshots[run_name])
 
         # Summary
         successful = sum(1 for s in results.values() if s)
@@ -513,18 +549,14 @@ class HmsCmdr:
         )
 
         # Execute
-        snapshot = HmsCmdr._snapshot_run(working_project, run_name)
-        success, stdout, stderr = HmsJython.execute_script(
-            script_content=script,
+        success, stdout, stderr = HmsCmdr._execute_and_verify(
+            run_name, working_project, script,
             hms_exe_path=hms_obj.hms_exe_path,
-            working_dir=working_project,
             timeout=timeout,
             max_memory=max_memory,
             initial_memory=initial_memory,
             additional_java_opts=additional_java_opts
         )
-
-        success = HmsCmdr._verify_run(success, snapshot, stdout)
 
         if success:
             logger.info(f"Modified run '{run_name}' completed successfully")
@@ -625,7 +657,8 @@ class HmsCmdr:
             raise RuntimeError(
                 f"The project's Version '{project_version}' is not a version "
                 "format hms-commander can compare (expected numbers such as 4.13 "
-                "or 4.7.1, optionally with a suffix such as 4.13-beta), and no "
+                "or 4.7.1, optionally with an alpha, beta or rc suffix such as "
+                "4.13-beta2 or 4.13-rc10), and no "
                 "installation has that exact name. Pass hms_exe_path to "
                 "init_hms_project() to choose one explicitly."
             )
@@ -689,16 +722,48 @@ class HmsCmdr:
         return log_path, dss_path, problem
 
     @staticmethod
-    def _file_state(path: Optional[Path], read_content: bool, hash_limit: int) -> Dict[str, Any]:
-        """Size, mtime_ns and content (or SHA-256) of a file; ``exists`` False if absent."""
+    def _execute_and_verify(
+        run_name: str,
+        project_folder: Union[str, Path],
+        script: str,
+        hms_exe_path: Union[str, Path],
+        timeout: int = DEFAULT_EXECUTION_TIMEOUT,
+        max_memory: str = None,
+        initial_memory: str = None,
+        additional_java_opts: Optional[List[str]] = None,
+    ) -> Tuple[bool, str, str]:
+        """
+        Snapshot one run, execute ``script`` in ``project_folder``, and verify the run.
+
+        Returns:
+            Tuple of (verified success, stdout, stderr). If execution raises,
+            the prior run log is put back before the exception propagates.
+        """
+        snapshot = HmsCmdr._snapshot_run(project_folder, run_name)
+        try:
+            success, stdout, stderr = HmsJython.execute_script(
+                script_content=script,
+                hms_exe_path=hms_exe_path,
+                working_dir=project_folder,
+                timeout=timeout,
+                max_memory=max_memory,
+                initial_memory=initial_memory,
+                additional_java_opts=additional_java_opts,
+            )
+        except BaseException:
+            HmsCmdr._release_snapshot(snapshot)
+            raise
+        return HmsCmdr._verify_run(success, snapshot, stdout), stdout, stderr
+
+    @staticmethod
+    def _file_state(path: Optional[Path], hash_limit: int) -> Dict[str, Any]:
+        """Size, mtime_ns and SHA-256 (up to ``hash_limit`` bytes) of a file; ``exists`` False if absent."""
         state: Dict[str, Any] = {"path": path, "exists": False}
         if path is None or not path.exists():
             return state
         stat = path.stat()
         state.update(exists=True, size=stat.st_size, mtime_ns=stat.st_mtime_ns)
-        if read_content:
-            state["content"] = path.read_bytes()
-        elif stat.st_size <= hash_limit:
+        if stat.st_size <= hash_limit:
             digest = hashlib.sha256()
             with open(path, "rb") as f:
                 for chunk in iter(lambda: f.read(1024 * 1024), b""):
@@ -707,25 +772,65 @@ class HmsCmdr:
         return state
 
     @staticmethod
+    def _log_backup_path(log_path: Path) -> Path:
+        """Where :meth:`_snapshot_run` keeps the prior run log during a run."""
+        return log_path.with_name(log_path.name + _LOG_BACKUP_SUFFIX)
+
+    @staticmethod
     def _snapshot_run(project_folder: Union[str, Path], run_name: str) -> Dict[str, Any]:
         """
-        Record the run's log and results DSS before HEC-HMS is launched.
+        Prepare the run's outputs for verification, just before HEC-HMS starts.
+
+        - The prior run log, if any, is moved aside to
+          ``<log name>.hms-commander-prev`` in the same folder. Any run log
+          present after the run is therefore written by the run, even if its
+          bytes equal the prior log's. :meth:`_release_snapshot` later deletes
+          the backup if a new log was written, or moves it back if not.
+        - The results DSS file's size, mtime_ns and SHA-256 (files up to
+          512 MB) are recorded.
 
         :meth:`_verify_run` compares the files after the run with this
-        snapshot, so no wall-clock time is compared with file times.
+        record; no wall-clock time is compared with file times.
         """
         log_path, dss_path, problem = HmsCmdr._run_output_files(project_folder, run_name)
         snapshot: Dict[str, Any] = {
             "run_name": run_name, "problem": problem,
-            "log": {"path": log_path, "exists": False},
+            "log_path": log_path, "log_backup": None,
             "dss": {"path": dss_path, "exists": False},
         }
+        if problem:
+            return snapshot
         try:
-            snapshot["log"] = HmsCmdr._file_state(log_path, True, 0)
-            snapshot["dss"] = HmsCmdr._file_state(dss_path, False, _DSS_HASH_LIMIT_BYTES)
+            snapshot["dss"] = HmsCmdr._file_state(dss_path, _DSS_HASH_LIMIT_BYTES)
+            if log_path.exists():
+                backup = HmsCmdr._log_backup_path(log_path)
+                os.replace(log_path, backup)
+                snapshot["log_backup"] = backup
         except OSError as e:
-            snapshot["problem"] = snapshot["problem"] or f"could not read the run outputs before the run: {e}"
+            snapshot["problem"] = f"could not prepare the run outputs before the run: {e}"
         return snapshot
+
+    @staticmethod
+    def _release_snapshot(snapshot: Dict[str, Any]) -> None:
+        """
+        Deal with the prior run log that :meth:`_snapshot_run` moved aside.
+
+        If the run wrote a new log, the backup is deleted, as HEC-HMS replaces
+        a run log when it computes the run. Otherwise the prior log is moved
+        back. Safe to call more than once.
+        """
+        backup = snapshot.get("log_backup")
+        if backup is None:
+            return
+        snapshot["log_backup"] = None
+        log_path = snapshot["log_path"]
+        try:
+            if log_path.exists():
+                backup.unlink(missing_ok=True)
+            elif backup.exists():
+                os.replace(backup, log_path)
+        except OSError as e:
+            logger.warning(f"Could not tidy the prior run log {backup.name}: {e}")
 
     @staticmethod
     def _shared_log_runs(project_folder: Union[str, Path], run_names: List[str]) -> Dict[str, List[str]]:
@@ -738,19 +843,12 @@ class HmsCmdr:
         return {key: names for key, names in groups.items() if len(names) > 1}
 
     @staticmethod
-    def _new_log_text(before: Optional[bytes], after: bytes) -> str:
-        """
-        The part of a run log written since the snapshot.
-
-        If the file grew from its earlier content, only the appended bytes
-        are returned; if HEC-HMS replaced or truncated it, the whole new file.
-        """
-        if before and len(after) >= len(before) and after[:len(before)] == before:
-            after = after[len(before):]
+    def _read_log_text(path: Path) -> str:
+        data = path.read_bytes()
         try:
-            return after.decode("utf-8")
+            return data.decode("utf-8")
         except UnicodeDecodeError:
-            return after.decode("latin-1")
+            return data.decode("latin-1")
 
     @staticmethod
     def _check_run_log(log_text: str, run_name: str) -> Tuple[bool, str, List[str]]:
@@ -790,30 +888,35 @@ class HmsCmdr:
         """
         Confirm from the run's own outputs that HEC-HMS computed the run.
 
-        ``snapshot`` comes from :meth:`_snapshot_run`, taken before launch.
+        ``snapshot`` comes from :meth:`_snapshot_run`, taken just before
+        launch; this call also releases it (:meth:`_release_snapshot`).
         Checks, in order:
 
         1. the run declares a ``Log File`` and a ``DSS File`` (otherwise the
            run cannot be verified and False is returned);
         2. the script's own result;
-        3. the run log changed since the snapshot, and the content written
-           since then has a section for this run that :meth:`_check_run_log`
-           accepts;
+        3. a run log exists. The prior log was moved aside before launch, so
+           it was written by this run. It must have a section for this run
+           that :meth:`_check_run_log` accepts;
         4. the results DSS file exists and changed since the snapshot (it is
            new, or its size, modification time or SHA-256 differs).
 
-        Changes are judged against the snapshot, not against the clock, so
-        clock skew between this computer and a file server does not matter,
-        and an unchanged file is rejected even if its time is recent. A
-        changed DSS file does not show which run wrote it; the run identity
-        comes from the log.
+        Nothing is compared with the clock, so clock skew between this
+        computer and a file server does not matter. A changed DSS file does
+        not show which run wrote it; the run identity comes from the log.
 
         Returns:
             True only if every check passes. The reason for a failure and the
             relevant log lines are logged at ERROR level.
         """
+        try:
+            return HmsCmdr._verify_outputs(script_success, snapshot, stdout)
+        finally:
+            HmsCmdr._release_snapshot(snapshot)
+
+    @staticmethod
+    def _verify_outputs(script_success: bool, snapshot: Dict[str, Any], stdout: str) -> bool:
         run_name = snapshot["run_name"]
-        log_before, dss_before = snapshot["log"], snapshot["dss"]
 
         def fail(reason: str, lines: Optional[List[str]] = None) -> bool:
             logger.error(f"Run '{run_name}' failed: {reason}.")
@@ -824,25 +927,18 @@ class HmsCmdr:
         if snapshot.get("problem"):
             return fail(snapshot["problem"])
 
-        log_path, dss_path = log_before["path"], dss_before["path"]
+        log_path, dss_before = snapshot["log_path"], snapshot["dss"]
+        dss_path = dss_before["path"]
         try:
-            log_after = HmsCmdr._file_state(log_path, True, 0)
-            dss_after = HmsCmdr._file_state(dss_path, False, _DSS_HASH_LIMIT_BYTES)
+            log_text = HmsCmdr._read_log_text(log_path) if log_path.exists() else None
+            dss_after = HmsCmdr._file_state(dss_path, _DSS_HASH_LIMIT_BYTES)
         except OSError as e:
             return fail(f"could not read the run outputs after the run: {e}")
 
-        log_changed = log_after["exists"] and (
-            not log_before["exists"] or log_after["content"] != log_before.get("content")
-        )
-        new_text = (
-            HmsCmdr._new_log_text(log_before.get("content"), log_after["content"])
-            if log_changed else None
-        )
-
         if not script_success:
             lines: List[str] = []
-            if new_text is not None:
-                _, _, lines = HmsCmdr._check_run_log(new_text, run_name)
+            if log_text is not None:
+                _, _, lines = HmsCmdr._check_run_log(log_text, run_name)
             if not lines and stdout:
                 lines = [
                     ln.strip() for ln in stdout.splitlines()
@@ -850,12 +946,10 @@ class HmsCmdr:
                 ]
             return fail("the HEC-HMS script did not complete", lines)
 
-        if not log_after["exists"]:
+        if log_text is None:
             return fail(f"no run log was written ({log_path.name})")
-        if not log_changed:
-            return fail(f"the run log {log_path.name} was not changed by this run")
 
-        ok, reason, lines = HmsCmdr._check_run_log(new_text, run_name)
+        ok, reason, lines = HmsCmdr._check_run_log(log_text, run_name)
         if not ok:
             return fail(f"{reason}; see {log_path.name}", lines)
 

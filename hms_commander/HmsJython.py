@@ -1201,19 +1201,31 @@ JythonHms.SaveAllProjectComponents()
         r"^\s*v?(\d+(?:\.\d+)*)(?:[-_. ]*([A-Za-z][0-9A-Za-z.\-_ ]*?))?\s*$"
     )
 
+    # Supported pre-release suffixes, after separators are removed and the text
+    # is lower-cased: a stage name, then an optional number ("beta", "beta2",
+    # "rc10"). Anything else is ambiguous and does not parse.
+    _PRERELEASE_PATTERN = re.compile(r"^(alpha|a|beta|b|rc)(\d*)$")
+    _PRERELEASE_STAGES = {"alpha": 0, "a": 0, "beta": 1, "b": 1, "rc": 2}
+
     @staticmethod
-    def _parse_version_text(version: Optional[str]) -> Optional[Tuple[Tuple[int, ...], int, str]]:
+    def _parse_version_text(version: Optional[str]) -> Optional[Tuple[Tuple[int, ...], int, int, int]]:
         """
         Parse an HEC-HMS version into a sortable key; None when unparseable.
 
-        The key is ``(release, final, suffix)``:
+        The key is ``(release, final, stage, number)``:
 
         - ``release``: the numeric parts with trailing zeros removed, so
           4.4.0 equals 4.4 and 4.4 < 4.4.1 < 4.5 < 4.13;
-        - ``final``: 1 for a plain release, 0 when a suffix follows, so a
+        - ``final``: 1 for a plain release, 0 for a pre-release, so a
           pre-release sorts before its release (4.13-beta < 4.13 < 4.13.1);
-        - ``suffix``: the suffix in lower case with separators removed;
-          suffixes of the same release compare as text (alpha < beta < rc).
+        - ``stage`` and ``number``: for a pre-release, alpha (or a) < beta
+          (or b) < rc, then the stage's number compared as a number
+          (rc2 < rc10, beta2 < beta10; no number counts as 0). Separators
+          (``-``, ``_``, ``.``, space) and case are ignored, so "4.13 Beta 2"
+          equals "4.13-beta2".
+
+        Any other suffix ("4.13-rc1-hotfix", "4.13 custom") is ambiguous and
+        returns None, as does text without a leading version number.
         """
         if version is None:
             return None
@@ -1224,10 +1236,16 @@ JythonHms.SaveAllProjectComponents()
         while len(release) > 1 and release[-1] == 0:
             release.pop()
         suffix = re.sub(r"[-_. ]", "", match.group(2) or "").lower()
-        return (tuple(release), 0 if suffix else 1, suffix)
+        if not suffix:
+            return (tuple(release), 1, 0, 0)
+        pre = HmsJython._PRERELEASE_PATTERN.match(suffix)
+        if not pre:
+            return None
+        stage = HmsJython._PRERELEASE_STAGES[pre.group(1)]
+        return (tuple(release), 0, stage, int(pre.group(2) or 0))
 
     @staticmethod
-    def _major_minor(key: Tuple[Tuple[int, ...], int, str]) -> Tuple[int, int]:
+    def _major_minor(key: Tuple[Tuple[int, ...], int, int, int]) -> Tuple[int, int]:
         """Major and minor numbers of a parsed version key (missing minor = 0)."""
         release = key[0] + (0, 0)
         return release[0], release[1]
@@ -1272,7 +1290,7 @@ JythonHms.SaveAllProjectComponents()
 
         def sort_key(name: str):
             parsed = HmsJython._parse_version_text(name)
-            return (parsed is not None, parsed or ((), 0, ""))
+            return (parsed is not None, parsed or ((), 0, 0, 0))
 
         return {name: found[name] for name in sorted(found, key=sort_key, reverse=True)}
 

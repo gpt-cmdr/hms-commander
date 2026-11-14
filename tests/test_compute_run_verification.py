@@ -10,6 +10,7 @@ discovery also picked 4.10 first, because folder names sorted as text.
 
 from __future__ import annotations
 
+import ast
 import logging
 import os
 import re
@@ -110,13 +111,6 @@ def test_sample_run_logs_name_their_run():
         assert re.search(rf'^NOTE 15302:\s+Finished computing simulation run "{name}"', text, re.M)
 
 
-def test_new_log_text_is_the_appended_part_or_the_whole_new_file():
-    old, new = TENK_ABORTED.read_bytes(), TENK_FINISHED.read_bytes()
-    assert HmsCmdr._new_log_text(old, old + new) == new.decode()
-    assert HmsCmdr._new_log_text(old, new) == new.decode()      # replaced
-    assert HmsCmdr._new_log_text(None, new) == new.decode()     # new file
-
-
 # ---------------------------------------------------------------------------
 # The generated script's failure line, through the HMS 4.x execution path
 # ---------------------------------------------------------------------------
@@ -199,6 +193,74 @@ def test_unchanged_recent_outputs_fail(project):
     dss.write_bytes(b"results")
     snap = HmsCmdr._snapshot_run(project, TENK)
     assert HmsCmdr._verify_run(True, snap) is False
+    # The prior log is put back when the run wrote none
+    assert log.read_bytes() == TENK_FINISHED.read_bytes()
+    assert not HmsCmdr._log_backup_path(log).exists()
+
+
+# Review 2, finding 2: a run log replaced by identical bytes
+
+
+def test_byte_identical_log_replacement_is_new_evidence(project):
+    """A short repeated run can write exactly the same log bytes."""
+    log, dss = _paths(project)
+    log.write_bytes(TENK_FINISHED.read_bytes())
+    dss.write_bytes(b"results A")
+    stamp = log.stat().st_mtime_ns
+    snap = HmsCmdr._snapshot_run(project, TENK)
+    assert not log.exists()                                  # moved aside
+    assert HmsCmdr._log_backup_path(log).read_bytes() == TENK_FINISHED.read_bytes()
+    log.write_bytes(TENK_FINISHED.read_bytes())              # same bytes
+    _set_mtime_ns(log, stamp)                                # and the same time
+    dss.write_bytes(b"results B")
+    assert HmsCmdr._verify_run(True, snap) is True
+    assert not HmsCmdr._log_backup_path(log).exists()        # backup removed
+    assert log.read_bytes() == TENK_FINISHED.read_bytes()
+
+
+def test_prior_log_is_put_back_after_a_failed_run_without_a_log(project):
+    log, dss = _paths(project)
+    log.write_bytes(TENK_FINISHED.read_bytes())
+    snap = HmsCmdr._snapshot_run(project, TENK)
+    assert HmsCmdr._verify_run(False, snap) is False
+    assert log.read_bytes() == TENK_FINISHED.read_bytes()
+    assert not HmsCmdr._log_backup_path(log).exists()
+
+
+def test_a_failed_run_keeps_its_own_new_log(project):
+    log, dss = _paths(project)
+    log.write_bytes(TENK_FINISHED.read_bytes())
+    snap = HmsCmdr._snapshot_run(project, TENK)
+    log.write_bytes(TENK_ABORTED.read_bytes())
+    dss.write_bytes(b"results")
+    assert HmsCmdr._verify_run(True, snap) is False
+    assert log.read_bytes() == TENK_ABORTED.read_bytes()
+    assert not HmsCmdr._log_backup_path(log).exists()
+
+
+def test_a_stale_backup_from_an_interrupted_call_is_replaced(project):
+    log, dss = _paths(project)
+    HmsCmdr._log_backup_path(log).write_bytes(b"left over")
+    log.write_bytes(TENK_ABORTED.read_bytes())
+    snap = HmsCmdr._snapshot_run(project, TENK)
+    assert HmsCmdr._log_backup_path(log).read_bytes() == TENK_ABORTED.read_bytes()
+    log.write_bytes(TENK_FINISHED.read_bytes())
+    dss.write_bytes(b"results")
+    assert HmsCmdr._verify_run(True, snap) is True
+
+
+def test_prior_log_is_put_back_when_launch_raises(project, monkeypatch):
+    log, _ = _paths(project)
+    log.write_bytes(TENK_FINISHED.read_bytes())
+
+    def boom(**kwargs):
+        raise FileNotFoundError("HMS path not found")
+
+    monkeypatch.setattr(HmsJython, "execute_script", staticmethod(boom))
+    with pytest.raises(FileNotFoundError):
+        HmsCmdr._execute_and_verify(TENK, project, "# script", hms_exe_path=project)
+    assert log.read_bytes() == TENK_FINISHED.read_bytes()
+    assert not HmsCmdr._log_backup_path(log).exists()
 
 
 @pytest.mark.parametrize("skew_s", [-10, +10])
@@ -250,7 +312,7 @@ def test_unchanged_dss_fails_although_the_log_changed(project):
     assert HmsCmdr._verify_run(True, snap) is False
 
 
-def test_appended_log_is_judged_by_the_new_part_only(project):
+def test_a_finished_section_followed_by_a_new_abort_fails(project):
     log, dss = _paths(project)
     log.write_bytes(TENK_FINISHED.read_bytes())     # an earlier, finished run
     snap = HmsCmdr._snapshot_run(project, TENK)
@@ -312,10 +374,10 @@ def test_shared_log_runs_are_detected(shared_project):
     [(TENK_FINISHED, CASTRO_FUTURE_ABORTED, True), (TENK_ABORTED, CASTRO_FUTURE_FINISHED, False)],
 )
 def test_shared_log_credits_each_run_with_its_own_block(shared_project, target_block, other_block, target_ok):
-    snaps = {run: HmsCmdr._snapshot_run(shared_project, run) for run in (TENK, FUTURE)}
     log, tenk_dss = _paths(shared_project, TENK)
     _, future_dss = _paths(shared_project, FUTURE)
     for order in ([target_block, other_block], [other_block, target_block]):
+        snaps = {run: HmsCmdr._snapshot_run(shared_project, run) for run in (TENK, FUTURE)}
         log.write_bytes(_bytes(*order))
         tenk_dss.write_bytes(b"tenk results")
         future_dss.write_bytes(b"castro results")
@@ -325,9 +387,10 @@ def test_shared_log_credits_each_run_with_its_own_block(shared_project, target_b
             path.unlink()
 
 
-def test_shared_log_overwritten_by_a_later_run_fails_the_earlier_run(shared_project):
-    # Observed with HEC-HMS 4.13: in one batch session, a shared Log File holds
-    # only the last run's section.
+def test_a_log_holding_only_another_runs_section_is_not_evidence(shared_project):
+    # Observed with HEC-HMS 4.13: in one session, a shared Log File holds only
+    # the last run's section. compute_batch therefore runs such runs in
+    # separate sessions (see the wrapper tests below).
     snaps = {run: HmsCmdr._snapshot_run(shared_project, run) for run in (TENK, FUTURE)}
     log, tenk_dss = _paths(shared_project, TENK)
     _, future_dss = _paths(shared_project, FUTURE)
@@ -336,6 +399,69 @@ def test_shared_log_overwritten_by_a_later_run_fails_the_earlier_run(shared_proj
     future_dss.write_bytes(b"castro results")
     assert HmsCmdr._verify_run(True, snaps[TENK]) is False
     assert HmsCmdr._verify_run(True, snaps[FUTURE]) is True
+
+
+# Review 2, finding 1: compute_batch keeps each shared-log run's evidence
+
+
+def _batch_project(tmp_path, shared: bool):
+    """The committed A1000000 project plus the shipped tenk.run and castro.run."""
+    folder = tmp_path / "batch"
+    shutil.copytree(PROJECT_411, folder)
+    for name in ("tenk.run", "castro.run"):
+        text = (RUN_FILES / name).read_text()
+        if shared:
+            text = re.sub(r"Log File: .*", "Log File: shared.log", text)
+        (folder / name).write_text(text)
+    install = tmp_path / "HEC-HMS" / "4.13"
+    install.mkdir(parents=True)
+    (install / "hms.jar").write_bytes(b"")
+    return HmsPrj().initialize(folder, hms_exe_path=install)
+
+
+def _fake_hms(monkeypatch, sections):
+    """
+    Stand in for HEC-HMS: for each run named in the script, in order, rewrite
+    that run's log with its real captured section (as HEC-HMS 4.13 rewrites a
+    shared log for every run) and write its results DSS. Records each session.
+    """
+    sessions = []
+
+    def execute_script(script_content, hms_exe_path, working_dir=None, **kwargs):
+        names = ast.literal_eval(re.search(r"^run_names = (\[.*\])$", script_content, re.M).group(1))
+        sessions.append(list(names))
+        stdout = ""
+        for name in names:
+            log, dss, _ = HmsCmdr._run_output_files(working_dir, name)
+            log.write_bytes(sections[name].read_bytes())
+            dss.write_bytes(f"results of {name}, session {len(sessions)}".encode())
+            stdout += f"Completed: {name}\n"
+        return True, stdout, ""
+
+    monkeypatch.setattr(HmsJython, "execute_script", staticmethod(execute_script))
+    return sessions
+
+
+def test_batch_with_a_shared_log_verifies_every_successful_run(tmp_path, monkeypatch):
+    prj = _batch_project(tmp_path, shared=True)
+    sessions = _fake_hms(monkeypatch, {TENK: TENK_FINISHED, FUTURE: CASTRO_FUTURE_FINISHED})
+    assert HmsCmdr.compute_batch([TENK, FUTURE], hms_object=prj) == {TENK: True, FUTURE: True}
+    assert sessions == [[TENK], [FUTURE]]          # one session per run, in order
+
+
+def test_batch_with_a_shared_log_still_fails_an_aborted_run(tmp_path, monkeypatch):
+    prj = _batch_project(tmp_path, shared=True)
+    _fake_hms(monkeypatch, {TENK: TENK_ABORTED, FUTURE: CASTRO_FUTURE_FINISHED})
+    assert HmsCmdr.compute_batch([TENK, FUTURE], hms_object=prj) == {TENK: False, FUTURE: True}
+    _fake_hms(monkeypatch, {TENK: TENK_FINISHED, FUTURE: CASTRO_FUTURE_ABORTED})
+    assert HmsCmdr.compute_batch([TENK, FUTURE], hms_object=prj) == {TENK: True, FUTURE: False}
+
+
+def test_batch_without_shared_logs_uses_one_session(tmp_path, monkeypatch):
+    prj = _batch_project(tmp_path, shared=False)
+    sessions = _fake_hms(monkeypatch, {TENK: TENK_FINISHED, FUTURE: CASTRO_FUTURE_ABORTED})
+    assert HmsCmdr.compute_batch([TENK, FUTURE], hms_object=prj) == {TENK: True, FUTURE: False}
+    assert sessions == [[TENK, FUTURE]]
 
 
 # Review 1, finding 5: results DSS (and log) metadata that cannot be found
@@ -470,6 +596,12 @@ def test_patch_versions(tmp_path, installed, wanted, expected):
         (["4.13-beta", "4.13"], None, "4.13"),            # newest is the release
         (["4.12", "4.13-beta"], "4.12.1", "4.13-beta"),   # next newer minor
         (["4.13-rc1", "4.13-beta"], "4.13-alpha", "4.13-rc1"),
+        (["4.13-rc2"], "4.13-rc10", None),                # rc2 is older than rc10
+        (["4.13-rc2", "4.13-rc10"], "4.13-rc3", "4.13-rc10"),
+        (["4.13-beta2"], "4.13-beta10", None),            # beta2 is older than beta10
+        (["4.13-beta10", "4.13-rc2"], "4.13-beta2", "4.13-rc2"),
+        (["4.13-rc2", "4.13-rc10"], None, "4.13-rc10"),   # newest is rc10
+        (["4.13 Beta 2"], "4.13-beta2", "4.13 Beta 2"),   # separators and case ignored
     ],
 )
 def test_suffixed_versions(tmp_path, installed, wanted, expected):
@@ -481,6 +613,34 @@ def test_version_ordering():
     assert sorted(names, key=HmsJython._parse_version_text) == [
         "4.4", "4.4.1", "4.9", "4.10", "4.13-beta", "4.13-rc1", "4.13", "4.13.1"
     ]
+    numbered = ["4.13-rc10", "4.13-beta10", "4.13-rc2", "4.13-beta2", "4.13-beta", "4.13-alpha1"]
+    assert sorted(numbered, key=HmsJython._parse_version_text) == [
+        "4.13-alpha1", "4.13-beta", "4.13-beta2", "4.13-beta10", "4.13-rc2", "4.13-rc10"
+    ]
+    key = HmsJython._parse_version_text
+    assert key("4.13-rc2") < key("4.13-rc10") and key("4.13-beta2") < key("4.13-beta10")
+    assert key("4.13b2") == key("4.13 Beta 2") == key("4.13-beta.2")
+    assert key("4.13-beta") == key("4.13-beta0")
+
+
+@pytest.mark.parametrize("text", ["4.13-rc1-hotfix", "4.13 custom", "4.13-pre1", "4.13-rc2b", "custom build"])
+def test_ambiguous_versions_do_not_parse(text):
+    assert HmsJython._parse_version_text(text) is None
+
+
+@pytest.mark.parametrize("version", ["4.13-rc1-hotfix", "4.13-rc2b"])
+def test_compute_setup_refuses_an_ambiguous_project_version(tmp_path, version):
+    base = _layout(tmp_path, ["4.13", "4.13-rc2"])
+    prj = _project(tmp_path, version)
+    with pytest.raises(RuntimeError, match="not a version format"):
+        HmsCmdr._ensure_hms_executable(prj, search_paths=[base], include_defaults=False)
+
+
+def test_compute_setup_refuses_an_older_numbered_prerelease(tmp_path):
+    base = _layout(tmp_path, ["4.13-rc2"])
+    prj = _project(tmp_path, "4.13-rc10")
+    with pytest.raises(RuntimeError, match="4.13-rc10"):
+        HmsCmdr._ensure_hms_executable(prj, search_paths=[base], include_defaults=False)
     assert HmsJython._parse_version_text("4.4.0") == HmsJython._parse_version_text("4.4")
     assert HmsJython._parse_version_text("not a version") is None
 
@@ -625,8 +785,32 @@ def test_castro_batch_with_separate_and_shared_logs(tmp_path):
     run_file = shared / "castro.run"
     run_file.write_text(re.sub(r"Log File: .*", "Log File: shared.log", run_file.read_text()))
     prj = HmsPrj().initialize(shared)
-    # HEC-HMS rewrites the shared log for each run, so only the last run's
-    # section remains; the first run cannot be verified.
+    # HEC-HMS rewrites a shared log for each run, so compute_batch runs each
+    # run in its own session and verifies it before the next.
     assert HmsCmdr.compute_batch(["Current", "Future"], hms_object=prj) == {
-        "Current": False, "Future": True,
+        "Current": True, "Future": True,
     }
+    assert "Future" in (shared / "shared.log").read_text()
+
+
+@pytest.mark.requires_hms
+@pytest.mark.local_hms
+@pytest.mark.slow
+def test_castro_batch_with_a_shared_log_reports_an_aborted_run(tmp_path):
+    """A negative subbasin area in Future's basin model makes HEC-HMS abort Future."""
+    if _installed("4.13") is None:
+        pytest.skip("HEC-HMS 4.13 not installed")
+    stale = ["Current.dss", "Future.dss", "Current.log", "Future.log"]
+    shared = _fresh(tmp_path, "castro", "shared_abort", stale)
+    run_file = shared / "castro.run"
+    run_file.write_text(re.sub(r"Log File: .*", "Log File: shared.log", run_file.read_text()))
+    basin = shared / "Castro_2.basin"  # Basin: Castro 2, used only by Future
+    text, n = re.subn(r"(\n\s+Area:\s*)[0-9.]+", r"\g<1>-1.0", basin.read_text(), count=1)
+    assert n == 1
+    basin.write_text(text)
+    prj = HmsPrj().initialize(shared)
+    assert HmsCmdr.compute_batch(["Current", "Future"], hms_object=prj) == {
+        "Current": True, "Future": False,
+    }
+    log = (shared / "shared.log").read_text()
+    assert 'WARNING 15303:  Aborted run "Future"' in log and "ERROR 42282" in log

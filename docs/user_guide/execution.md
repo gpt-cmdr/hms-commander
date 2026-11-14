@@ -48,31 +48,48 @@ if not HmsCmdr.compute_run("Run 1"):
 
 `compute_run()` returns `True` only when there is evidence that HEC-HMS computed the run
 during the call. Before HEC-HMS starts, HMS Commander reads the run's `Log File:` and
-`DSS File:` entries from the project's `.run` files. It then records each file's size,
-modification time and content: the whole log, and a SHA-256 hash of a results DSS
-file up to 512 MB. After the run, all of these must hold:
+`DSS File:` entries from the project's `.run` files. It then prepares both files:
+
+- An existing run log is moved aside to `<log name>.hms-commander-prev` in the same
+  folder. Any run log present after the run was therefore written by the run, even
+  when its bytes equal the earlier log's. If the run writes a new log, the backup is
+  deleted, as HEC-HMS replaces a run's log when it computes the run. If the run
+  writes none, the earlier log is moved back.
+- The results DSS file's size and modification time are recorded, with a SHA-256
+  hash for files up to 512 MB.
+
+After the run, all of these must hold:
 
 - The generated Jython script completed. It did not print `Error opening project:` or
   `Error during computation:`.
-- The run log changed. Only the text HEC-HMS added is read. If HEC-HMS replaced the
-  file, the whole new file is read.
-- That text has a section for this run. The section starts at
+- A run log exists, and it has a section for this run. The section starts at
   `NOTE 15301: Began computing simulation run "<run name>"` and ends at the next
   `NOTE 15301` of any run. It has `NOTE 15302` ("Finished computing simulation run")
   for this run, no `ERROR` line and no `WARNING 15303` ("Aborted run").
 - The results DSS file is new, or its size, modification time or hash changed.
 
-Each file is compared with its own earlier record, not with the clock. A file server
-whose clock differs from the computer running HMS Commander does not change the
-result. A file that the run did not change fails the check, however recent its time.
-Because the content is compared, a rewrite is detected even when a FAT or network
-file system stores the same coarse time.
+Nothing is compared with the clock. A file server whose clock differs from the
+computer running HMS Commander does not change the result. A results DSS file that
+the run did not change fails the check, however recent its time.
+
+The DSS comparison has two limits:
+
+- For a DSS file up to 512 MB, a rewrite with different bytes is detected even when
+  a FAT or network file system keeps the same coarse time and the size does not
+  change.
+- A DSS file over 512 MB is compared by size and modification time only, so a
+  same-size rewrite that keeps the time is not detected. A rewrite that leaves every
+  byte, the size and the time unchanged is not detected at any size.
+
+In both cases the run is reported as failed rather than wrongly as computed.
 
 The log alone decides which run a result belongs to. A shared results DSS file does
-not show which run wrote it. When runs share a `Log File:`, each run is judged only
-from its own section. HEC-HMS 4.13 rewrites a shared log for each run in a batch, so
-an earlier run's section is lost and that run is reported as failed.
-`compute_batch()` logs a warning when its runs share a log file.
+not show which run wrote it. HEC-HMS 4.13 rewrites a run log for every run it
+computes, so in one HEC-HMS session a log shared by several runs keeps only the
+last run's section. `compute_batch()` therefore computes runs that share a `Log File:`
+one HEC-HMS session per run, in the given order, in the same project folder, and
+verifies each run before the next starts. Runs with their own logs still share one
+session.
 
 If the run is not in a `.run` file, or has no `Log File:` or `DSS File:` entry, the run
 cannot be verified and `False` is returned. Every run in the HEC-HMS 4.4.1 to 4.13
@@ -102,16 +119,16 @@ project's `.hms` file:
 Versions are compared as numbers. Trailing zeros are ignored, and a suffixed
 pre-release sorts before its release:
 
-4.4 = 4.4.0 < 4.4.1 < 4.9 < 4.10 < 4.13-alpha < 4.13-beta < 4.13-rc1 < 4.13 < 4.13.1
+4.4 = 4.4.0 < 4.4.1 < 4.9 < 4.10 < 4.13-alpha < 4.13-beta < 4.13-beta2 < 4.13-beta10 < 4.13-rc2 < 4.13-rc10 < 4.13 < 4.13.1
 
-Suffixes of one release compare as text.
+A pre-release suffix is `alpha` (or `a`), `beta` (or `b`) or `rc`, optionally followed by a number that is compared as a number. Separators and case are ignored, so `4.13 Beta 2` equals `4.13-beta2`. Any other suffix, such as `4.13-rc1-hotfix`, is ambiguous and is not compared.
 
 An older HEC-HMS is never substituted, including an older patch or a pre-release
 of the project's version. `compute_run()` raises `RuntimeError` in two cases:
 
 - only older versions are installed;
-- the project's `Version:` is not a comparable version and no installation has that
-  exact name.
+- the project's `Version:` is not a comparable version, for example an ambiguous
+  suffix, and no installation has that exact name.
 
 To use a specific installation, pass it explicitly. A warning is logged if it is
 older than the project:
