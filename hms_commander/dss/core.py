@@ -2174,9 +2174,12 @@ class DssCore:
 
     @staticmethod
     def _calendar_refusal(pathname: str, e_part: str, stamps: np.ndarray, i: int,
-                          stored_at: Optional[Any], version: Optional[int]) -> ValueError:
+                          stored_at: Optional[Any], version: Optional[int],
+                          dss6_keeps: bool = False) -> ValueError:
         """The error for a calendar series HEC-DSS would not keep (see
-        ``_check_regular_stamps``): which value, where HEC places it, and what works."""
+        ``_check_regular_stamps``): which value, where HEC places it, and what works.
+        ``dss6_keeps``: the refused input is a single value that a DSS6 file keeps at its
+        given time (``_DSS6_SINGLE_VALUE_UNITS``), so writing it to DSS6 works."""
         given = pd.Timestamp(stamps[min(i, len(stamps) - 1)])
         if stored_at is None:
             where = "would not store it at all"
@@ -2187,9 +2190,16 @@ class DssCore:
             f"Refused before writing {pathname!r}: HEC-DSS keeps a {e_part} series on its "
             f"calendar placement from the first time, and {what} (given at {given}) does not "
             f"fit it: HEC-DSS {where}.",
-            "Changing the DSS version does not help: this check applies HEC-DSS 7's placement "
-            "to DSS6 and DSS7 files alike.",
         ]
+        if dss6_keeps:
+            message.append(
+                "In a DSS6 file HEC-DSS keeps this single value at its given time, so writing "
+                "it to a DSS6 file works (dss_version=6, or an existing DSS6 file).")
+        else:
+            message.append(
+                "Changing the DSS version does not help: this check applies HEC-DSS 7's "
+                "placement to DSS6 and DSS7 files alike"
+                + (", so a DSS6 file refuses this value too." if version != 6 else "."))
         if stored_at is not None:
             message.append(
                 f"What works: give {what} at {pd.Timestamp(stored_at)}, where HEC-DSS stores "
@@ -2271,9 +2281,11 @@ class DssCore:
         unit = re.sub(r"^\d+\s*", "", e_part.strip().upper())
         try:
             i, stored_at, engine_message = DssCore._round_trip(dc, 7, check_path, stamps, values)
-            if (i is not None and version == 6 and len(stamps) == 1
+            dss6_keeps = False
+            if (i is not None and len(stamps) == 1
                     and unit in DssCore._DSS6_SINGLE_VALUE_UNITS):
-                if DssCore._round_trip(dc, 6, check_path, stamps, values)[0] is None:
+                dss6_keeps = DssCore._round_trip(dc, 6, check_path, stamps, values)[0] is None
+                if dss6_keeps and version == 6:
                     return  # a single DSS6 value HEC's DSS6 library keeps
         except Exception as exc:  # an engine failure must not block the write
             logger.warning("Could not check the times of %s against HEC-DSS's calendar "
@@ -2283,10 +2295,14 @@ class DssCore:
         if i is None:
             return
         if stored_at is None and engine_message:
+            remedy = ("In a DSS6 file HEC-DSS keeps this single value at its given time, so "
+                      "writing it to a DSS6 file works." if dss6_keeps else
+                      "Changing the DSS version does not help.")
             raise ValueError(
                 f"Refused before writing {pathname!r}: HEC-DSS would not keep these "
-                f"{e_part} times ({engine_message}). Changing the DSS version does not help.")
-        raise DssCore._calendar_refusal(pathname, e_part, stamps, i, stored_at, version)
+                f"{e_part} times ({engine_message}). {remedy}")
+        raise DssCore._calendar_refusal(pathname, e_part, stamps, i, stored_at, version,
+                                        dss6_keeps=dss6_keeps)
 
     @staticmethod
     @log_call

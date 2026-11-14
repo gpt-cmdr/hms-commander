@@ -347,6 +347,51 @@ def test_a_dss6_over_refusal_says_the_version_does_not_help(backend, tmp_path):
         assert "Write it to a DSS7 file" not in text
 
 
+#: Refusals and the version advice their message must give (review 3): (E part, version,
+#: times, advice). "dss6" = writing to a DSS6 file works; "none" = no version change helps;
+#: "dss7" = the DSS6 leap rule, where a DSS7 file works.
+VERSION_ADVICE = {
+    "DSS7 single 1MON on the 31st": ("1MON", 7, ["2019-01-31"], "dss6"),
+    "DSS7 single 1MON on 29 February": ("1MON", 7, ["2020-02-29"], "dss6"),
+    "DSS7 single SEMI-MONTH on the 15th": ("SEMI-MONTH", 7, ["2019-01-15"], "dss6"),
+    "DSS7 single TRI-MONTH on the 20th": ("TRI-MONTH", 7, ["2019-01-20"], "dss6"),
+    "DSS7 single 1WEEK in a decade week": ("1WEEK", 7, ["2019-12-30"], "none"),
+    "DSS7 single 1YEAR on 31 December 12:00": ("1YEAR", 7, ["2019-12-31 12:00"], "none"),
+    "DSS6 single 1WEEK in a decade week": ("1WEEK", 6, ["2019-12-30"], "none"),
+    "DSS7 multi-value 1MON from the 31st": ("1MON", 7, ["2019-01-31", "2019-03-03", "2019-03-31"], "none"),
+    "DSS6 multi-value 1MON from the 31st": ("1MON", 6, ["2019-01-31", "2019-03-03", "2019-03-31"], "none"),
+    "DSS6 yearly, leap start": ("1YEAR", 6, ["2020-06-15", "2021-06-15"], "dss7"),
+}
+
+
+@pytest.mark.parametrize("case", list(VERSION_ADVICE))
+def test_the_version_advice_in_each_refusal_is_true(backend, tmp_path, case):
+    """Each refusal's message says whether another DSS version works, and it is right:
+    the advised version writes the same times and reads them back exactly; when it says no
+    version change helps, the other version refuses too."""
+    e_part, version, times, advice = VERSION_ADVICE[case]
+    times = _times(*times)
+    values = np.arange(len(times), dtype=float) + 1.0
+    path = f"//G/FLOW//{e_part}/OBS/"
+    with pytest.raises(ValueError) as caught:
+        HmsDss.write_timeseries(tmp_path / "refused.dss", path, times, values, dss_version=version)
+    text = str(caught.value)
+    assert not (tmp_path / "refused.dss").exists()
+    other = 6 if version == 7 else 7
+    if advice == "none":
+        assert "Changing the DSS version does not help" in text
+        assert "works" not in text.split("What works")[0]
+        with pytest.raises(ValueError):
+            HmsDss.write_timeseries(tmp_path / "other.dss", path, times, values, dss_version=other)
+        assert ("cannot write those times" in text) is (version == 6)
+    else:
+        assert "does not help" not in text
+        assert f"DSS{other} file" in text and "works" in text
+        target = tmp_path / "advised.dss"
+        HmsDss.write_timeseries(target, path, times, values, dss_version=other)
+        _assert_kept(target, times, values, other)
+
+
 def test_irregular_check_names_the_remedy():
     with pytest.raises(ValueError, match="fill the gaps with NaN"):
         DssCore._prepare_timeseries("//G/FLOW//1HOUR/OBS/", HOURS.delete(2), np.arange(5.0))
