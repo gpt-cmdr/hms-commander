@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A script that used `HmsHuc` or `HmsGaugeStudy` could hang at interpreter exit.**
+  pygeohydro runs its requests on async-retriever's event-loop thread, and the atexit
+  cleanup of async-retriever 0.19.3 can wait for ever when that thread ends at the wrong
+  moment. Once an `HmsHuc` query has started that thread, hms-commander registers its
+  own exit hook. The hook runs before async-retriever's cleanup, stops the thread with a
+  bounded join, and leaves the cleanup nothing to wait for. It never raises, and it does
+  nothing when async-retriever is not loaded or its `stop()` no longer has the unbounded
+  wait. The test session's stop of the loop thread (added with the native CI) now calls
+  the same code.
+
 ## [0.5.0] - 2026-11-14
 
 ### ⚠️ Behaviour changes (read before upgrading)
