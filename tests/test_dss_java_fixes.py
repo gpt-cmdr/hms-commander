@@ -16,6 +16,7 @@ when pyjnius, Java or the HEC Monolith libraries are unavailable.
 from __future__ import annotations
 
 import os
+import sys
 import types
 from datetime import date
 
@@ -480,8 +481,18 @@ def test_healthy_java_io_reports_no_library_failure(java, tmp_path, caplog):
     assert "HEC-DSS library reported" not in caplog.text
 
 
+# On Linux, HEC's javaHeclib (7-IU-8) ends the whole process, with exit status 2 and no
+# Python traceback, on this DSS6 write to a read-only file; the GitHub Actions shadow run
+# on ubuntu-latest showed it. The behaviour pinned here is the Windows library's, which
+# returns normally (and hms-commander then raises).
+_DSS6_READ_ONLY_ENDS_PROCESS = pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="HEC javaHeclib on this platform ends the process on a DSS6 write to a read-only file",
+)
+
+
 @pytest.mark.requires_java
-@pytest.mark.parametrize("version", [6, 7])
+@pytest.mark.parametrize("version", [pytest.param(6, marks=_DSS6_READ_ONLY_ENDS_PROCESS), 7])
 def test_write_to_read_only_file_raises(java, tmp_path, version):
     """HEC Monolith returns normally from a DSS6 time-series write it refused."""
     import stat

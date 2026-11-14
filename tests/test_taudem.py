@@ -127,10 +127,10 @@ def test_find_executable_and_validate_environment(tmp_path):
     )
 
     assert pitremove is not None
-    assert pitremove.name == "pitremove.cmd"
+    assert pitremove.name == ("pitremove.cmd" if os.name == "nt" else "pitremove")
     assert validation["available"] is True
     assert validation["missing_tools"] == []
-    assert validation["tools"]["streamnet"].endswith("streamnet.cmd")
+    assert validation["tools"]["streamnet"].endswith("streamnet.cmd" if os.name == "nt" else "streamnet")
 
 
 def test_run_standard_delineation_creates_manifest_and_outputs(tmp_path):
