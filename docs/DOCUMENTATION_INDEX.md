@@ -27,6 +27,14 @@ Shared rules that both Claude and Codex need belong in the `AGENTS.md` hierarchy
 - `docs/AGENTS.md` - MkDocs and documentation rules
 - `tests/AGENTS.md` - Real-project test expectations
 
+### Native DSS Engine And Gridded Precipitation
+
+- `docs/user_guide/dss_native_backend.md` - Java, native and shadow DSS backends; engine-only operations
+- `docs/development/dss-native-notebook-qualification.md` - Notebook runs on each backend, with runtimes
+- `examples/06_results_dss.ipynb` - DSS results, native records, `repair` and `sync`
+- `examples/14a_aorc_download.ipynb`, `14b_aorc_grid_setup.ipynb`, `14c_aorc_hms_execution.ipynb` - AORC on the WGS84 and SHG lattices, cell checks, and the HEC-HMS check of new grids
+- `examples/23_native_gridded_import_and_grid_tools.ipynb` - MRMS, AORC and SNODAS import, grid tools and zonal rainfall
+
 ### LLM Forward Documentation
 
 - `docs/llm_dev/claude_md.md` - How the current `AGENTS.md` + `CLAUDE.md` loading model works

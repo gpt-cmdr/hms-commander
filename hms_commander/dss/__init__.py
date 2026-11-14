@@ -1,9 +1,12 @@
 """
 hms-commander DSS subpackage: HEC-DSS file operations.
 
-This subpackage provides DSS file reading and writing capabilities using HEC Monolith
-Java libraries via pyjnius. All dependencies are lazy-loaded to minimize
-import time and keep optional dependencies truly optional.
+This subpackage provides DSS file reading and writing capabilities. The default
+backend uses HEC Monolith Java libraries via pyjnius; the optional native backend
+uses the ras-commander-fast-dss engine (``ras_commander_fast_dss``) without Java.
+``HmsDss.backend`` (or the environment variable ``HMS_COMMANDER_DSS_BACKEND``)
+selects ``"java"`` (default), ``"native"`` or ``"shadow"``. All dependencies are
+lazy-loaded to minimize import time and keep optional dependencies truly optional.
 
 Classes:
     DssCore: Low-level DSS operations (read/write time series, paired data, catalog)
@@ -44,8 +47,9 @@ See Also:
     - examples/08_atlas14_hyetograph_generation.ipynb for paired data operations
 """
 
+from ._backend import DssCapabilityError
 from .core import DssCore
 from .hms_dss import HmsDss
 from .hms_dss_grid import HmsDssGrid
 
-__all__ = ['DssCore', 'HmsDss', 'HmsDssGrid']
+__all__ = ['DssCore', 'HmsDss', 'HmsDssGrid', 'DssCapabilityError']

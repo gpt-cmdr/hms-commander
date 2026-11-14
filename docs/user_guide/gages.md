@@ -76,6 +76,7 @@ Example:
 
 - [API Reference: HmsGage](../api/hms_gage.md) - Complete method documentation
 - [DSS Operations](dss_operations.md) - Working with DSS files
+- [23 - Native Gridded Import and Grid Tools](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/23_native_gridded_import_and_grid_tools.ipynb) - Subbasin rainfall series from gridded products (`HmsDssGrid.grid_to_point`), ready to use as precipitation gages
 - [Meteorologic Models](meteorologic_models.md) - Gage assignments
 - [Data Formats: Gage File](../data_formats/gage_file.md) - HMS .gage file format
 

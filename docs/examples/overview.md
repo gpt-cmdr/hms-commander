@@ -55,7 +55,7 @@ projects = HmsExamples.list_projects()
 | [03 - File Operations](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/03_file_ops_basin_met_control_gage.ipynb) | HmsBasin, HmsMet, HmsControl, HmsGage file operations |
 | [04 - Run Management](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/04_run_management.ipynb) | Configure and validate simulation runs |
 | [05 - Clone Workflow](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/05_clone_workflow.ipynb) | Non-destructive model modifications for QAQC |
-| [06 - Results and DSS](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/06_results_dss.ipynb) | DSS operations and results extraction |
+| [06 - DSS Results, Native Records, and Recovery](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/06_results_dss.ipynb) | Results extraction, windows, DSS6/DSS7 writes, every curve of a paired-data record, `repair` and the `sync` flush policy |
 
 ### Advanced Track (45-90 minutes)
 
@@ -113,9 +113,21 @@ These notebooks demonstrate hms-commander storm-generation equivalence against r
 
 | Notebook | Description |
 |----------|-------------|
-| [14a - AORC Download](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/14a_aorc_download.ipynb) | Download AORC precipitation from NOAA AWS |
-| [14b - AORC Grid Setup](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/14b_aorc_grid_setup.ipynb) | Create grid definitions and HRAP cell mappings |
-| [14c - AORC HMS Execution](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/14c_aorc_hms_execution.ipynb) | Run HMS with gridded precipitation |
+| [14a - AORC Download](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/14a_aorc_download.ipynb) | Download AORC precipitation from NOAA AWS; write WGS84 grids, and the tenk storm on the SHG lattice through `HmsAorc` and the engine's NetCDF reader |
+| [14b - AORC Grid Setup](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/14b_aorc_grid_setup.ipynb) | Create grid definitions and cell mappings; check the cells against the grids; move the tenk cells from HRAP to SHG |
+| [14c - AORC HMS Execution](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/14c_aorc_hms_execution.ipynb) | Run HMS with the shipped Stage III grids and with the new AORC SHG grids, and check `PRECIP-INC` against the grids |
+
+### Native DSS and Gridded Precipitation (5-10 minutes)
+
+These notebooks use the optional native DSS engine (`ras-commander-fast-dss`); see the
+[Native DSS Backend](../user_guide/dss_native_backend.md) guide and the
+[notebook qualification](../development/dss-native-notebook-qualification.md).
+
+| Notebook | Description |
+|----------|-------------|
+| [23 - Native Gridded Import, Zonal Rainfall, and Grid Tools](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/23_native_gridded_import_and_grid_tools.ipynb) | MRMS GRIB2 (1, 6 and 24 hours), AORC NetCDF-4 and SNODAS imported to SHG over the tenk basin; every grid tool; all eight zonal statistics written as subbasin rainfall series |
+| [06 - DSS Results, Native Records, and Recovery](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/06_results_dss.ipynb) | Native records, `repair` and `sync` (also listed above) |
+| [14a](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/14a_aorc_download.ipynb) / [14b](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/14b_aorc_grid_setup.ipynb) / [14c](https://github.com/gpt-cmdr/hms-commander/blob/main/examples/14c_aorc_hms_execution.ipynb) - AORC on the SHG lattice | The SHG route, cell remapping, and the HEC-HMS check of the new grids (also listed above) |
 
 ---
 
