@@ -235,20 +235,21 @@ def pytest_configure(config):
         _block_network()
 
 
-def _stop_async_retriever_loop():
-    """Stop async-retriever's event-loop thread before interpreter exit.
+def _bound_async_retriever_exit():
+    """Make async-retriever's atexit cleanup use a bounded stop of its loop thread.
 
-    The library registers the same guard at exit once ``HmsHuc`` has used HyRiver
+    The library does the same at exit once ``HmsHuc`` has used HyRiver
     (``hms_commander._hyriver_exit``). Tests that call pygeohydro directly do not pass
-    through it, so the session end runs it as well.
+    through it, so the session end installs it as well. It does nothing unless the
+    stock async-retriever 0.19.3 is loaded.
     """
-    from hms_commander._hyriver_exit import stop_async_retriever_loop
+    from hms_commander._hyriver_exit import install_bounded_stop
 
-    stop_async_retriever_loop()
+    install_bounded_stop()
 
 
 def pytest_unconfigure(config):
-    _stop_async_retriever_loop()
+    _bound_async_retriever_exit()
     seconds = os.environ.get(EXIT_WATCH_ENV, "").strip()
     if not seconds:
         return

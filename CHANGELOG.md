@@ -10,24 +10,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **A script that used `HmsHuc` or `HmsGaugeStudy` could hang at interpreter exit.**
-  pygeohydro runs its requests on async-retriever's event-loop thread, and the atexit
-  cleanup of async-retriever 0.19.3 can wait for ever when that thread ends at the wrong
-  moment. Once an `HmsHuc` query has started that thread, hms-commander registers its
-  own exit hook, which runs before async-retriever's cleanup and leaves it nothing to
-  wait for.
-  - Every wait in the hook, including taking async-retriever's lock, is bounded: 30 s in
-    total by default. If another thread holds that lock, the hook replaces it so
-    async-retriever's own cleanup cannot block on it either.
-  - Tasks already on the loop get up to 20 s to finish. Tasks still running after that
-    are cancelled and given 2 s for their cleanup. Work that ignores cancellation, timers
-    not yet due, and a loop thread stuck in blocking code are abandoned at exit, so a
-    caller that needs a result must wait for it before the interpreter exits.
-  - It acts only on async-retriever 0.19.3 whose compiled `stop()`, `_cleanup()` and
-    `run()` match that release, whether or not the source is readable. For any other
-    version or a changed implementation it does nothing and logs the reason at DEBUG.
+  pygeohydro runs its requests on async-retriever's event-loop thread. In
+  async-retriever 0.19.3, the atexit cleanup's `stop()` can wait for ever when that
+  thread ends at the wrong moment.
+  - Once an `HmsHuc` query has started that thread, hms-commander registers an exit hook
+    that runs before async-retriever's cleanup. It replaces only that `stop()` with a
+    bounded one and waits for nothing itself. async-retriever's cleanup keeps its own lock
+    and singleton handling, so a loop thread published at the last moment also gets the
+    bounded stop.
+  - The bounded stop lets tasks already on the loop finish for up to 20 s, cancels what
+    is still running and gives it 2 s for its cleanup, then stops and joins the thread:
+    30 s in total by default. Work that ignores cancellation, timers not yet due, and a
+    loop thread stuck in blocking code are abandoned at exit, so a caller that needs a
+    result must wait for it before the interpreter exits.
+  - It acts only when the installed async-retriever is 0.19.3, its `_utils.py` is
+    byte-identical to the published 0.19.3 wheel, and the methods are still the ones
+    defined there. A patched, source-stripped or other release is left alone, with the
+    reason logged at DEBUG.
+  - Not covered: async-retriever's cleanup still takes its lock with no time limit. A
+    thread that held that lock for ever would block exit, as it does without the guard.
   - It never raises an `Exception`.
 
-  The test session's stop of the loop thread (added with the native CI) now calls the
+  A dependency constraint was considered instead. No current HyRiver release accepts an
+  async-retriever without the loop thread: pygeohydro 0.19.3+ and pynhd 0.19.3+ require
+  `async-retriever>=0.19.3`. Excluding 0.19.3 resolves only to pygeohydro 0.19.0 and
+  pynhd 0.19.0, and pynhd 0.19.0's `NLDI` client fails against the current USGS service.
+  There is no async-retriever release after 0.19.3.
+
+  The test session's handling of the loop thread (added with the native CI) now calls the
   same code.
 
 ## [0.5.0] - 2026-11-14
