@@ -4,7 +4,13 @@ Session-scoped fixtures provide read-only access to committed test project files
 Function-scoped fixtures create temporary copies for write tests.
 """
 
+import faulthandler
+import ipaddress
+import os
 import shutil
+import socket
+import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -170,3 +176,103 @@ def tmp_river_bend_example(river_bend_example_dir, tmp_path):
     dest = tmp_path / river_bend_example_dir.name
     shutil.copytree(river_bend_example_dir, dest)
     return dest
+
+
+# ---------------------------------------------------------------------------
+# Opt-in CI guards (environment variables; local runs are unaffected)
+# ---------------------------------------------------------------------------
+
+#: ``1``: refuse every network connection made while tests run (loopback is allowed).
+#: Tests that would download data (HEC Monolith, NOAA, USGS) then fail to reach it and
+#: skip through their own guards, so a CI run cannot depend on test-time network data.
+OFFLINE_ENV = "HMS_COMMANDER_TEST_OFFLINE"
+#: Seconds: after the session, dump every thread's stack to stderr at this interval
+#: while the interpreter shuts down, so an exit hang leaves evidence in the log.
+EXIT_WATCH_ENV = "HMS_COMMANDER_TEST_EXIT_WATCH"
+
+
+class NetworkBlockedError(OSError):
+    """A test tried to reach the network while HMS_COMMANDER_TEST_OFFLINE=1."""
+
+
+def _is_loopback(address) -> bool:
+    host = address[0] if isinstance(address, tuple) else address
+    if host in ("localhost", "", None):
+        return True
+    try:
+        return ipaddress.ip_address(str(host).split("%")[0]).is_loopback
+    except ValueError:
+        return False
+
+
+def _block_network():
+    real_connect = socket.socket.connect
+    real_connect_ex = socket.socket.connect_ex
+    real_getaddrinfo = socket.getaddrinfo
+
+    def connect(self, address):
+        if self.family in (socket.AF_INET, socket.AF_INET6) and not _is_loopback(address):
+            raise NetworkBlockedError(f"network access blocked during tests: {address!r}")
+        return real_connect(self, address)
+
+    def connect_ex(self, address):
+        if self.family in (socket.AF_INET, socket.AF_INET6) and not _is_loopback(address):
+            raise NetworkBlockedError(f"network access blocked during tests: {address!r}")
+        return real_connect_ex(self, address)
+
+    def getaddrinfo(host, *args, **kwargs):
+        if not _is_loopback(host if not isinstance(host, bytes) else host.decode()):
+            raise socket.gaierror(f"name resolution blocked during tests: {host!r}")
+        return real_getaddrinfo(host, *args, **kwargs)
+
+    socket.socket.connect = connect
+    socket.socket.connect_ex = connect_ex
+    socket.getaddrinfo = getaddrinfo
+
+
+def pytest_configure(config):
+    if os.environ.get(OFFLINE_ENV) == "1":
+        _block_network()
+
+
+def _stop_async_retriever_loop():
+    """Stop async-retriever's event-loop thread before interpreter exit.
+
+    pygeohydro (used by HmsHuc and HmsGaugeStudy) runs requests on async-retriever's
+    singleton loop thread, whose atexit cleanup can hang the process for ever:
+    ``_AsyncLoopThread.stop()`` (async-retriever 0.19.3) checks ``_running.is_set()``,
+    stops the loop, then ``_running.wait()``s; when the loop thread clears the event
+    between the check and the wait, nothing sets it again. Stopping the loop here with
+    a bounded join, and clearing the singleton so the atexit cleanup has nothing to do,
+    avoids that race. Uses private names, so it does nothing if they change.
+    """
+    module = sys.modules.get("async_retriever._utils")
+    loop_class = getattr(module, "_AsyncLoopThread", None) if module else None
+    instance = getattr(loop_class, "_instance", None)
+    if instance is None:
+        return
+    with loop_class._lock:
+        loop_class._instance = None
+    if instance.is_alive():
+        instance.loop.call_soon_threadsafe(instance.loop.stop)
+        instance.join(timeout=30)
+        if instance.is_alive():
+            sys.__stderr__.write("[conftest] async-retriever loop thread did not stop in 30 s\n")
+
+
+def pytest_unconfigure(config):
+    _stop_async_retriever_loop()
+    seconds = os.environ.get(EXIT_WATCH_ENV, "").strip()
+    if not seconds:
+        return
+    alive = [t for t in threading.enumerate() if t is not threading.main_thread()]
+    sys.__stderr__.write(
+        "\n[exit watch] threads alive at session end: "
+        + (", ".join(f"{t.name}(daemon={t.daemon})" for t in alive) or "none")
+        + f"; jnius loaded: {'jnius' in sys.modules}; "
+        f"engine loaded: {'ras_commander_fast_dss' in sys.modules}\n")
+    sys.__stderr__.flush()
+    # A C-level watchdog: keeps dumping every thread's stack during interpreter
+    # shutdown until the process ends. It never ends the process itself.
+    faulthandler.dump_traceback_later(float(seconds), repeat=True, file=sys.__stderr__,
+                                      exit=False)
