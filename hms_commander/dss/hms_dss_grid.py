@@ -336,8 +336,8 @@ class HmsDssGrid:
           ``0000`` in D and the previous day's ``2400`` in E), so the period ending
           2020-05-02 00:00 is ``/01MAY2020:2300/01MAY2020:2400/``. Instantaneous
           grids have the instant in both parts.
-        - ``HmsDss.backend`` selects HEC Monolith (``java``, default), the
-          ras_commander_fast_dss engine (``native``) or ``shadow``; the native
+        - ``HmsDss.backend`` selects the ras_commander_fast_dss engine (``native``,
+          the default when it imports), HEC Monolith (``java``) or ``shadow``; the native
           writer stores the same specified-grid records as Monolith
 
         See Also
@@ -695,7 +695,7 @@ class HmsDssGrid:
                     is_interval=True, version=version,
                     **_backend.native_sync_kwargs(),
                 )
-        logger.info(f"DSS grid write complete (native): {target} ({len(writes)} grids)")
+        logger.info(f"DSS grid write complete (native): {dss_file} ({len(writes)} grids)")
         return Path(dss_file)
 
     @staticmethod

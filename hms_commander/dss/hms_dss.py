@@ -62,8 +62,9 @@ class HmsDss:
         ``HmsDss.backend`` selects how DSS files are read and written (the
         environment variable ``HMS_COMMANDER_DSS_BACKEND`` overrides it):
 
-        - ``"java"`` (default): HEC Monolith through pyjnius.
-        - ``"native"``: the optional ``ras_commander_fast_dss`` engine; no Java.
+        - ``"native"`` (the default when the engine imports): the
+          ``ras_commander_fast_dss`` engine; no Java.
+        - ``"java"`` (the default when it does not): HEC Monolith through pyjnius.
         - ``"shadow"``: reads return the native result and are compared with
           Java (grids return Java's grid); writes run on Java and are repeated
           natively on a temporary copy. Differences are logged; the comparison
@@ -74,8 +75,8 @@ class HmsDss:
     Dependencies:
         - Java backend: pyjnius, Java 8+ (JRE or JDK), HEC Monolith libraries
           (auto-downloaded on first use)
-        - Native backend: the optional ``ras-commander-fast-dss`` engine
-          (``pip install ras-commander-fast-dss`` or ``pip install "hms-commander[dss]"``)
+        - Native backend: the ``ras-commander-fast-dss`` engine, installed with
+          hms-commander on CPython for Windows AMD64, Linux x86_64/aarch64 and macOS
 
     Example:
         >>> from hms_commander import HmsDss
@@ -84,8 +85,9 @@ class HmsDss:
         >>> print(f"Units: {ts.attrs['units']}")
     """
 
-    #: DSS backend: ``"java"`` (default when None), ``"native"`` or ``"shadow"``.
-    #: The environment variable ``HMS_COMMANDER_DSS_BACKEND`` overrides it.
+    #: DSS backend: ``"native"``, ``"java"`` or ``"shadow"``. ``None`` (default) uses
+    #: ``"native"`` when the engine imports and ``"java"`` otherwise. The environment
+    #: variable ``HMS_COMMANDER_DSS_BACKEND`` overrides it.
     backend: Optional[str] = None
 
     #: Shadow writes copy an existing target file up to this size (MB) to repeat the

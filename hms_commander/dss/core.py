@@ -1441,6 +1441,23 @@ class DssCore:
         return DssCore._read_timeseries_java(dss_file, pathname, start_date, end_date)
 
     @staticmethod
+    @contextmanager
+    def _wrong_record_kind(dc: Any, pathname: str, kind: str):
+        """Raise ``ValueError`` for a record of another kind, as the Java path does.
+
+        The engine raises ``DssUnsupportedRecordError`` (a ``RuntimeError``) when a
+        pathname names a record of another kind; the Java path raises ``ValueError``.
+        The engine's error is chained.
+        """
+        unsupported = getattr(dc, "DssUnsupportedRecordError", None)
+        try:
+            yield
+        except Exception as exc:
+            if unsupported is not None and isinstance(exc, unsupported):
+                raise ValueError(f"DSS pathname is not {kind}: {pathname} ({exc})") from exc
+            raise
+
+    @staticmethod
     def _read_timeseries_native(
         dss_file: Union[str, Path],
         pathname: str,
@@ -1456,7 +1473,8 @@ class DssCore:
         window_start, window_end = DssCore._check_window(start_date, end_date)
         dc = _backend.import_native()
         resolved = str(Path(dss_file).resolve())
-        native = dc.read_timeseries(resolved, pathname)
+        with DssCore._wrong_record_kind(dc, pathname, "a time-series record"):
+            native = dc.read_timeseries(resolved, pathname)
         stamps = native.index.to_numpy(dtype="datetime64[s]")
         if len(stamps) == 0 or stamps.max() <= _NS_MAX:
             index = pd.DatetimeIndex(stamps.astype("datetime64[ns]"))
@@ -1849,7 +1867,8 @@ class DssCore:
         ``grid_srs_monolith_parity`` feature."""
         dc = _backend.require_native_grid_reads()
         resolved = str(Path(dss_file).resolve())
-        grid = dc.read_grid(resolved, pathname)
+        with DssCore._wrong_record_kind(dc, pathname, "a grid record"):
+            grid = dc.read_grid(resolved, pathname)
         cell_size = float(grid.cell_size)
         lower_left = (int(grid.lower_left_cell_x), int(grid.lower_left_cell_y))
         cell_zero = (float(grid.x_coord_of_grid_cell_zero),
@@ -2061,7 +2080,56 @@ class DssCore:
         if np.isinf(values).any():
             first = int(np.flatnonzero(np.isinf(values))[0])
             raise ValueError(f"value {first} is infinite; HEC-DSS has no infinity convention")
-        return stamps.astype("datetime64[s]"), values
+        stamps = stamps.astype("datetime64[s]")
+        DssCore._check_regular_stamps(pathname, e_part, stamps)
+        return stamps, values
+
+    #: Regular E-part units of fixed length, in minutes.
+    _FIXED_INTERVAL_MINUTES = {
+        "MIN": 1, "MINUTE": 1, "MINUTES": 1,
+        "HOUR": 60, "HOURS": 60,
+        "DAY": 1440, "DAYS": 1440,
+        "WEEK": 10080, "WEEKS": 10080,
+    }
+    #: Regular E-part units of calendar length, in months.
+    _CALENDAR_INTERVAL_MONTHS = {"MON": 1, "MONTH": 1, "MONTHS": 1, "YEAR": 12, "YEARS": 12}
+
+    @staticmethod
+    def _check_regular_stamps(pathname: str, e_part: str, stamps: np.ndarray) -> None:
+        """Refuse stamps that are not exactly regular for the E part, on every backend.
+
+        HEC Monolith stores a regular series by position from the first stamp, so it
+        silently moved values whose stamps did not fit the E part (an hour missing, or
+        hourly stamps under ``15MIN``); the native writer refuses them. Fixed intervals
+        (minutes, hours, days, weeks) need a constant step; monthly and yearly intervals
+        need calendar steps from the first stamp. Other E parts (``SEMI-MONTH``,
+        ``TRI-MONTH``) are left to the writer.
+        """
+        if len(stamps) < 2:
+            return
+        match = re.fullmatch(r"(\d+)\s*([A-Z]+)", e_part.strip().upper())
+        if not match:
+            return
+        count, unit = int(match.group(1)), match.group(2)
+        if unit in DssCore._FIXED_INTERVAL_MINUTES:
+            step = np.timedelta64(count * DssCore._FIXED_INTERVAL_MINUTES[unit], "m")
+            expected = stamps[0] + step * np.arange(len(stamps))
+        elif unit in DssCore._CALENDAR_INTERVAL_MONTHS:
+            months = count * DssCore._CALENDAR_INTERVAL_MONTHS[unit]
+            first = pd.Timestamp(stamps[0])
+            expected = np.array(
+                [(first + pd.DateOffset(months=months * i)).to_datetime64() for i in range(len(stamps))],
+                dtype="datetime64[s]")
+        else:
+            return
+        bad = np.flatnonzero(stamps != expected.astype("datetime64[s]"))
+        if bad.size:
+            i = int(bad[0])
+            raise ValueError(
+                f"times are not regular for the E part {e_part!r} of {pathname!r}: value {i} "
+                f"is at {pd.Timestamp(stamps[i])}, expected {pd.Timestamp(expected[i])}. "
+                "Write each regular run of stamps separately, or fill the gaps with NaN "
+                "(stored as missing).")
 
     @staticmethod
     @log_call
@@ -2329,8 +2397,9 @@ class DssCore:
             records and per-record results.
 
         Backends:
-            ``"java"`` (default) writes through HEC Monolith. ``"native"`` writes through
-            ras_commander_fast_dss without a JVM and never falls back to Java. Both store
+            ``"native"`` (the default when the engine imports) writes through
+            ras_commander_fast_dss without a JVM and never falls back to Java. ``"java"``
+            writes through HEC Monolith. Both store
             ``NaN`` as stored bits. The native writer refuses input the Java path accepts:
             DSS6 units or types over 8 characters (Java truncates them), some DSS6 labels
             and precisions, non-ASCII pathnames, infinite values, and a record of another

@@ -120,9 +120,66 @@ def _catalog_frame(engine, dss_file):
 # ---------------------------------------------------------------------------
 
 
-def test_default_backend_is_java():
+def test_default_backend_is_native_with_the_engine(engine):
+    assert _backend.default_backend() == "native"
+    assert HmsDss.get_backend() == "native"
+    assert DssCore.get_backend() == "native"
+    assert _backend.backend_selection(None) == ("native", "default")
+
+
+def test_default_backend_is_java_without_the_engine(monkeypatch):
+    _without_engine(monkeypatch)
+    assert _backend.default_backend() == "java"
     assert HmsDss.get_backend() == "java"
-    assert DssCore.get_backend() == "java"
+    assert HmsDss.get_capabilities().attrs["requested_backend"] == "java"
+
+
+def test_default_backend_is_java_with_a_broken_engine(monkeypatch):
+    _broken_engine(monkeypatch)
+    assert HmsDss.get_backend() == "java"
+
+
+@pytest.mark.parametrize("value", ["java", "JAVA", " java "])
+def test_attribute_forces_java_over_the_default(engine, value):
+    HmsDss.backend = value
+    assert HmsDss.get_backend() == "java"
+    assert _backend.backend_selection(value) == ("java", "HmsDss.backend")
+
+
+@pytest.mark.parametrize("value", ["java", "native", "shadow"])
+def test_environment_forces_each_backend(monkeypatch, engine, value):
+    monkeypatch.setenv(_backend.ENV_VAR, value)
+    assert HmsDss.get_backend() == value
+
+
+def test_blank_environment_variable_keeps_the_default(monkeypatch, engine):
+    monkeypatch.setenv(_backend.ENV_VAR, "  ")
+    assert HmsDss.get_backend() == "native"
+
+
+def test_backend_in_use_is_logged_once_at_info(engine, caplog, monkeypatch):
+    with caplog.at_level(logging.INFO, logger="hms_commander.dss"):
+        for _ in range(3):
+            HmsDss.get_backend()
+    lines = [r for r in caplog.records if r.getMessage().startswith("DSS backend:")]
+    assert len(lines) == 1 and lines[0].levelno == logging.INFO
+    assert "native" in lines[0].getMessage() and "the default" in lines[0].getMessage()
+    assert "java" in lines[0].getMessage()          # says how to keep Java
+    caplog.clear()
+    HmsDss.backend = "java"
+    with caplog.at_level(logging.INFO, logger="hms_commander.dss"):
+        HmsDss.get_backend()
+        HmsDss.get_backend()
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("DSS backend:")]
+    assert lines == ["DSS backend: java (set by HmsDss.backend)."]
+
+
+def test_java_default_is_logged_with_its_reason(monkeypatch, caplog):
+    _without_engine(monkeypatch)
+    with caplog.at_level(logging.INFO, logger="hms_commander.dss"):
+        HmsDss.get_backend()
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("DSS backend:")]
+    assert len(lines) == 1 and "java" in lines[0] and "not installed" in lines[0]
 
 
 def test_environment_overrides_attribute(monkeypatch, engine):
@@ -157,7 +214,7 @@ def test_native_without_engine_raises_import_error(monkeypatch):
     assert HmsDss.is_available() is False
 
 
-def test_broken_engine_counts_as_missing(monkeypatch):
+def _broken_engine(monkeypatch):
     real = _backend.importlib.import_module
 
     def broken(name, *args, **kwargs):
@@ -166,6 +223,10 @@ def test_broken_engine_counts_as_missing(monkeypatch):
         return real(name, *args, **kwargs)
 
     monkeypatch.setattr(_backend.importlib, "import_module", broken)
+
+
+def test_broken_engine_counts_as_missing(monkeypatch):
+    _broken_engine(monkeypatch)
     assert _backend.native_available() is False
     HmsDss.backend = "native"
     with pytest.raises(ImportError, match="failed to load"):
@@ -230,11 +291,11 @@ def test_unqualified_grid_reads_raise_capability_error(monkeypatch, tmp_path):
         HmsDss.read_grid(target, "/A/B/PRECIP/01JAN2020:0000/01JAN2020:0100//")
 
 
-def test_capabilities_table():
+def test_capabilities_table(engine):
     caps = HmsDss.get_capabilities()
     assert list(caps.columns) == ["operation", "java", "native", "shadow", "note"]
     assert {"read_grid", "write_timeseries", "import_atlas14_temporal"} <= set(caps.operation)
-    assert caps.attrs["requested_backend"] == "java"
+    assert caps.attrs["requested_backend"] == "native"
 
 
 def test_grid_pathname_matches_monolith_d_and_e_parts():

@@ -42,6 +42,12 @@ dependencies = [
     "pathlib",
     "tqdm",
     "requests",
+    # Native DSS engine, the default DSS backend. Requested only where it publishes abi3
+    # wheels, so pip never builds its Rust sdist: CPython on Windows AMD64, Linux
+    # x86_64/aarch64 and macOS arm64/x86_64 (macOS wheels from 0.1.3; the floor moves
+    # to 0.1.3 when it is published). Elsewhere the Java backend is the default; it
+    # needs the `dss` extra (pyjnius) and Java.
+    'ras-commander-fast-dss>=0.1.2,<0.2; platform_python_implementation == "CPython" and ((platform_system == "Windows" and platform_machine == "AMD64") or (platform_system == "Linux" and (platform_machine == "x86_64" or platform_machine == "aarch64")) or (platform_system == "Darwin" and (platform_machine == "arm64" or platform_machine == "x86_64")))',
 ]
 
 [project.optional-dependencies]
@@ -60,12 +66,9 @@ gis = [
 ]
 dss = [
     "ras-commander>=0.83.0",
+    # The Java backend (HmsDss.backend = "java", or "shadow"): pyjnius and Java 8+.
+    # The native engine is a core dependency (see dependencies above).
     "pyjnius",
-    # Optional native DSS engine (HMS_COMMANDER_DSS_BACKEND=native/shadow). The marker
-    # matches the published abi3 wheels (no macOS wheels; macOS can build the engine from
-    # its sdist separately), so pip never builds the Rust sdist; the Java backend stays the
-    # default and works without it.
-    'ras-commander-fast-dss>=0.1.2,<0.2; platform_python_implementation == "CPython" and ((platform_system == "Windows" and platform_machine == "AMD64") or (platform_system == "Linux" and (platform_machine == "x86_64" or platform_machine == "aarch64")))',
 ]
 aorc = [
     "xarray>=2023.1.0",

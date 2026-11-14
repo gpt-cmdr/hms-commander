@@ -571,8 +571,7 @@ def test_wrong_record_kind_is_refused_without_crashing_the_jvm(java, tmp_path):
     import subprocess
     import sys
 
-    env = {key: value for key, value in os.environ.items()
-           if key != "HMS_COMMANDER_DSS_BACKEND"}
+    env = {**os.environ, "HMS_COMMANDER_DSS_BACKEND": "java"}  # the Java path itself
     done = subprocess.run([sys.executable, "-c", WRONG_TYPE_SCRIPT, str(tmp_path)], text=True,
                           capture_output=True, timeout=300, env=env)
     assert done.returncode == 0, done.stderr[-2000:]
