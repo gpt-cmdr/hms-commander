@@ -47,6 +47,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
+    # Plotting tests (HmsWatershedVerification figures). It came into the lock only
+    # through ras-commander, whose newer releases no longer depend on it.
+    "matplotlib",
     "black>=22.0",
     "flake8>=4.0",
     "jupyter",
