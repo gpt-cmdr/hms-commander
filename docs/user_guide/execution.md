@@ -48,13 +48,15 @@ if not HmsCmdr.compute_run("Run 1"):
 
 `compute_run()` returns `True` only when there is evidence that HEC-HMS computed the run
 during the call. Before HEC-HMS starts, HMS Commander reads the run's `Log File:` and
-`DSS File:` entries from the project's `.run` files. It then prepares both files:
+`DSS File:` entries from the project's `.run` files. It locks both files (see
+[Concurrent Computes](#concurrent-computes)) and then prepares them:
 
-- An existing run log is moved aside to `<log name>.hms-commander-prev` in the same
-  folder. Any run log present after the run was therefore written by the run, even
-  when its bytes equal the earlier log's. If the run writes a new log, the backup is
-  deleted, as HEC-HMS replaces a run's log when it computes the run. If the run
-  writes none, the earlier log is moved back.
+- An existing run log is moved aside to `<log name>.hms-commander-prev-<32 hex>`, a
+  name unique to this call, in the same folder. An existing file is never replaced.
+  Any run log present after the run was therefore written while this call held the
+  lock, even when its bytes equal the earlier log's. If the run writes a new log, the
+  backup is deleted, as HEC-HMS replaces a run's log when it computes the run. If
+  the run writes none, the earlier log is moved back.
 - The results DSS file's size and modification time are recorded, with a SHA-256
   hash for files up to 512 MB.
 
@@ -104,6 +106,42 @@ checks to each run.
 A results DSS file alone is not evidence of a computed run. HEC-HMS 4.10 created
 the `tenk` sample's results DSS file and then aborted the run (`ERROR 20137`, then
 `WARNING 15303`).
+
+### Concurrent Computes
+
+Each compute locks its run's log file and results DSS file from before HEC-HMS starts
+until verification is done. The lock holds across threads and processes, so another
+compute can't write those files in between and have its result credited to this run.
+A copied `dest_folder`, and each `compute_parallel()` worker folder, are locked the
+same way while they are filled and computed.
+
+- **Independent runs are not held up.** Runs that write their own log and DSS files
+  compute at the same time, even in one project folder. Runs that share a log or DSS
+  file take turns.
+- **Waiting is bounded.** A compute waits up to its `timeout` for another compute on
+  the same files, then raises `TimeoutError` naming the holder (process id, host,
+  run). A nested compute on the same files in the same thread raises `RuntimeError`
+  at once instead of waiting for itself.
+- **Lock files.** A lock is an operating-system lock on a file named
+  `<file>.hms-commander-lock` beside the locked file. It is deleted on release. If a
+  process dies while holding a lock, the operating system releases it, and the next
+  compute logs a warning naming the dead holder and takes the lock over, so a crash
+  never leaves the project blocked. On a network share, this relies on the share
+  honouring byte-range locks: SMB shares do, NFS may not.
+- **`compute_parallel()` worker folders.** Each running task takes a free worker
+  folder (`worker_0` to `worker_<max_workers - 1>`) and gives it back when done, so
+  two runs never share a worker folder at once.
+
+**Backups left by an interrupted compute** (for example, a killed Python process)
+are dealt with by the next compute of that run, while it holds the lock:
+
+- If the run log is missing and there is one backup, that compute wrote no new
+  log, so the backup is the earlier log. It is moved back, with a warning.
+- Otherwise (a current log exists, or there are several backups), the backups are
+  kept and listed in a warning for you to review or delete.
+
+A backup is never read as evidence of a run. Files with other names, such as a
+file you named `<log name>.hms-commander-prev`, are never touched.
 
 ### HEC-HMS Version Selection
 

@@ -15,7 +15,10 @@ import re
 import shutil
 import tempfile
 import time
+import uuid
 import concurrent.futures
+import contextlib
+import queue
 from pathlib import Path
 from typing import Dict, List, Optional, Union, Tuple, Any
 from datetime import datetime
@@ -24,6 +27,7 @@ from .LoggingConfig import get_logger
 from .Decorators import log_call
 from .HmsJython import HmsJython
 from ._constants import DEFAULT_EXECUTION_TIMEOUT
+from ._run_lock import OutputLock
 
 logger = get_logger(__name__)
 
@@ -57,9 +61,11 @@ def _run_markers(run_name: str) -> Tuple["re.Pattern", "re.Pattern", "re.Pattern
 # size and modification time only.
 _DSS_HASH_LIMIT_BYTES = 512 * 1024 * 1024
 
-# The prior run log is moved to "<log name>" + this suffix while a run
-# executes (see HmsCmdr._snapshot_run).
-_LOG_BACKUP_SUFFIX = ".hms-commander-prev"
+# While a run executes, the prior run log is moved to
+# "<log name>.hms-commander-prev-<32 hex digits>", a name unique to that call
+# (see HmsCmdr._snapshot_run). Only names of exactly this form are ever
+# treated as HMS Commander backups; any other file is left alone.
+_LOG_BACKUP_INFIX = ".hms-commander-prev-"
 
 
 class HmsCmdr:
@@ -108,17 +114,21 @@ class HmsCmdr:
         Returns:
             True only if HEC-HMS computed the run in this call. The log file
             and results DSS file are those the run's ``.run`` entry names
-            (``Log File:``, ``DSS File:``). Before launch, an existing log is
-            moved to ``<log name>.hms-commander-prev`` (deleted afterwards if
-            the run wrote a new log, moved back if not), and the DSS file's
-            size, modification time and hash (up to 512 MB) are recorded.
-            Then:
+            (``Log File:``, ``DSS File:``). Both files (and ``dest_folder``,
+            if given) are locked across threads and processes from before
+            launch until verification ends, so another compute cannot write
+            them meanwhile; computes on other files are not held up. Before
+            launch, an existing log is moved to a backup name unique to this
+            call, ``<log name>.hms-commander-prev-<32 hex>`` (deleted
+            afterwards if the run wrote a new log, moved back if not), and
+            the DSS file's size, modification time and hash (up to 512 MB)
+            are recorded. Then:
 
             - the generated script reported no error;
-            - a run log exists (so this run wrote it) and has a section for
-              this run (``NOTE 15301 ... "<run_name>"``) with the "Finished
-              computing" note for it (NOTE 15302), no ERROR line and no
-              "Aborted run" warning (WARNING 15303);
+            - a run log exists (written while this call held the lock) and
+              has a section for this run (``NOTE 15301 ... "<run_name>"``)
+              with the "Finished computing" note for it (NOTE 15302), no
+              ERROR line and no "Aborted run" warning (WARNING 15303);
             - the results DSS file is new, or its size, modification time or
               content hash changed.
 
@@ -133,7 +143,10 @@ class HmsCmdr:
                 project's ``Version:`` (equal, a newer patch of the same
                 major.minor, or a newer major.minor), or if that ``Version:``
                 is not a comparable version. An older HEC-HMS is never chosen
-                automatically.
+                automatically. Also if this thread is already computing with
+                the same output files (a nested call).
+            TimeoutError: If another compute holds the run's output files
+                (or ``dest_folder``) for longer than ``timeout`` seconds.
 
         Note:
             Without ``hms_exe_path``, the HEC-HMS version is chosen from the
@@ -155,35 +168,42 @@ class HmsCmdr:
 
         HmsCmdr._ensure_hms_executable(hms_obj)
 
-        # Determine working directory
-        if dest_folder:
-            dest_folder = Path(dest_folder)
-            working_project = HmsCmdr._copy_project(
-                hms_obj.project_folder,
-                dest_folder,
-                overwrite_dest
+        # A copied destination folder is locked while it is filled and
+        # computed, so a concurrent call cannot replace it meanwhile.
+        dest_lock = (
+            OutputLock([Path(dest_folder)], timeout, purpose=f"copy for run '{run_name}'")
+            if dest_folder else contextlib.nullcontext()
+        )
+        with dest_lock:
+            # Determine working directory
+            if dest_folder:
+                dest_folder = Path(dest_folder)
+                working_project = HmsCmdr._copy_project(
+                    hms_obj.project_folder,
+                    dest_folder,
+                    overwrite_dest
+                )
+            else:
+                working_project = hms_obj.project_folder
+
+            logger.info(f"Computing run '{run_name}' in {working_project}")
+
+            # Generate script
+            script = HmsJython.generate_compute_script(
+                project_path=working_project,
+                run_name=run_name,
+                save_project=save_project
             )
-        else:
-            working_project = hms_obj.project_folder
 
-        logger.info(f"Computing run '{run_name}' in {working_project}")
-
-        # Generate script
-        script = HmsJython.generate_compute_script(
-            project_path=working_project,
-            run_name=run_name,
-            save_project=save_project
-        )
-
-        # Execute
-        success, stdout, stderr = HmsCmdr._execute_and_verify(
-            run_name, working_project, script,
-            hms_exe_path=hms_obj.hms_exe_path,
-            timeout=timeout,
-            max_memory=max_memory,
-            initial_memory=initial_memory,
-            additional_java_opts=additional_java_opts
-        )
+            # Execute
+            success, stdout, stderr = HmsCmdr._execute_and_verify(
+                run_name, working_project, script,
+                hms_exe_path=hms_obj.hms_exe_path,
+                timeout=timeout,
+                max_memory=max_memory,
+                initial_memory=initial_memory,
+                additional_java_opts=additional_java_opts
+            )
 
         if success:
             logger.info(f"Run '{run_name}' completed successfully")
@@ -270,45 +290,57 @@ class HmsCmdr:
         logger.info(f"Starting parallel execution of {len(run_names)} runs with {max_workers} workers")
         results = {}
 
-        def execute_worker(run_name: str, worker_id: int) -> Tuple[str, bool]:
-            """Execute a single run in a worker folder."""
+        # Each running task takes a free worker folder and returns it when
+        # done, so no two runs ever use the same folder at once.
+        free_workers: "queue.Queue[int]" = queue.Queue()
+        for worker_id in range(max_workers):
+            free_workers.put(worker_id)
+
+        def execute_worker(run_name: str) -> Tuple[str, bool]:
+            """Execute a single run in a free worker folder."""
+            worker_id = free_workers.get()
             worker_folder = base_dest / f"worker_{worker_id}"
 
             try:
-                # Copy project to worker folder
-                working_project = HmsCmdr._copy_project(
-                    hms_obj.project_folder,
-                    worker_folder,
-                    overwrite=True
-                )
+                # The worker folder is also locked across processes, in case
+                # another call uses the same dest_folder.
+                with OutputLock([worker_folder], timeout_per_run,
+                                purpose=f"worker for run '{run_name}'"):
+                    # Copy project to worker folder
+                    working_project = HmsCmdr._copy_project(
+                        hms_obj.project_folder,
+                        worker_folder,
+                        overwrite=True
+                    )
 
-                # Generate and execute script
-                script = HmsJython.generate_compute_script(
-                    project_path=working_project,
-                    run_name=run_name,
-                    save_project=True
-                )
+                    # Generate and execute script
+                    script = HmsJython.generate_compute_script(
+                        project_path=working_project,
+                        run_name=run_name,
+                        save_project=True
+                    )
 
-                success, stdout, stderr = HmsCmdr._execute_and_verify(
-                    run_name, working_project, script,
-                    hms_exe_path=hms_obj.hms_exe_path,
-                    timeout=timeout_per_run,
-                    max_memory=max_memory,
-                    initial_memory=initial_memory,
-                    additional_java_opts=additional_java_opts
-                )
+                    success, stdout, stderr = HmsCmdr._execute_and_verify(
+                        run_name, working_project, script,
+                        hms_exe_path=hms_obj.hms_exe_path,
+                        timeout=timeout_per_run,
+                        max_memory=max_memory,
+                        initial_memory=initial_memory,
+                        additional_java_opts=additional_java_opts
+                    )
                 return run_name, success
 
             except Exception as e:
                 logger.error(f"Worker {worker_id} failed for '{run_name}': {e}")
                 return run_name, False
+            finally:
+                free_workers.put(worker_id)
 
         # Execute in parallel
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {}
-            for i, run_name in enumerate(run_names):
-                worker_id = i % max_workers
-                future = executor.submit(execute_worker, run_name, worker_id)
+            for run_name in run_names:
+                future = executor.submit(execute_worker, run_name)
                 futures[future] = run_name
 
             for future in concurrent.futures.as_completed(futures):
@@ -428,40 +460,46 @@ class HmsCmdr:
                 run_names=run_names,
                 save_after_each=save_after_each
             )
-            snapshots = {
-                name: HmsCmdr._snapshot_run(project_folder, name)
-                for name in run_names
-            }
+            # Lock every run's outputs for the whole session, so no other
+            # compute can write them between snapshot and verification.
+            outputs = []
+            for name in run_names:
+                outputs.extend(HmsCmdr._run_output_files(project_folder, name)[:2])
+            with OutputLock(outputs, timeout, purpose=f"batch in {Path(project_folder).name}"):
+                snapshots = {
+                    name: HmsCmdr._snapshot_run(project_folder, name)
+                    for name in run_names
+                }
 
-            # Execute
-            try:
-                success, stdout, stderr = HmsJython.execute_script(
-                    script_content=script,
-                    hms_exe_path=hms_obj.hms_exe_path,
-                    working_dir=project_folder,
-                    timeout=timeout,
-                    max_memory=max_memory,
-                    initial_memory=initial_memory,
-                    additional_java_opts=additional_java_opts
-                )
-            except BaseException:
-                for snapshot in snapshots.values():
-                    HmsCmdr._release_snapshot(snapshot)
-                raise
+                # Execute
+                try:
+                    success, stdout, stderr = HmsJython.execute_script(
+                        script_content=script,
+                        hms_exe_path=hms_obj.hms_exe_path,
+                        working_dir=project_folder,
+                        timeout=timeout,
+                        max_memory=max_memory,
+                        initial_memory=initial_memory,
+                        additional_java_opts=additional_java_opts
+                    )
+                except BaseException:
+                    for snapshot in snapshots.values():
+                        HmsCmdr._release_snapshot(snapshot)
+                    raise
 
-            for run_name in run_names:
-                # Default to overall success status
-                status = success
+                for run_name in run_names:
+                    # Default to overall success status
+                    status = success
 
-                # Try to parse individual status from output
-                if stdout:
-                    if f"Completed: {run_name}" in stdout:
-                        status = True
-                    elif f"Error computing {run_name}" in stdout:
-                        status = False
+                    # Try to parse individual status from output
+                    if stdout:
+                        if f"Completed: {run_name}" in stdout:
+                            status = True
+                        elif f"Error computing {run_name}" in stdout:
+                            status = False
 
-                # Confirm each run from its own run log and results DSS
-                results[run_name] = HmsCmdr._verify_run(status, snapshots[run_name])
+                    # Confirm each run from its own run log and results DSS
+                    results[run_name] = HmsCmdr._verify_run(status, snapshots[run_name])
 
         # Summary
         successful = sum(1 for s in results.values() if s)
@@ -528,35 +566,39 @@ class HmsCmdr:
         if dest_folder:
             dest_folder = Path(dest_folder)
         else:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             dest_folder = hms_obj.project_folder.parent / f"{hms_obj.project_name}_modified_{timestamp}"
 
-        # Copy project
-        working_project = HmsCmdr._copy_project(
-            hms_obj.project_folder,
-            dest_folder,
-            overwrite=True
-        )
+        # The destination is locked while it is filled and computed, so a
+        # concurrent call with the same dest_folder waits instead of
+        # replacing it.
+        with OutputLock([dest_folder], timeout, purpose=f"copy for run '{run_name}'"):
+            # Copy project
+            working_project = HmsCmdr._copy_project(
+                hms_obj.project_folder,
+                dest_folder,
+                overwrite=True
+            )
 
-        logger.info(f"Computing '{run_name}' with modified parameters in {working_project}")
+            logger.info(f"Computing '{run_name}' with modified parameters in {working_project}")
 
-        # Generate script with modifications
-        script = HmsJython.generate_parameter_modification_script(
-            project_path=working_project,
-            basin_name=basin_name,
-            modifications=parameter_modifications,
-            run_name=run_name
-        )
+            # Generate script with modifications
+            script = HmsJython.generate_parameter_modification_script(
+                project_path=working_project,
+                basin_name=basin_name,
+                modifications=parameter_modifications,
+                run_name=run_name
+            )
 
-        # Execute
-        success, stdout, stderr = HmsCmdr._execute_and_verify(
-            run_name, working_project, script,
-            hms_exe_path=hms_obj.hms_exe_path,
-            timeout=timeout,
-            max_memory=max_memory,
-            initial_memory=initial_memory,
-            additional_java_opts=additional_java_opts
-        )
+            # Execute
+            success, stdout, stderr = HmsCmdr._execute_and_verify(
+                run_name, working_project, script,
+                hms_exe_path=hms_obj.hms_exe_path,
+                timeout=timeout,
+                max_memory=max_memory,
+                initial_memory=initial_memory,
+                additional_java_opts=additional_java_opts
+            )
 
         if success:
             logger.info(f"Modified run '{run_name}' completed successfully")
@@ -733,27 +775,42 @@ class HmsCmdr:
         additional_java_opts: Optional[List[str]] = None,
     ) -> Tuple[bool, str, str]:
         """
-        Snapshot one run, execute ``script`` in ``project_folder``, and verify the run.
+        Lock one run's outputs, snapshot them, execute ``script`` in
+        ``project_folder``, verify the run, and release.
+
+        The run's log and results DSS file are locked (:class:`OutputLock`)
+        across threads and processes from before the snapshot until
+        verification and clean-up are done, so another compute cannot write
+        them in between and have its outputs credited to this run. Computes
+        on other output files are not blocked. The lock wait counts against
+        ``timeout``.
 
         Returns:
             Tuple of (verified success, stdout, stderr). If execution raises,
             the prior run log is put back before the exception propagates.
+
+        Raises:
+            TimeoutError: If another compute holds the outputs for longer
+                than ``timeout`` seconds.
         """
-        snapshot = HmsCmdr._snapshot_run(project_folder, run_name)
-        try:
-            success, stdout, stderr = HmsJython.execute_script(
-                script_content=script,
-                hms_exe_path=hms_exe_path,
-                working_dir=project_folder,
-                timeout=timeout,
-                max_memory=max_memory,
-                initial_memory=initial_memory,
-                additional_java_opts=additional_java_opts,
-            )
-        except BaseException:
-            HmsCmdr._release_snapshot(snapshot)
-            raise
-        return HmsCmdr._verify_run(success, snapshot, stdout), stdout, stderr
+        log_path, dss_path, _ = HmsCmdr._run_output_files(project_folder, run_name)
+        with OutputLock([log_path, dss_path], timeout,
+                        purpose=f"run '{run_name}' in {Path(project_folder).name}"):
+            snapshot = HmsCmdr._snapshot_run(project_folder, run_name)
+            try:
+                success, stdout, stderr = HmsJython.execute_script(
+                    script_content=script,
+                    hms_exe_path=hms_exe_path,
+                    working_dir=project_folder,
+                    timeout=timeout,
+                    max_memory=max_memory,
+                    initial_memory=initial_memory,
+                    additional_java_opts=additional_java_opts,
+                )
+            except BaseException:
+                HmsCmdr._release_snapshot(snapshot)
+                raise
+            return HmsCmdr._verify_run(success, snapshot, stdout), stdout, stderr
 
     @staticmethod
     def _file_state(path: Optional[Path], hash_limit: int) -> Dict[str, Any]:
@@ -772,20 +829,86 @@ class HmsCmdr:
         return state
 
     @staticmethod
-    def _log_backup_path(log_path: Path) -> Path:
-        """Where :meth:`_snapshot_run` keeps the prior run log during a run."""
-        return log_path.with_name(log_path.name + _LOG_BACKUP_SUFFIX)
+    def _log_backups(log_path: Path) -> List[Path]:
+        """HMS Commander backups of ``log_path`` (``<log>.hms-commander-prev-<32 hex>``), oldest name first."""
+        pattern = re.compile(re.escape(log_path.name + _LOG_BACKUP_INFIX) + r"[0-9a-f]{32}$")
+        try:
+            return sorted(p for p in log_path.parent.iterdir() if pattern.match(p.name))
+        except OSError:
+            return []
+
+    @staticmethod
+    def _move_no_clobber(src: Path, dst: Path) -> None:
+        """Move ``src`` to ``dst``; raise FileExistsError rather than replace an existing ``dst``."""
+        try:
+            os.link(src, dst)        # fails with FileExistsError if dst exists
+        except FileExistsError:
+            raise
+        except OSError:
+            # No hard links here (for example FAT): check, then rename.
+            if dst.exists():
+                raise FileExistsError(f"{dst} already exists")
+            os.rename(src, dst)
+            return
+        os.unlink(src)
+
+    @staticmethod
+    def _recover_orphan_backups(log_path: Path) -> List[Path]:
+        """
+        Deal with backups that an interrupted compute left beside ``log_path``.
+
+        Called with the run's outputs locked, so any backup found belongs to
+        a compute that ended without cleaning up (for example, a killed
+        Python process). A backup is never read as evidence of a run.
+
+        - If the run log is missing and there is exactly one backup, the
+          interrupted compute wrote no new log, so the backup is the user's
+          earlier log: it is moved back to the log name.
+        - Otherwise (a current log exists, which may be the interrupted run's
+          own log, or several backups exist) nothing is moved or deleted.
+          The backups are kept and listed in a warning for the user to
+          review or delete.
+
+        Returns:
+            The backups that remain.
+        """
+        orphans = HmsCmdr._log_backups(log_path)
+        if not orphans:
+            return []
+        if not log_path.exists() and len(orphans) == 1:
+            try:
+                HmsCmdr._move_no_clobber(orphans[0], log_path)
+                logger.warning(
+                    f"Restored {log_path.name} from {orphans[0].name}, left by an "
+                    "interrupted compute that wrote no new log."
+                )
+                return []
+            except OSError as e:
+                logger.warning(f"Could not restore {log_path.name} from {orphans[0].name}: {e}")
+                return orphans
+        logger.warning(
+            f"Kept {len(orphans)} backup(s) of {log_path.name} left by interrupted "
+            f"computes: {', '.join(p.name for p in orphans)}. They are not used as "
+            "evidence; review or delete them."
+        )
+        return orphans
 
     @staticmethod
     def _snapshot_run(project_folder: Union[str, Path], run_name: str) -> Dict[str, Any]:
         """
         Prepare the run's outputs for verification, just before HEC-HMS starts.
 
-        - The prior run log, if any, is moved aside to
-          ``<log name>.hms-commander-prev`` in the same folder. Any run log
-          present after the run is therefore written by the run, even if its
-          bytes equal the prior log's. :meth:`_release_snapshot` later deletes
-          the backup if a new log was written, or moves it back if not.
+        Call with the run's outputs locked (see :meth:`_execute_and_verify`).
+
+        - Backups left by an interrupted compute are recovered or kept, as
+          described in :meth:`_recover_orphan_backups`.
+        - The prior run log, if any, is moved to
+          ``<log name>.hms-commander-prev-<32 hex>``, a new name unique to
+          this call; an existing file is never replaced. Any run log present
+          after the run was therefore written while this call held the lock,
+          even if its bytes equal the prior log's. :meth:`_release_snapshot`
+          later deletes that backup if a new log was written, or moves it
+          back if not.
         - The results DSS file's size, mtime_ns and SHA-256 (files up to
           512 MB) are recorded.
 
@@ -801,10 +924,11 @@ class HmsCmdr:
         if problem:
             return snapshot
         try:
+            HmsCmdr._recover_orphan_backups(log_path)
             snapshot["dss"] = HmsCmdr._file_state(dss_path, _DSS_HASH_LIMIT_BYTES)
             if log_path.exists():
-                backup = HmsCmdr._log_backup_path(log_path)
-                os.replace(log_path, backup)
+                backup = log_path.with_name(log_path.name + _LOG_BACKUP_INFIX + uuid.uuid4().hex)
+                HmsCmdr._move_no_clobber(log_path, backup)
                 snapshot["log_backup"] = backup
         except OSError as e:
             snapshot["problem"] = f"could not prepare the run outputs before the run: {e}"
@@ -813,11 +937,12 @@ class HmsCmdr:
     @staticmethod
     def _release_snapshot(snapshot: Dict[str, Any]) -> None:
         """
-        Deal with the prior run log that :meth:`_snapshot_run` moved aside.
+        Deal with the prior run log that this call's :meth:`_snapshot_run` moved aside.
 
-        If the run wrote a new log, the backup is deleted, as HEC-HMS replaces
-        a run log when it computes the run. Otherwise the prior log is moved
-        back. Safe to call more than once.
+        Only the backup this call created is touched. If the run wrote a new
+        log, the backup is deleted, as HEC-HMS replaces a run log when it
+        computes the run. Otherwise the prior log is moved back. Safe to call
+        more than once.
         """
         backup = snapshot.get("log_backup")
         if backup is None:
@@ -828,7 +953,7 @@ class HmsCmdr:
             if log_path.exists():
                 backup.unlink(missing_ok=True)
             elif backup.exists():
-                os.replace(backup, log_path)
+                HmsCmdr._move_no_clobber(backup, log_path)
         except OSError as e:
             logger.warning(f"Could not tidy the prior run log {backup.name}: {e}")
 

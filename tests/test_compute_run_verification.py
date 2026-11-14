@@ -16,11 +16,15 @@ import os
 import re
 import shutil
 import subprocess
+import sys
+import threading
+import time
 from pathlib import Path
 
 import pytest
 
 from hms_commander import HmsCmdr, HmsExamples, HmsJython, HmsPrj
+from hms_commander._run_lock import lock_path_for
 
 TESTS_DIR = Path(__file__).parent
 LOGS = TESTS_DIR / "fixtures" / "hms_run_logs"
@@ -186,6 +190,10 @@ def test_aborted_run_fails_even_with_a_new_dss(project):
     assert HmsCmdr._verify_run(True, snap) is False
 
 
+def _no_backups(log: Path) -> bool:
+    return HmsCmdr._log_backups(log) == []
+
+
 def test_unchanged_recent_outputs_fail(project):
     # Written a moment before launch and not touched by the run
     log, dss = _paths(project)
@@ -195,7 +203,7 @@ def test_unchanged_recent_outputs_fail(project):
     assert HmsCmdr._verify_run(True, snap) is False
     # The prior log is put back when the run wrote none
     assert log.read_bytes() == TENK_FINISHED.read_bytes()
-    assert not HmsCmdr._log_backup_path(log).exists()
+    assert _no_backups(log)
 
 
 # Review 2, finding 2: a run log replaced by identical bytes
@@ -209,12 +217,14 @@ def test_byte_identical_log_replacement_is_new_evidence(project):
     stamp = log.stat().st_mtime_ns
     snap = HmsCmdr._snapshot_run(project, TENK)
     assert not log.exists()                                  # moved aside
-    assert HmsCmdr._log_backup_path(log).read_bytes() == TENK_FINISHED.read_bytes()
+    (backup,) = HmsCmdr._log_backups(log)
+    assert backup == snap["log_backup"]
+    assert backup.read_bytes() == TENK_FINISHED.read_bytes()
     log.write_bytes(TENK_FINISHED.read_bytes())              # same bytes
     _set_mtime_ns(log, stamp)                                # and the same time
     dss.write_bytes(b"results B")
     assert HmsCmdr._verify_run(True, snap) is True
-    assert not HmsCmdr._log_backup_path(log).exists()        # backup removed
+    assert _no_backups(log)                                  # backup removed
     assert log.read_bytes() == TENK_FINISHED.read_bytes()
 
 
@@ -224,7 +234,7 @@ def test_prior_log_is_put_back_after_a_failed_run_without_a_log(project):
     snap = HmsCmdr._snapshot_run(project, TENK)
     assert HmsCmdr._verify_run(False, snap) is False
     assert log.read_bytes() == TENK_FINISHED.read_bytes()
-    assert not HmsCmdr._log_backup_path(log).exists()
+    assert _no_backups(log)
 
 
 def test_a_failed_run_keeps_its_own_new_log(project):
@@ -235,18 +245,7 @@ def test_a_failed_run_keeps_its_own_new_log(project):
     dss.write_bytes(b"results")
     assert HmsCmdr._verify_run(True, snap) is False
     assert log.read_bytes() == TENK_ABORTED.read_bytes()
-    assert not HmsCmdr._log_backup_path(log).exists()
-
-
-def test_a_stale_backup_from_an_interrupted_call_is_replaced(project):
-    log, dss = _paths(project)
-    HmsCmdr._log_backup_path(log).write_bytes(b"left over")
-    log.write_bytes(TENK_ABORTED.read_bytes())
-    snap = HmsCmdr._snapshot_run(project, TENK)
-    assert HmsCmdr._log_backup_path(log).read_bytes() == TENK_ABORTED.read_bytes()
-    log.write_bytes(TENK_FINISHED.read_bytes())
-    dss.write_bytes(b"results")
-    assert HmsCmdr._verify_run(True, snap) is True
+    assert _no_backups(log)
 
 
 def test_prior_log_is_put_back_when_launch_raises(project, monkeypatch):
@@ -260,7 +259,100 @@ def test_prior_log_is_put_back_when_launch_raises(project, monkeypatch):
     with pytest.raises(FileNotFoundError):
         HmsCmdr._execute_and_verify(TENK, project, "# script", hms_exe_path=project)
     assert log.read_bytes() == TENK_FINISHED.read_bytes()
-    assert not HmsCmdr._log_backup_path(log).exists()
+    assert _no_backups(log)
+
+
+# Review 3, finding 2: backups never replace a file, and interrupted calls are recovered
+
+
+@pytest.mark.parametrize("name_suffix", [".hms-commander-prev", ".hms-commander-prev-mine", ".hms-commander-prev-" + "0" * 31])
+def test_an_existing_file_with_a_backup_like_name_is_never_touched(project, name_suffix):
+    """A user's file, including the fixed name earlier versions of this PR used."""
+    log, dss = _paths(project)
+    user_file = log.with_name(log.name + name_suffix)
+    user_file.write_bytes(b"user-owned file")
+    log.write_bytes(TENK_ABORTED.read_bytes())
+    for writes_log in (True, False):
+        snap = HmsCmdr._snapshot_run(project, TENK)
+        assert snap["log_backup"] != user_file
+        if writes_log:
+            log.write_bytes(TENK_FINISHED.read_bytes())
+            dss.write_bytes(b"results")
+        HmsCmdr._verify_run(True, snap)
+        assert user_file.read_bytes() == b"user-owned file"
+    assert log.read_bytes() == TENK_FINISHED.read_bytes()
+    assert _no_backups(log)
+
+
+def test_backup_names_are_unique_per_call(project):
+    log, _ = _paths(project)
+    names = set()
+    for _ in range(3):
+        log.write_bytes(TENK_FINISHED.read_bytes())
+        snap = HmsCmdr._snapshot_run(project, TENK)
+        names.add(snap["log_backup"].name)
+        HmsCmdr._release_snapshot(snap)          # puts the log back
+    assert len(names) == 3
+    assert all(re.fullmatch(r"Jan_96_storm\.log\.hms-commander-prev-[0-9a-f]{32}", n) for n in names)
+
+
+def _interrupt_before_any_new_log(project):
+    """A call that moved the log aside and then died (its finally never ran)."""
+    log, _ = _paths(project)
+    log.write_bytes(TENK_FINISHED.read_bytes())
+    abandoned = HmsCmdr._snapshot_run(project, TENK)
+    assert not log.exists() and abandoned["log_backup"].exists()
+    return abandoned["log_backup"]
+
+
+def test_interrupted_call_without_a_new_log_is_recovered(project, caplog):
+    log, dss = _paths(project)
+    orphan = _interrupt_before_any_new_log(project)
+    logger = logging.getLogger("hms_commander.HmsCmdr")
+    logger.addHandler(caplog.handler)
+    try:
+        with caplog.at_level(logging.WARNING, logger="hms_commander.HmsCmdr"):
+            snap = HmsCmdr._snapshot_run(project, TENK)    # the next call
+    finally:
+        logger.removeHandler(caplog.handler)
+    assert "Restored Jan_96_storm.log" in caplog.text and orphan.name in caplog.text
+    assert not orphan.exists()
+    # The user's log was recovered and is now this call's own backup
+    assert snap["log_backup"].read_bytes() == TENK_FINISHED.read_bytes()
+    # The recovered log is not evidence: this call writes nothing and fails
+    dss.write_bytes(b"results")
+    assert HmsCmdr._verify_run(True, snap) is False
+    assert log.read_bytes() == TENK_FINISHED.read_bytes()
+    assert _no_backups(log)
+
+
+def test_interrupted_call_with_a_new_log_keeps_its_backup(project, caplog):
+    log, dss = _paths(project)
+    orphan = _interrupt_before_any_new_log(project)
+    log.write_bytes(TENK_ABORTED.read_bytes())       # the interrupted run's own log
+    logger = logging.getLogger("hms_commander.HmsCmdr")
+    logger.addHandler(caplog.handler)
+    try:
+        with caplog.at_level(logging.WARNING, logger="hms_commander.HmsCmdr"):
+            snap = HmsCmdr._snapshot_run(project, TENK)
+    finally:
+        logger.removeHandler(caplog.handler)
+    assert "Kept 1 backup" in caplog.text and orphan.name in caplog.text
+    assert orphan.read_bytes() == TENK_FINISHED.read_bytes()       # kept, unchanged
+    log.write_bytes(TENK_FINISHED.read_bytes())
+    dss.write_bytes(b"results")
+    assert HmsCmdr._verify_run(True, snap) is True
+    assert HmsCmdr._log_backups(log) == [orphan]                    # still kept
+
+
+def test_an_orphan_backup_is_never_evidence(project):
+    log, dss = _paths(project)
+    _interrupt_before_any_new_log(project)
+    _interrupt_before_any_new_log(project)           # two orphans: ambiguous, kept
+    snap = HmsCmdr._snapshot_run(project, TENK)
+    dss.write_bytes(b"results")
+    assert HmsCmdr._verify_run(True, snap) is False
+    assert len(HmsCmdr._log_backups(log)) == 2
 
 
 @pytest.mark.parametrize("skew_s", [-10, +10])
@@ -462,6 +554,213 @@ def test_batch_without_shared_logs_uses_one_session(tmp_path, monkeypatch):
     sessions = _fake_hms(monkeypatch, {TENK: TENK_FINISHED, FUTURE: CASTRO_FUTURE_ABORTED})
     assert HmsCmdr.compute_batch([TENK, FUTURE], hms_object=prj) == {TENK: True, FUTURE: False}
     assert sessions == [[TENK, FUTURE]]
+
+
+# ---------------------------------------------------------------------------
+# Review 3, finding 1: overlapping computes, with real processes and stubbed HMS
+# ---------------------------------------------------------------------------
+
+REPO_ROOT = TESTS_DIR.parent
+
+_CHILD = r'''
+import os, sys, time
+from pathlib import Path
+from hms_commander import HmsCmdr, HmsJython
+
+project, run, label, mode, hold, timeout, events, log_src = sys.argv[1:9]
+project, hold, timeout, events = Path(project), float(hold), float(timeout), Path(events)
+
+def event(text):
+    with open(events, "a", encoding="utf-8") as f:
+        f.write(f"{text} {label}\n")
+        f.flush()
+
+def fake_execute_script(script_content, hms_exe_path, working_dir=None, **kwargs):
+    event("exec-start")
+    time.sleep(hold)
+    if mode == "crash":
+        os._exit(3)                      # dies holding the lock, log moved aside
+    if mode == "write":
+        log, dss, _ = HmsCmdr._run_output_files(working_dir, run)
+        log.write_bytes(Path(log_src).read_bytes())
+        dss.write_bytes(f"results of {label}".encode())
+    event("exec-end")
+    return True, "", ""                  # HEC-HMS exits normally either way
+
+HmsJython.execute_script = staticmethod(fake_execute_script)
+event(f"pid-{os.getpid()}")   # the interpreter's pid (a venv launcher may sit above it)
+try:
+    ok = HmsCmdr._execute_and_verify(run, project, "# script", hms_exe_path=project, timeout=timeout)[0]
+    event(f"result-{ok}")
+except TimeoutError as e:
+    event("result-timeout")
+    print(e, file=sys.stderr)
+'''
+
+
+def _child(tmp_path, project, run, label, mode, hold, events, timeout=60, log_src=TENK_FINISHED):
+    script = tmp_path / "child.py"
+    script.write_text(_CHILD)
+    env = dict(os.environ, PYTHONPATH=str(REPO_ROOT), PYTHONDONTWRITEBYTECODE="1")
+    return subprocess.Popen(
+        [sys.executable, str(script), str(project), run, label, mode,
+         str(hold), str(timeout), str(events), str(log_src)],
+        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+
+
+def _wait_for(events: Path, text: str, limit: float = 60.0):
+    deadline = time.monotonic() + limit
+    while time.monotonic() < deadline:
+        if events.exists() and text in events.read_text():
+            return
+        time.sleep(0.05)
+    raise AssertionError(f"'{text}' not seen in {events}")
+
+
+def _events(events: Path):
+    return events.read_text().split("\n")[:-1]
+
+
+def _pid(events: Path, label: str) -> int:
+    """The child's own process id, as it recorded it."""
+    return next(int(e.split()[0][4:]) for e in _events(events)
+                if e.startswith("pid-") and e.endswith(f" {label}"))
+
+
+def test_overlapping_computes_of_the_same_run_are_serialized(project, tmp_path):
+    """The reviewer's overlap: A writes nothing, B succeeds while A is running."""
+    log, dss = _paths(project)
+    log.write_bytes(TENK_ABORTED.read_bytes())
+    dss.write_bytes(b"old results")
+    events = tmp_path / "events.txt"
+    a = _child(tmp_path, project, TENK, "A", "nothing", 2.0, events)
+    _wait_for(events, "exec-start A")                       # A holds the outputs
+    b = _child(tmp_path, project, TENK, "B", "write", 0.2, events)
+    for proc in (a, b):
+        out, err = proc.communicate(timeout=120)
+        assert proc.returncode == 0, err
+    seq = _events(events)
+    # B did not start until A had finished and verified
+    assert seq.index("exec-start B") > seq.index("exec-end A")
+    assert "result-False A" in seq                            # A is not credited with B's outputs
+    assert "result-True B" in seq
+    assert log.read_bytes() == TENK_FINISHED.read_bytes()
+    assert not lock_path_for(log).exists() and not lock_path_for(dss).exists()
+
+
+def test_independent_runs_in_one_project_are_not_serialized(project, tmp_path):
+    """Jan 96 storm and Future have their own log and DSS files."""
+    events = tmp_path / "events.txt"
+    a = _child(tmp_path, project, TENK, "A", "write", 2.0, events, log_src=TENK_FINISHED)
+    _wait_for(events, "exec-start A")
+    b = _child(tmp_path, project, FUTURE, "B", "write", 0.2, events, log_src=CASTRO_FUTURE_FINISHED)
+    for proc in (a, b):
+        out, err = proc.communicate(timeout=120)
+        assert proc.returncode == 0, err
+    seq = _events(events)
+    assert seq.index("exec-end B") < seq.index("exec-end A")   # B ran while A ran
+    assert {"result-True A", "result-True B"} <= set(seq)
+
+
+def test_two_runs_sharing_a_log_are_serialized(shared_project, tmp_path):
+    events = tmp_path / "events.txt"
+    a = _child(tmp_path, shared_project, TENK, "A", "write", 2.0, events, log_src=TENK_FINISHED)
+    _wait_for(events, "exec-start A")
+    b = _child(tmp_path, shared_project, FUTURE, "B", "write", 0.2, events, log_src=CASTRO_FUTURE_FINISHED)
+    for proc in (a, b):
+        out, err = proc.communicate(timeout=120)
+        assert proc.returncode == 0, err
+    seq = _events(events)
+    assert seq.index("exec-start B") > seq.index("exec-end A")
+    assert {"result-True A", "result-True B"} <= set(seq)
+
+
+def test_waiting_longer_than_the_timeout_fails_clearly(project, tmp_path):
+    events = tmp_path / "events.txt"
+    a = _child(tmp_path, project, TENK, "A", "write", 4.0, events)
+    _wait_for(events, "exec-start A")
+    b = _child(tmp_path, project, TENK, "B", "write", 0.0, events, timeout=1)
+    out, err = b.communicate(timeout=120)
+    a.communicate(timeout=120)
+    assert "result-timeout B" in _events(events)
+    assert "exec-start B" not in _events(events)
+    assert "Timed out waiting for another compute" in err and f'"pid": {_pid(events, "A")}' in err
+
+
+def test_a_crashed_holder_does_not_block_and_its_backup_is_recovered(project, tmp_path, caplog):
+    log, dss = _paths(project)
+    log.write_bytes(TENK_ABORTED.read_bytes())               # the user's earlier log
+    events = tmp_path / "events.txt"
+    a = _child(tmp_path, project, TENK, "A", "crash", 0.0, events)
+    a.communicate(timeout=120)
+    assert a.returncode == 3
+    # A died between moving the log aside and verifying
+    assert not log.exists() and len(HmsCmdr._log_backups(log)) == 1
+    assert lock_path_for(log).exists()                        # its record is still there
+
+    def fake(script_content, hms_exe_path, working_dir=None, **kwargs):
+        log.write_bytes(TENK_FINISHED.read_bytes())
+        dss.write_bytes(b"results")
+        return True, "", ""
+
+    logger = logging.getLogger("hms_commander")
+    logger.addHandler(caplog.handler)
+    try:
+        with caplog.at_level(logging.WARNING):
+            with pytest.MonkeyPatch.context() as mp:
+                mp.setattr(HmsJython, "execute_script", staticmethod(fake))
+                ok = HmsCmdr._execute_and_verify(TENK, project, "# script", hms_exe_path=project, timeout=5)[0]
+    finally:
+        logger.removeHandler(caplog.handler)
+    assert ok is True
+    assert "Taking over a stale lock" in caplog.text and f'"pid": {_pid(events, "A")}' in caplog.text
+    assert "Restored Jan_96_storm.log" in caplog.text
+    assert _no_backups(log) and not lock_path_for(log).exists()
+
+
+def test_a_nested_compute_on_the_same_outputs_is_refused(project, monkeypatch):
+    """The reviewer's in-thread probe: B starts inside A's execution."""
+    log, dss = _paths(project)
+    log.write_bytes(TENK_ABORTED.read_bytes())
+    inner_error = []
+
+    def outer(script_content, hms_exe_path, working_dir=None, **kwargs):
+        try:
+            HmsCmdr._execute_and_verify(TENK, project, "# B", hms_exe_path=project, timeout=5)
+        except RuntimeError as e:
+            inner_error.append(str(e))
+        return True, "", ""                                    # A writes nothing
+
+    monkeypatch.setattr(HmsJython, "execute_script", staticmethod(outer))
+    assert HmsCmdr._execute_and_verify(TENK, project, "# A", hms_exe_path=project, timeout=5)[0] is False
+    assert inner_error and "already computing" in inner_error[0]
+    assert log.read_bytes() == TENK_ABORTED.read_bytes()       # prior log put back
+
+
+def test_parallel_workers_never_share_a_folder(tmp_path, monkeypatch):
+    """compute_parallel used worker_(i % max_workers); a later run could reuse a busy folder."""
+    prj = _batch_project(tmp_path, shared=False)
+    durations = {TENK: 1.0, FUTURE: 0.1, "Current": 0.6, "1%(100YR)RUN": 0.1}
+    active, clashes, guard = {}, [], threading.Lock()
+
+    def fake(script_content, hms_exe_path, working_dir=None, **kwargs):
+        run = re.search(r'^run_name = "(.*)"$', script_content, re.M).group(1)
+        folder = str(working_dir)
+        with guard:
+            if folder in active:
+                clashes.append((run, active[folder]))
+            active[folder] = run
+        time.sleep(durations[run])
+        with guard:
+            active.pop(folder, None)
+        return True, "", ""
+
+    monkeypatch.setattr(HmsJython, "execute_script", staticmethod(fake))
+    results = HmsCmdr.compute_parallel(list(durations), max_workers=2, hms_object=prj,
+                                       dest_folder=tmp_path / "workers")
+    assert set(results) == set(durations)
+    assert clashes == []
 
 
 # Review 1, finding 5: results DSS (and log) metadata that cannot be found
