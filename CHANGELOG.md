@@ -36,11 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **`write_timeseries` on the Java backend silently moved values** when the times were
-  not regular for the pathname's E part (a missing hour, or hourly times under `15MIN`):
-  HEC Monolith stores a regular series by position from the first time. Both backends now
-  raise `ValueError` before writing; write each regular run separately, or fill gaps with
-  NaN.
+- **`write_timeseries` on the Java backend silently moved values** when the times did not
+  follow HEC-DSS's placement for the pathname's E part: a missing hour, hourly times under
+  `15MIN`, month-end days under `1MON`, 29 February then 28 February under `1YEAR`, and
+  similar calendar cases. HEC-DSS stores a regular series by position from its first time.
+  Both backends now raise `ValueError` before writing. Minute, hour and day intervals are
+  checked for a constant step; calendar intervals (week, month, semi-month, tri-month,
+  year) against HEC's own placement, through the engine on a temporary file (skipped with
+  a warning without the engine). Valid calendar series, such as a yearly series from
+  29 February continuing on 1 March, are written as before.
 - **Native reads of a record of another kind** (`read_timeseries` or `read_grid` on a
   paired-data or time-series pathname) raised the engine's `DssUnsupportedRecordError`
   (a `RuntimeError`); they now raise `ValueError`, as the Java backend does.

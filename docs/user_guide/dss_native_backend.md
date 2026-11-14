@@ -162,12 +162,29 @@ differences remain:
 
 Both backends now behave the same in two cases where they used to differ:
 
-- **Irregular stamps.** `write_timeseries` refuses times that are not exactly regular for
-  the E part (a missing hour, hourly stamps under `15MIN`, a monthly stamp off the
-  calendar step), on every backend, before anything is written. The Java path used to
-  store such a series by position from the first stamp, which silently moved values to
-  other times. Write each regular run separately, or fill gaps with NaN (stored as
-  missing).
+- **Times HEC-DSS would move.** `write_timeseries` refuses, on every backend and before
+  anything is written, times at which HEC-DSS would not store the values. HEC-DSS stores
+  a regular series by position from its first time, and the Java path used to move such
+  values silently.
+    - Minute, hour and day intervals need a constant step; an offset start (such as 00:15
+      for `1HOUR`) is kept.
+    - Week, month, semi-month, tri-month and year intervals must follow HEC's calendar
+      placement. hms-commander checks it by writing the series to a temporary DSS7 file
+      with the engine and reading it back. A yearly series from 29 February continues on
+      1 March (as HEC places it); 29 February, then 28 February is refused, because HEC
+      stores those values on 1 March. Month-end days (31 March, 30 April) under `1MON`
+      are refused, because a `1MON` series is placed at month ends (00:00 of the 1st). A
+      day of the month that a shorter month does not have (the 30th across a 28-day
+      February) is refused, because HEC stores two values at one time there. A weekly
+      series whose first week contains the start of a DSS decade block (for example
+      30 December 2019 to 5 January 2020) is refused, because HEC stores it one week
+      later.
+    - DSS6 files: a yearly series whose first time falls in a leap year after 2 March
+      00:00 is refused (HEC's DSS6 library stores it a day later); write it to a DSS7
+      file. A few DSS6 day-of-month offsets that HEC's DSS6 library keeps are also
+      refused; write those to DSS7.
+    - Without the engine the calendar part is skipped, with one warning.
+    Write each regular run separately, or fill gaps with NaN (stored as missing).
 - **A record of another kind.** `read_timeseries` and `read_grid` raise `ValueError` for a
   pathname that holds another kind of record on both backends (the engine's
   `DssUnsupportedRecordError` is chained). `read_paired_data` and `get_peak_value` still

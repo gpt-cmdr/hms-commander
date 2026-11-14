@@ -2047,9 +2047,11 @@ class DssCore:
     # -- time series ---------------------------------------------------------
 
     @staticmethod
-    def _prepare_timeseries(pathname, times, values):
+    def _prepare_timeseries(pathname, times, values, version=None, check_times=True):
         """Shared argument checks for ``write_timeseries``; returns ``(stamps, values)``
-        with stamps as ``datetime64[s]`` and values as float64."""
+        with stamps as ``datetime64[s]`` and values as float64. ``version`` is the
+        target file's DSS version (``_check_regular_stamps``); ``check_times=False``
+        skips that check when the caller has already made it."""
         DssCore._check_pathname_format(pathname)
         e_part = pathname.split('/')[5]
         if e_part.upper().startswith('IR-'):
@@ -2081,55 +2083,139 @@ class DssCore:
             first = int(np.flatnonzero(np.isinf(values))[0])
             raise ValueError(f"value {first} is infinite; HEC-DSS has no infinity convention")
         stamps = stamps.astype("datetime64[s]")
-        DssCore._check_regular_stamps(pathname, e_part, stamps)
+        if check_times:
+            DssCore._check_regular_stamps(pathname, e_part, stamps, version)
         return stamps, values
 
-    #: Regular E-part units of fixed length, in minutes.
+    #: Regular E-part units of fixed length, in minutes. Weeks are not here: HEC-DSS
+    #: places weekly values by calendar blocks (see ``_check_calendar_stamps``).
     _FIXED_INTERVAL_MINUTES = {
         "MIN": 1, "MINUTE": 1, "MINUTES": 1,
         "HOUR": 60, "HOURS": 60,
         "DAY": 1440, "DAYS": 1440,
-        "WEEK": 10080, "WEEKS": 10080,
     }
-    #: Regular E-part units of calendar length, in months.
-    _CALENDAR_INTERVAL_MONTHS = {"MON": 1, "MONTH": 1, "MONTHS": 1, "YEAR": 12, "YEARS": 12}
+    #: E-part units whose stamps follow HEC-DSS's calendar progression.
+    _CALENDAR_INTERVAL_UNITS = frozenset({
+        "WEEK", "WEEKS", "MON", "MONTH", "MONTHS", "YEAR", "YEARS",
+        "SEMI-MONTH", "SEMIMONTH", "TRI-MONTH", "TRIMONTH",
+    })
+    _calendar_check_warned = False
 
     @staticmethod
-    def _check_regular_stamps(pathname: str, e_part: str, stamps: np.ndarray) -> None:
-        """Refuse stamps that are not exactly regular for the E part, on every backend.
+    def _check_regular_stamps(pathname: str, e_part: str, stamps: np.ndarray,
+                              version: Optional[int] = None) -> None:
+        """Refuse times at which HEC-DSS would not store the values, on every backend.
 
-        HEC Monolith stores a regular series by position from the first stamp, so it
-        silently moved values whose stamps did not fit the E part (an hour missing, or
-        hourly stamps under ``15MIN``); the native writer refuses them. Fixed intervals
-        (minutes, hours, days, weeks) need a constant step; monthly and yearly intervals
-        need calendar steps from the first stamp. Other E parts (``SEMI-MONTH``,
-        ``TRI-MONTH``) are left to the writer.
+        HEC-DSS stores a regular series by position from its first time, so HEC Monolith
+        silently moved values whose times did not follow the E part, and the native
+        writer refused them. This check refuses them before either writer runs:
+
+        - Minute, hour and day intervals need a constant step (an offset start such as
+          00:15 for ``1HOUR`` is kept, as HEC keeps it).
+        - Week, month, semi-month, tri-month and year intervals are checked against
+          HEC-DSS's own placement: the series is written to a temporary DSS7 file by the
+          ras-commander-fast-dss engine and read back, and every value must come back at
+          its given time. This follows HEC's leap-year, month-length and end-of-period
+          rules (a yearly series from 29 February continues on 1 March; month offsets
+          that do not fit a shorter month are refused, because HEC stores two values at
+          one time there). HEC Monolith reads DSS6 files with the same placement, except
+          that a DSS6 yearly series whose first time falls in a leap year after 2 March
+          00:00 is moved by a day; it is refused (``version`` 6). Some DSS6 day-of-month
+          offsets that HEC's DSS6 library keeps are also refused; write them to a DSS7
+          file. Without the engine this part is skipped, with one warning.
+
+        Other E parts are left to the writer.
         """
         if len(stamps) < 2:
             return
-        match = re.fullmatch(r"(\d+)\s*([A-Z]+)", e_part.strip().upper())
+        match = re.fullmatch(r"(\d*)\s*([A-Z]+(?:-[A-Z]+)?)", e_part.strip().upper())
         if not match:
             return
-        count, unit = int(match.group(1)), match.group(2)
+        count, unit = int(match.group(1) or 1), match.group(2)
         if unit in DssCore._FIXED_INTERVAL_MINUTES:
             step = np.timedelta64(count * DssCore._FIXED_INTERVAL_MINUTES[unit], "m")
             expected = stamps[0] + step * np.arange(len(stamps))
-        elif unit in DssCore._CALENDAR_INTERVAL_MONTHS:
-            months = count * DssCore._CALENDAR_INTERVAL_MONTHS[unit]
-            first = pd.Timestamp(stamps[0])
-            expected = np.array(
-                [(first + pd.DateOffset(months=months * i)).to_datetime64() for i in range(len(stamps))],
-                dtype="datetime64[s]")
-        else:
-            return
-        bad = np.flatnonzero(stamps != expected.astype("datetime64[s]"))
-        if bad.size:
-            i = int(bad[0])
+            bad = np.flatnonzero(stamps != expected.astype("datetime64[s]"))
+            if bad.size:
+                i = int(bad[0])
+                raise ValueError(
+                    f"times are not regular for the E part {e_part!r} of {pathname!r}: value "
+                    f"{i} is at {pd.Timestamp(stamps[i])}, expected "
+                    f"{pd.Timestamp(expected[i])}. Write each regular run of times "
+                    "separately, or fill the gaps with NaN (stored as missing).")
+        elif unit in DssCore._CALENDAR_INTERVAL_UNITS:
+            if version == 6 and unit in ("YEAR", "YEARS"):
+                DssCore._check_dss6_yearly_start(pathname, e_part, stamps)
+            DssCore._check_calendar_stamps(pathname, e_part, stamps)
+
+    @staticmethod
+    def _check_dss6_yearly_start(pathname: str, e_part: str, stamps: np.ndarray) -> None:
+        """HEC's DSS6 library moves a yearly series by a day when its first time falls in
+        a leap year after 2 March 00:00 (checked with HEC Monolith for 1904, 2000, 2016,
+        2020 and 2024)."""
+        first = pd.Timestamp(stamps[0])
+        if first.is_leap_year and first > pd.Timestamp(first.year, 3, 2):
             raise ValueError(
-                f"times are not regular for the E part {e_part!r} of {pathname!r}: value {i} "
-                f"is at {pd.Timestamp(stamps[i])}, expected {pd.Timestamp(expected[i])}. "
-                "Write each regular run of stamps separately, or fill the gaps with NaN "
-                "(stored as missing).")
+                f"times are not valid for the E part {e_part!r} of {pathname!r} in a DSS6 "
+                f"file: HEC-DSS 6 stores a yearly series that starts in a leap year after 2 "
+                f"March one day later (first time {first}). Write it to a DSS7 file, or start "
+                "the series in another year.")
+
+    @staticmethod
+    def _check_calendar_stamps(pathname: str, e_part: str, stamps: np.ndarray) -> None:
+        """``ValueError`` unless HEC-DSS stores every value at its given time (see
+        ``_check_regular_stamps``). Uses the engine's public writer and reader on a
+        temporary DSS7 file; the caller's file is not touched."""
+        dc = _backend._maybe_native()
+        if dc is None or not all(callable(getattr(dc, name, None))
+                                 for name in ("create", "write_timeseries", "read_timeseries")):
+            if not DssCore._calendar_check_warned:
+                DssCore._calendar_check_warned = True
+                logger.warning(
+                    "Times of %s series are not checked against HEC-DSS's calendar placement "
+                    "because ras-commander-fast-dss is not installed. HEC-DSS stores a "
+                    "regular series by position from its first time, so values given at "
+                    "other times are stored at different times.", e_part)
+            return
+        parts = pathname.split("/")
+        check_path = f"/{parts[1]}/{parts[2]}/{parts[3]}//{parts[5]}/{parts[6]}/"
+        values = np.arange(len(stamps), dtype=np.float64)
+        sync = {"sync": "none"} if _backend.takes_keyword(dc.write_timeseries, "sync") else {}
+        with tempfile.TemporaryDirectory(prefix="hms-commander-dss-times-") as folder:
+            probe = str(Path(folder) / "times.dss")
+            try:
+                if _backend.takes_keyword(dc.create, "sync"):
+                    dc.create(probe, 7, sync="none")
+                else:
+                    dc.create(probe, 7)
+                dc.write_timeseries(probe, check_path, values, times=stamps, units="",
+                                    data_type="INST-VAL", version=7, **sync)
+                back = dc.read_timeseries(probe, check_path)
+            except ValueError as exc:
+                detail = str(exc).replace(repr(check_path), repr(pathname))
+                raise ValueError(
+                    f"{detail}. HEC-DSS places a {e_part} series by its calendar from the "
+                    "first time. Write each regular run of times separately, or fill the "
+                    "gaps with NaN (stored as missing).") from exc
+            except Exception as exc:  # an engine failure must not block the write
+                logger.warning("Could not check the times of %s against HEC-DSS's calendar "
+                               "placement (%s: %s); the write goes ahead unchecked.",
+                               pathname, type(exc).__name__, exc)
+                return
+        got_times = back.index.to_numpy(dtype="datetime64[s]")
+        got_values = back["value"].to_numpy(dtype=np.float64)
+        n = min(len(got_times), len(stamps))
+        bad = np.flatnonzero((got_times[:n] != stamps[:n]) | (got_values[:n] != values[:n]))
+        if bad.size or len(got_times) != len(stamps):
+            i = int(bad[0]) if bad.size else n
+            where = (f"at {pd.Timestamp(got_times[i])}" if i < len(got_times)
+                     else "not at all")
+            raise ValueError(
+                f"times are not valid for the E part {e_part!r} of {pathname!r}: HEC-DSS "
+                f"would store value {i} (given at {pd.Timestamp(stamps[min(i, len(stamps) - 1)])}) "
+                f"{where}. A {e_part} series keeps HEC's calendar placement from its first "
+                "time; a day-of-month or day-of-year that a shorter month or year does not "
+                "have is not kept.")
 
     @staticmethod
     @log_call
@@ -2189,8 +2275,9 @@ class DssCore:
             with _backend.write_sync(sync, DssCore.get_backend()):
                 return DssCore.write_timeseries(dss_file, pathname, times, values, units,
                                                 data_type, dss_version)
-        DssCore._prepare_timeseries(pathname, times, values)
         DssCore._validate_dss_version(dss_version)
+        DssCore._prepare_timeseries(pathname, times, values,
+                                    version=DssCore._target_version(dss_file, dss_version))
         backend = DssCore.get_backend()
         if backend == "native":
             return DssCore._write_timeseries_native(
@@ -2221,7 +2308,8 @@ class DssCore:
     def _write_timeseries_java(dss_file, pathname, times, values, units, data_type,
                                dss_version) -> Path:
         """``write_timeseries`` through HEC Monolith (``TimeSeriesContainer``)."""
-        stamps, values = DssCore._prepare_timeseries(pathname, times, values)
+        stamps, values = DssCore._prepare_timeseries(pathname, times, values,
+                                                     check_times=False)
         dss_path = Path(dss_file)
         existed = dss_path.exists()
         version = DssCore._target_version(dss_path, dss_version)
@@ -2279,7 +2367,8 @@ class DssCore:
                                  dss_version) -> Path:
         """``write_timeseries`` through ras_commander_fast_dss (no JVM). Values are
         stored as doubles, as the Java path stores them."""
-        stamps, values = DssCore._prepare_timeseries(pathname, times, values)
+        stamps, values = DssCore._prepare_timeseries(pathname, times, values,
+                                                     check_times=False)
         dc = _backend.require_native_writes()
         target, version, existed, created = DssCore._native_write_target(dss_file, dss_version)
         with DssCore._native_new_file(dc, target, version, existed, created):
