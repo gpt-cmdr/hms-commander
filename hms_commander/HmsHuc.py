@@ -51,6 +51,7 @@ from typing import List, Optional, Tuple, Union
 
 from .LoggingConfig import get_logger
 from .Decorators import log_call
+from ._hyriver_exit import guard_async_retriever_exit
 
 logger = get_logger(__name__)
 
@@ -179,8 +180,11 @@ class HmsHuc:
         bbox_geom = box(west, south, east, north)
 
         # Download HUC12 watersheds
-        wbd = WBD("huc12")
-        watersheds = wbd.bygeom(bbox_geom, geo_crs="EPSG:4326")
+        try:
+            wbd = WBD("huc12")
+            watersheds = wbd.bygeom(bbox_geom, geo_crs="EPSG:4326")
+        finally:
+            guard_async_retriever_exit()
 
         if len(watersheds) == 0:
             raise ValueError(f"No HUC12 watersheds found within bounds {bounds}")
@@ -262,8 +266,11 @@ class HmsHuc:
         bbox_geom = box(west, south, east, north)
 
         # Download HUC8 watersheds
-        wbd = WBD("huc8")
-        watersheds = wbd.bygeom(bbox_geom, geo_crs="EPSG:4326")
+        try:
+            wbd = WBD("huc8")
+            watersheds = wbd.bygeom(bbox_geom, geo_crs="EPSG:4326")
+        finally:
+            guard_async_retriever_exit()
 
         if len(watersheds) == 0:
             raise ValueError(f"No HUC8 watersheds found within bounds {bounds}")
@@ -348,8 +355,11 @@ class HmsHuc:
         logger.info(f"Downloading {len(huc_ids)} {level.upper()} watersheds")
 
         # Download by IDs
-        wbd = WBD(level)
-        watersheds = wbd.byids(level, huc_ids)
+        try:
+            wbd = WBD(level)
+            watersheds = wbd.byids(level, huc_ids)
+        finally:
+            guard_async_retriever_exit()
 
         if len(watersheds) == 0:
             raise ValueError(f"No {level.upper()} watersheds found for IDs: {huc_ids}")
