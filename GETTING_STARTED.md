@@ -232,7 +232,7 @@ outputs = HmsGeo.extract_all_gis(
 A: No! hms-commander uses only Python standard library.
 
 **Q: What Python version do I need?**
-A: Python 3.8 or newer.
+A: Python 3.11.5 or newer.
 
 **Q: Can I use this with HEC-RAS models?**
 A: No, use [ras-commander](https://github.com/[org]/ras-commander) for HEC-RAS.
