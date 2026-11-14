@@ -1,0 +1,9 @@
+NOTE 15301:  Began computing simulation run "Future" at time 13Nov2026, 20:06:30.
+NOTE 10181:  Opened control specifications "Jan73" at time 13Nov2026, 20:06:30.
+WARNING 10615:  No valid data source for variant "Undefined" of gage "Fire Dept." with type "Precipitation".
+     File: <project folder>\castro.dss
+     Path: /CASTRO VALLEY/FIRE DEPT./PRECIP-INC//10MIN/OBS/
+WARNING 10613:  Units "" are not valid for gage "Fire Dept." with type "Precipitation".
+ERROR 10311:  Errors in gage data for gage "Fire Dept.".
+ERROR 20358:  Found "2" errors in meteorologic model "GageWts".
+WARNING 15303:  Aborted run "Future" at time 13Nov2026, 20:06:30.

@@ -36,6 +36,7 @@ All methods are static and designed to be used without instantiation.
 """
 
 import os
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -114,15 +115,17 @@ JythonHms.Exit(0)
             hms_path: Path to HMS installation directory
 
         Returns:
-            Tuple of version components (e.g., (4, 11) or (4, 7, 1))
+            Tuple of version components (e.g., (4, 11) or (4, 7, 1)). A suffix
+            is ignored here, so "4.13-beta" gives (4, 13); it uses the same
+            pattern as :meth:`_parse_version_text`.
         """
-        version_str = hms_path.name  # e.g., "4.11" or "4.7.1"
-        try:
-            return tuple(int(p) for p in version_str.split('.'))
-        except ValueError:
-            # Try to read from config file or jar manifest
-            logger.warning(f"Could not parse version from path: {hms_path}")
-            return (0,)  # Unknown version
+        version_str = hms_path.name  # e.g., "4.11", "4.7.1" or "4.13-beta"
+        match = HmsJython._VERSION_PATTERN.match(version_str)
+        if match:
+            return tuple(int(p) for p in match.group(1).split('.'))
+        # Try to read from config file or jar manifest
+        logger.warning(f"Could not parse version from path: {hms_path}")
+        return (0,)  # Unknown version
 
     @staticmethod
     def _format_version(version: Tuple[int, ...]) -> str:
@@ -1193,17 +1196,41 @@ JythonHms.SaveAllProjectComponents()
         logger.info(f"Script saved to: {output_path}")
         return str(output_path)
 
+    # "4.13", "4.7.1", "4.13-beta", "4.13 beta 2", "4.12rc1"
+    _VERSION_PATTERN = re.compile(
+        r"^\s*v?(\d+(?:\.\d+)*)(?:[-_. ]*([A-Za-z][0-9A-Za-z.\-_ ]*?))?\s*$"
+    )
+
     @staticmethod
-    def _parse_version_text(version: Optional[str]) -> Optional[Tuple[int, ...]]:
-        """Parse "4.13" or "4.7.1" into a tuple; return None when unparseable."""
+    def _parse_version_text(version: Optional[str]) -> Optional[Tuple[Tuple[int, ...], int, str]]:
+        """
+        Parse an HEC-HMS version into a sortable key; None when unparseable.
+
+        The key is ``(release, final, suffix)``:
+
+        - ``release``: the numeric parts with trailing zeros removed, so
+          4.4.0 equals 4.4 and 4.4 < 4.4.1 < 4.5 < 4.13;
+        - ``final``: 1 for a plain release, 0 when a suffix follows, so a
+          pre-release sorts before its release (4.13-beta < 4.13 < 4.13.1);
+        - ``suffix``: the suffix in lower case with separators removed;
+          suffixes of the same release compare as text (alpha < beta < rc).
+        """
         if version is None:
             return None
-        text = str(version).strip()
-        try:
-            parts = tuple(int(p) for p in text.split('.'))
-        except ValueError:
+        match = HmsJython._VERSION_PATTERN.match(str(version))
+        if not match:
             return None
-        return parts or None
+        release = [int(p) for p in match.group(1).split('.')]
+        while len(release) > 1 and release[-1] == 0:
+            release.pop()
+        suffix = re.sub(r"[-_. ]", "", match.group(2) or "").lower()
+        return (tuple(release), 0 if suffix else 1, suffix)
+
+    @staticmethod
+    def _major_minor(key: Tuple[Tuple[int, ...], int, str]) -> Tuple[int, int]:
+        """Major and minor numbers of a parsed version key (missing minor = 0)."""
+        release = key[0] + (0, 0)
+        return release[0], release[1]
 
     @staticmethod
     def _installed_hms_versions(
@@ -1245,7 +1272,7 @@ JythonHms.SaveAllProjectComponents()
 
         def sort_key(name: str):
             parsed = HmsJython._parse_version_text(name)
-            return (parsed is not None, parsed or ())
+            return (parsed is not None, parsed or ((), 0, ""))
 
         return {name: found[name] for name in sorted(found, key=sort_key, reverse=True)}
 
@@ -1259,18 +1286,25 @@ JythonHms.SaveAllProjectComponents()
         """
         Find HEC-HMS installation on the system.
 
-        Without ``version``, the newest installed version is returned (compared
-        numerically, so 4.13 is preferred over 4.9 and 4.10).
+        Versions are compared as numbers, with trailing zeros ignored
+        (4.4.0 equals 4.4), and a suffixed pre-release before its release
+        (4.13-beta < 4.13 < 4.13.1); see :meth:`_parse_version_text`.
+
+        Without ``version``, the newest installed version is returned (so 4.13
+        is preferred over 4.9, 4.10 and 4.13-beta).
 
         With ``version`` (for example the ``Version:`` line of a ``.hms`` file),
         the selection is:
 
-        1. the installation whose folder name equals ``version``;
-        2. otherwise the newest installation with the same major.minor
-           (for example 4.7.1 for a 4.7 project), with a warning;
-        3. otherwise the oldest installation newer than ``version``, with a
+        1. the installation whose folder name equals ``version``, or whose
+           version is equal to it (4.4.0 for 4.4);
+        2. otherwise the newest installation with the same major.minor that
+           is newer than ``version`` (4.7.1 for a 4.7 project, 4.13 for a
+           4.13-beta project), with a warning;
+        3. otherwise the oldest installation of a newer major.minor, with a
            warning that HEC-HMS may upgrade the project when it saves it;
-        4. otherwise None, with a warning. An older HEC-HMS is never
+        4. otherwise None, with a warning. An older HEC-HMS, including an
+           older patch or a pre-release of the same version, is never
            substituted, because it can refuse or abort a newer project.
 
         Args:
@@ -1313,18 +1347,36 @@ JythonHms.SaveAllProjectComponents()
         parsed = {name: HmsJython._parse_version_text(name) for name in installs}
         parsed = {name: v for name, v in parsed.items() if v is not None}
 
-        same_minor = [n for n, v in parsed.items() if v[:2] == wanted[:2]]
+        equal = [n for n, v in parsed.items() if v == wanted]
+        if equal:
+            name = equal[0]
+            logger.info(f"Found HEC-HMS {name} for version {version}: {installs[name]}")
+            return installs[name]
+
+        wanted_minor = HmsJython._major_minor(wanted)
+        same_minor = [
+            n for n, v in parsed.items()
+            if HmsJython._major_minor(v) == wanted_minor and v > wanted
+        ]
         if same_minor:
             name = max(same_minor, key=lambda n: parsed[n])
             logger.warning(
                 f"HEC-HMS {version} is not installed; using HEC-HMS {name} "
-                f"(same major.minor). Installed: {available}"
+                f"(same major.minor, newer). Installed: {available}"
             )
             return installs[name]
 
-        newer = [n for n, v in parsed.items() if v > wanted]
+        newer = [
+            n for n, v in parsed.items()
+            if HmsJython._major_minor(v) > wanted_minor
+        ]
         if newer:
-            name = min(newer, key=lambda n: parsed[n])
+            # The nearest newer major.minor, and its newest release within it
+            nearest = min(HmsJython._major_minor(parsed[n]) for n in newer)
+            name = max(
+                (n for n in newer if HmsJython._major_minor(parsed[n]) == nearest),
+                key=lambda n: parsed[n],
+            )
             logger.warning(
                 f"HEC-HMS {version} is not installed; using the next newer version, "
                 f"HEC-HMS {name}. HEC-HMS may upgrade the project files to {name} "

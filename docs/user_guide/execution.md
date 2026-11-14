@@ -47,15 +47,36 @@ if not HmsCmdr.compute_run("Run 1"):
 ### How Success Is Decided
 
 `compute_run()` returns `True` only when there is evidence that HEC-HMS computed the run
-during the call. All of these must hold:
+during the call. Before HEC-HMS starts, HMS Commander reads the run's `Log File:` and
+`DSS File:` entries from the project's `.run` files. It then records each file's size,
+modification time and content: the whole log, and a SHA-256 hash of a results DSS
+file up to 512 MB. After the run, all of these must hold:
 
 - The generated Jython script completed. It did not print `Error opening project:` or
   `Error during computation:`.
-- The run log was written during the call. Its name comes from the run's `Log File:`
-  entry in the `.run` file.
-- The last run in that log has `NOTE 15302` ("Finished computing simulation run"). It has
-  no `ERROR` line and no `WARNING 15303` ("Aborted run").
-- The run's results DSS file (`DSS File:`) was written during the call.
+- The run log changed. Only the text HEC-HMS added is read. If HEC-HMS replaced the
+  file, the whole new file is read.
+- That text has a section for this run. The section starts at
+  `NOTE 15301: Began computing simulation run "<run name>"` and ends at the next
+  `NOTE 15301` of any run. It has `NOTE 15302` ("Finished computing simulation run")
+  for this run, no `ERROR` line and no `WARNING 15303` ("Aborted run").
+- The results DSS file is new, or its size, modification time or hash changed.
+
+Each file is compared with its own earlier record, not with the clock. A file server
+whose clock differs from the computer running HMS Commander does not change the
+result. A file that the run did not change fails the check, however recent its time.
+Because the content is compared, a rewrite is detected even when a FAT or network
+file system stores the same coarse time.
+
+The log alone decides which run a result belongs to. A shared results DSS file does
+not show which run wrote it. When runs share a `Log File:`, each run is judged only
+from its own section. HEC-HMS 4.13 rewrites a shared log for each run in a batch, so
+an earlier run's section is lost and that run is reported as failed.
+`compute_batch()` logs a warning when its runs share a log file.
+
+If the run is not in a `.run` file, or has no `Log File:` or `DSS File:` entry, the run
+cannot be verified and `False` is returned. Every run in the HEC-HMS 4.4.1 to 4.13
+sample projects has both entries.
 
 Otherwise the call returns `False` and logs the reason at ERROR level, together with
 the run-log lines involved. Warnings in the log, such as `WARNING 40503` (missing
@@ -72,22 +93,35 @@ the `tenk` sample's results DSS file and then aborted the run (`ERROR 20137`, th
 Without `hms_exe_path`, the installation is chosen from the `Version:` line of the
 project's `.hms` file:
 
-1. the installed version with that exact name;
-2. otherwise the newest installation with the same major.minor (4.7.1 for a 4.7
-   project), with a warning;
-3. otherwise the next newer installation, with a warning. HEC-HMS may upgrade the
-   project files when it saves them.
+1. the installation with that exact name, or an equal version (4.4.0 for 4.4);
+2. otherwise the newest installation of the same major.minor that is newer than the
+   project (4.7.1 for a 4.7 project, 4.13 for a 4.13-beta project), with a warning;
+3. otherwise the newest release of the nearest newer major.minor, with a warning.
+   HEC-HMS may upgrade the project files when it saves them.
 
-An older HEC-HMS is never substituted. If only older versions are installed,
-`compute_run()` raises `RuntimeError`. To use a specific installation, pass it
-explicitly:
+Versions are compared as numbers. Trailing zeros are ignored, and a suffixed
+pre-release sorts before its release:
+
+4.4 = 4.4.0 < 4.4.1 < 4.9 < 4.10 < 4.13-alpha < 4.13-beta < 4.13-rc1 < 4.13 < 4.13.1
+
+Suffixes of one release compare as text.
+
+An older HEC-HMS is never substituted, including an older patch or a pre-release
+of the project's version. `compute_run()` raises `RuntimeError` in two cases:
+
+- only older versions are installed;
+- the project's `Version:` is not a comparable version and no installation has that
+  exact name.
+
+To use a specific installation, pass it explicitly. A warning is logged if it is
+older than the project:
 
 ```python
 init_hms_project(project_folder, hms_exe_path=r"C:/Program Files/HEC/HEC-HMS/4.13")
 ```
 
-`HmsJython.find_hms_executable()` without a version returns the newest installation,
-compared as version numbers (4.13 before 4.10 and 4.9).
+`HmsJython.find_hms_executable()` without a version returns the newest installation
+in this order (4.13 before 4.13-beta, 4.10 and 4.9).
 
 ### Parallel Execution
 

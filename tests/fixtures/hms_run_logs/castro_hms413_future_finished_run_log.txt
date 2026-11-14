@@ -1,0 +1,28 @@
+NOTE 15301:  Began computing simulation run "Future" at time 13Nov2026, 20:05:43.
+NOTE 20364:  Found no parameter problems in meteorologic model "GageWts".
+NOTE 40049:  Found no parameter problems in basin model "Castro 2".
+WARNING 10312:  Gage "Fire Dept." contains 37 missing values that were set to zero.
+WARNING 10312:  Gage "Fire Dept." contains 37 missing values that were set to zero.
+WARNING 10312:  Gage "Fire Dept." contains 37 missing values that were set to zero.
+WARNING 21360:  Gage "Fire Dept." for subbasin "Subbasin-3" contains 37 missing precipitation values that were set to zero.
+WARNING 10312:  Gage "Fire Dept." contains 37 missing values that were set to zero.
+WARNING 10312:  Gage "Fire Dept." contains 37 missing values that were set to zero.
+WARNING 10312:  Gage "Fire Dept." contains 37 missing values that were set to zero.
+WARNING 21360:  Gage "Fire Dept." for subbasin "Subbasin-4" contains 37 missing precipitation values that were set to zero.
+WARNING 10312:  Gage "Fire Dept." contains 37 missing values that were set to zero.
+WARNING 10312:  Gage "Fire Dept." contains 37 missing values that were set to zero.
+WARNING 21360:  Gage "Fire Dept." for subbasin "Subbasin-1" contains 37 missing precipitation values that were set to zero.
+WARNING 10312:  Gage "Fire Dept." contains 37 missing values that were set to zero.
+WARNING 10312:  Gage "Fire Dept." contains 37 missing values that were set to zero.
+WARNING 10312:  Gage "Fire Dept." contains 37 missing values that were set to zero.
+WARNING 21360:  Gage "Fire Dept." for subbasin "Subbasin-2" contains 37 missing precipitation values that were set to zero.
+NOTE 41959:  Clark parameters used to produce unit hydrograph for subbasin "Subbasin-3" are Tc=0.1218 R=1.1786
+NOTE 42413:  Unit hydrograph volume for subbasin "Subbasin-3" is 1.0000 in.
+NOTE 41959:  Clark parameters used to produce unit hydrograph for subbasin "Subbasin-4" are Tc=0.1137 R=0.9913
+NOTE 42413:  Unit hydrograph volume for subbasin "Subbasin-4" is 1.0000 in.
+NOTE 41959:  Clark parameters used to produce unit hydrograph for subbasin "Subbasin-1" are Tc=0.1218 R=1.1786
+NOTE 42413:  Unit hydrograph volume for subbasin "Subbasin-1" is 1.0000 in.
+NOTE 41959:  Clark parameters used to produce unit hydrograph for subbasin "Subbasin-2" are Tc=0.1193 R=1.1205
+NOTE 42413:  Unit hydrograph volume for subbasin "Subbasin-2" is 1.0000 in.
+NOTE 15302:  Finished computing simulation run "Future" at time 13Nov2026, 20:05:43.
+NOTE 15312:  The total runtime for this simulation is 00:00.

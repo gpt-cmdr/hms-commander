@@ -1,17 +1,20 @@
 """Regression tests: HmsCmdr must not report an aborted HEC-HMS run as a success.
 
 The run logs under ``tests/fixtures/hms_run_logs`` were captured from real
-computes of the HEC-HMS 4.13 ``tenk`` sample (see the README there). HEC-HMS
-4.10 aborts that project, yet the process exits normally and, before this
-fix, ``HmsCmdr.compute_run`` returned True. Without ``hms_exe_path`` the old
+HEC-HMS computes of the 4.13 ``tenk`` and ``castro`` samples, and the ``.run``
+files are the shipped sample files (see the README there). HEC-HMS 4.10
+aborts ``tenk``, yet the process exits normally and, before this fix,
+``HmsCmdr.compute_run`` returned True. Without ``hms_exe_path`` the old
 discovery also picked 4.10 first, because folder names sorted as text.
 """
 
 from __future__ import annotations
 
+import logging
 import os
+import re
 import shutil
-import time
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -20,12 +23,24 @@ from hms_commander import HmsCmdr, HmsExamples, HmsJython, HmsPrj
 
 TESTS_DIR = Path(__file__).parent
 LOGS = TESTS_DIR / "fixtures" / "hms_run_logs"
-ABORTED_LOG = LOGS / "tenk_hms410_aborted_run_log.txt"
-FINISHED_LOG = LOGS / "tenk_hms413_finished_run_log.txt"
-ABORTED_STDOUT = LOGS / "tenk_hms410_aborted_stdout.txt"
+RUN_FILES = LOGS / "run_files"
+TENK_ABORTED = LOGS / "tenk_hms410_aborted_run_log.txt"
+TENK_FINISHED = LOGS / "tenk_hms413_finished_run_log.txt"
+TENK_ABORTED_STDOUT = LOGS / "tenk_hms410_aborted_stdout.txt"
+CASTRO_FUTURE_FINISHED = LOGS / "castro_hms413_future_finished_run_log.txt"
+CASTRO_FUTURE_ABORTED = LOGS / "castro_hms413_future_aborted_run_log.txt"
 PROJECT_411 = TESTS_DIR / "projects" / "2014.08_HMS" / "A1000000_upgrade_411"
 PROJECT_33 = TESTS_DIR / "projects" / "2014.08_HMS" / "A1000000_baseline_33"
-RUN = "1%(100YR)RUN"  # Log File: A100B100_1_.log, DSS File: A1000000.dss
+TENK = "Jan 96 storm"   # Log File: Jan_96_storm.log, DSS File: Jan_96_storm.dss
+FUTURE = "Future"       # Log File: Future.log, DSS File: Future.dss
+
+
+def _text(path: Path) -> str:
+    return path.read_bytes().decode("latin-1")
+
+
+def _bytes(*paths: Path) -> bytes:
+    return b"".join(p.read_bytes() for p in paths)
 
 
 # ---------------------------------------------------------------------------
@@ -33,7 +48,7 @@ RUN = "1%(100YR)RUN"  # Log File: A100B100_1_.log, DSS File: A1000000.dss
 # ---------------------------------------------------------------------------
 
 def test_aborted_log_is_a_failure():
-    ok, reason, lines = HmsCmdr._check_run_log(ABORTED_LOG.read_text())
+    ok, reason, lines = HmsCmdr._check_run_log(_text(TENK_ABORTED), TENK)
     assert ok is False
     assert "15303" in reason
     assert any(line.startswith("ERROR 20137:") for line in lines)
@@ -41,147 +56,363 @@ def test_aborted_log_is_a_failure():
 
 
 def test_finished_log_with_warnings_is_a_success():
-    text = FINISHED_LOG.read_text()
+    text = _text(TENK_FINISHED)
     assert "WARNING 40503" in text  # warnings alone do not fail a run
-    ok, reason, lines = HmsCmdr._check_run_log(text)
+    ok, reason, lines = HmsCmdr._check_run_log(text, TENK)
     assert ok is True, reason
     assert lines == []
 
 
-def test_only_the_last_run_in_a_log_counts():
-    # An earlier aborted attempt followed by a finished run in the same file
-    text = ABORTED_LOG.read_text() + FINISHED_LOG.read_text()
-    assert HmsCmdr._check_run_log(text)[0] is True
-    text = FINISHED_LOG.read_text() + ABORTED_LOG.read_text()
-    assert HmsCmdr._check_run_log(text)[0] is False
+def test_a_log_of_another_run_is_not_evidence():
+    # A finished "Jan 96 storm" log says nothing about run "Future"
+    ok, reason, _ = HmsCmdr._check_run_log(_text(TENK_FINISHED), FUTURE)
+    assert ok is False and "Future" in reason
+
+
+def test_only_the_last_attempt_of_the_run_counts():
+    assert HmsCmdr._check_run_log(_text(TENK_ABORTED) + _text(TENK_FINISHED), TENK)[0] is True
+    assert HmsCmdr._check_run_log(_text(TENK_FINISHED) + _text(TENK_ABORTED), TENK)[0] is False
 
 
 def test_log_without_finish_note_is_a_failure():
-    began_only = FINISHED_LOG.read_text().split("NOTE 15302")[0]
-    ok, reason, _ = HmsCmdr._check_run_log(began_only)
+    began_only = _text(TENK_FINISHED).split("NOTE 15302")[0]
+    ok, reason, _ = HmsCmdr._check_run_log(began_only, TENK)
     assert ok is False and "15302" in reason
-    assert HmsCmdr._check_run_log("")[0] is False
+    assert HmsCmdr._check_run_log("", TENK)[0] is False
 
 
-def test_generated_script_failure_line_is_recognised():
-    stdout = ABORTED_STDOUT.read_text()
-    assert any(m in stdout for m in HmsJython.SCRIPT_FAILURE_MARKERS)
-    # The successful run prints no failure marker
-    assert not any(
-        m in "Project opened successfully: tenk\nComputation completed for: Jan 96 storm\n"
-        for m in HmsJython.SCRIPT_FAILURE_MARKERS
-    )
+# Review 1, finding 2: two real run blocks of different runs in one log
+
+
+@pytest.mark.parametrize("order", ["target_first", "target_last"])
+def test_finished_target_is_not_failed_by_another_runs_abort(order):
+    blocks = [_text(TENK_FINISHED), _text(CASTRO_FUTURE_ABORTED)]
+    text = "".join(blocks if order == "target_first" else blocks[::-1])
+    assert HmsCmdr._check_run_log(text, TENK)[0] is True
+    assert HmsCmdr._check_run_log(text, FUTURE)[0] is False
+
+
+@pytest.mark.parametrize("order", ["target_first", "target_last"])
+def test_aborted_target_is_not_credited_with_another_runs_success(order):
+    blocks = [_text(TENK_ABORTED), _text(CASTRO_FUTURE_FINISHED)]
+    text = "".join(blocks if order == "target_first" else blocks[::-1])
+    ok, _, lines = HmsCmdr._check_run_log(text, TENK)
+    assert ok is False
+    assert any(line.startswith("ERROR 20137:") for line in lines)
+    assert HmsCmdr._check_run_log(text, FUTURE)[0] is True
+
+
+def test_sample_run_logs_name_their_run():
+    """Every shipped sample run log quotes its own run name in NOTE 15301 and 15302."""
+    for path, name in [(TENK_FINISHED, TENK), (CASTRO_FUTURE_FINISHED, FUTURE)]:
+        text = _text(path)
+        assert re.search(rf'^NOTE 15301:\s+Began computing simulation run "{name}"', text, re.M)
+        assert re.search(rf'^NOTE 15302:\s+Finished computing simulation run "{name}"', text, re.M)
+
+
+def test_new_log_text_is_the_appended_part_or_the_whole_new_file():
+    old, new = TENK_ABORTED.read_bytes(), TENK_FINISHED.read_bytes()
+    assert HmsCmdr._new_log_text(old, old + new) == new.decode()
+    assert HmsCmdr._new_log_text(old, new) == new.decode()      # replaced
+    assert HmsCmdr._new_log_text(None, new) == new.decode()     # new file
 
 
 # ---------------------------------------------------------------------------
-# _verify_run on a real project folder
+# The generated script's failure line, through the HMS 4.x execution path
+# ---------------------------------------------------------------------------
+
+def test_execute_via_java_fails_on_the_script_failure_line(tmp_path, monkeypatch):
+    """HEC-HMS exits with 0 after the 4.10 abort; the stdout line decides."""
+    install = tmp_path / "4.10"
+    (install / "jre" / "bin").mkdir(parents=True)
+    (install / "jre" / "bin" / "java.exe").write_bytes(b"")
+    (install / "hms.jar").write_bytes(b"")
+    script = tmp_path / "hms_script.py"
+    script.write_text("# script")
+    captured = TENK_ABORTED_STDOUT.read_text()
+
+    def fake_run(cmd, **kwargs):
+        return subprocess.CompletedProcess(cmd, 0, stdout=captured, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    ok, stdout, _ = HmsJython._execute_via_java(script, install)
+    assert ok is False and stdout == captured
+
+    finished = "Project opened successfully: tenk\nComputation completed for: Jan 96 storm\n"
+    monkeypatch.setattr(
+        subprocess, "run",
+        lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0, stdout=finished, stderr=""),
+    )
+    assert HmsJython._execute_via_java(script, install)[0] is True
+
+
+# ---------------------------------------------------------------------------
+# _verify_run against a pre-launch snapshot (review 1, finding 1)
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
 def project(tmp_path):
-    dest = tmp_path / "A1000000"
-    shutil.copytree(PROJECT_411, dest)
-    prj = HmsPrj().initialize(dest)
-    return prj
+    """A folder with the shipped tenk.run and castro.run sample files."""
+    folder = tmp_path / "project"
+    folder.mkdir()
+    for name in ("tenk.run", "castro.run"):
+        shutil.copy(RUN_FILES / name, folder / name)
+    return folder
 
 
-def _outputs(prj):
-    return HmsCmdr._run_output_files(prj, RUN, prj.project_folder)
+def _paths(folder, run=TENK):
+    log, dss, problem = HmsCmdr._run_output_files(folder, run)
+    assert problem == ""
+    return log, dss
 
 
-def _write_outputs(prj, log_fixture: Path, age_s: float = 0.0):
-    log_path, dss_path = _outputs(prj)
-    log_path.write_text(log_fixture.read_text())
-    dss_path.write_bytes(b"results")
-    if age_s:
-        old = time.time() - age_s
-        os.utime(log_path, (old, old))
-        os.utime(dss_path, (old, old))
-    return log_path, dss_path
+def _set_mtime_ns(path: Path, mtime_ns: int):
+    os.utime(path, ns=(mtime_ns, mtime_ns))
 
 
 def test_output_names_come_from_the_run_file(project):
-    log_path, dss_path = _outputs(project)
-    assert log_path.name == "A100B100_1_.log"
-    assert dss_path.name == "A1000000.dss"
+    log, dss = _paths(project)
+    assert (log.name, dss.name) == ("Jan_96_storm.log", "Jan_96_storm.dss")
 
 
-def test_fresh_finished_run_is_verified(project):
-    start = time.time()
-    _write_outputs(project, FINISHED_LOG)
-    assert HmsCmdr._verify_run(True, RUN, project.project_folder, start, project) is True
+def test_new_finished_log_and_new_dss_are_verified(project):
+    snap = HmsCmdr._snapshot_run(project, TENK)
+    log, dss = _paths(project)
+    log.write_bytes(TENK_FINISHED.read_bytes())
+    dss.write_bytes(b"results")
+    assert HmsCmdr._verify_run(True, snap) is True
 
 
-def test_fresh_aborted_run_fails_even_with_a_new_dss(project):
+def test_aborted_run_fails_even_with_a_new_dss(project):
     # HEC-HMS 4.10 created the results DSS before it aborted
-    start = time.time()
-    _write_outputs(project, ABORTED_LOG)
-    assert HmsCmdr._verify_run(True, RUN, project.project_folder, start, project) is False
+    snap = HmsCmdr._snapshot_run(project, TENK)
+    log, dss = _paths(project)
+    log.write_bytes(TENK_ABORTED.read_bytes())
+    dss.write_bytes(b"results")
+    assert HmsCmdr._verify_run(True, snap) is False
 
 
-def test_shipped_results_from_an_earlier_run_fail(project):
-    # A finished log and DSS that predate this run (for example a sample's
-    # shipped results) are not evidence that this run computed.
-    _write_outputs(project, FINISHED_LOG, age_s=3600)
-    start = time.time()
-    assert HmsCmdr._verify_run(True, RUN, project.project_folder, start, project) is False
+def test_unchanged_recent_outputs_fail(project):
+    # Written a moment before launch and not touched by the run
+    log, dss = _paths(project)
+    log.write_bytes(TENK_FINISHED.read_bytes())
+    dss.write_bytes(b"results")
+    snap = HmsCmdr._snapshot_run(project, TENK)
+    assert HmsCmdr._verify_run(True, snap) is False
 
 
-def test_stale_results_dss_fails(project):
-    start = time.time()
-    log_path, dss_path = _write_outputs(project, FINISHED_LOG)
-    old = start - 3600
-    os.utime(dss_path, (old, old))
-    assert HmsCmdr._verify_run(True, RUN, project.project_folder, start, project) is False
+@pytest.mark.parametrize("skew_s", [-10, +10])
+def test_changed_outputs_pass_whatever_the_file_server_clock(project, skew_s):
+    """A share whose clock is 10 s behind or ahead of this computer."""
+    log, dss = _paths(project)
+    log.write_bytes(TENK_ABORTED.read_bytes())
+    dss.write_bytes(b"old results")
+    snap = HmsCmdr._snapshot_run(project, TENK)
+    log.write_bytes(TENK_FINISHED.read_bytes())
+    dss.write_bytes(b"new results, written by the run")
+    for path in (log, dss):
+        _set_mtime_ns(path, path.stat().st_mtime_ns + skew_s * 1_000_000_000)
+    assert HmsCmdr._verify_run(True, snap) is True
+
+
+def test_unchanged_outputs_fail_even_with_a_future_time(project):
+    log, dss = _paths(project)
+    log.write_bytes(TENK_FINISHED.read_bytes())
+    dss.write_bytes(b"results")
+    ahead = log.stat().st_mtime_ns + 3600 * 1_000_000_000
+    for path in (log, dss):
+        _set_mtime_ns(path, ahead)
+    snap = HmsCmdr._snapshot_run(project, TENK)
+    assert HmsCmdr._verify_run(True, snap) is False
+
+
+def test_rewrites_with_equal_size_and_time_are_detected(project):
+    """Coarse (FAT, network) timestamps: the content decides."""
+    log, dss = _paths(project)
+    old_log = TENK_FINISHED.read_bytes().replace(b"19:29:", b"18:29:")  # same length
+    log.write_bytes(old_log)
+    dss.write_bytes(b"results A")
+    stamp_log, stamp_dss = log.stat().st_mtime_ns, dss.stat().st_mtime_ns
+    snap = HmsCmdr._snapshot_run(project, TENK)
+    log.write_bytes(TENK_FINISHED.read_bytes())
+    dss.write_bytes(b"results B")
+    _set_mtime_ns(log, stamp_log)
+    _set_mtime_ns(dss, stamp_dss)
+    assert len(old_log) == log.stat().st_size
+    assert HmsCmdr._verify_run(True, snap) is True
+
+
+def test_unchanged_dss_fails_although_the_log_changed(project):
+    log, dss = _paths(project)
+    dss.write_bytes(b"results")
+    snap = HmsCmdr._snapshot_run(project, TENK)
+    log.write_bytes(TENK_FINISHED.read_bytes())
+    assert HmsCmdr._verify_run(True, snap) is False
+
+
+def test_appended_log_is_judged_by_the_new_part_only(project):
+    log, dss = _paths(project)
+    log.write_bytes(TENK_FINISHED.read_bytes())     # an earlier, finished run
+    snap = HmsCmdr._snapshot_run(project, TENK)
+    log.write_bytes(TENK_FINISHED.read_bytes() + TENK_ABORTED.read_bytes())
+    dss.write_bytes(b"results")
+    assert HmsCmdr._verify_run(True, snap) is False
 
 
 def test_missing_log_fails(project):
-    log_path, _ = _outputs(project)
-    log_path.unlink(missing_ok=True)
-    assert HmsCmdr._verify_run(True, RUN, project.project_folder, time.time(), project) is False
+    snap = HmsCmdr._snapshot_run(project, TENK)
+    _, dss = _paths(project)
+    dss.write_bytes(b"results")
+    assert HmsCmdr._verify_run(True, snap) is False
 
 
 def test_failed_script_stays_a_failure(project):
-    start = time.time()
-    _write_outputs(project, FINISHED_LOG)
-    assert HmsCmdr._verify_run(False, RUN, project.project_folder, start, project) is False
+    snap = HmsCmdr._snapshot_run(project, TENK)
+    log, dss = _paths(project)
+    log.write_bytes(TENK_FINISHED.read_bytes())
+    dss.write_bytes(b"results")
+    assert HmsCmdr._verify_run(False, snap) is False
 
 
 def test_failure_reason_and_log_lines_are_logged(project, caplog):
-    import logging
-    start = time.time()
-    _write_outputs(project, ABORTED_LOG)
+    snap = HmsCmdr._snapshot_run(project, TENK)
+    log, dss = _paths(project)
+    log.write_bytes(TENK_ABORTED.read_bytes())
+    dss.write_bytes(b"results")
     logger = logging.getLogger("hms_commander.HmsCmdr")
     logger.addHandler(caplog.handler)
     try:
         with caplog.at_level(logging.ERROR, logger="hms_commander.HmsCmdr"):
-            HmsCmdr._verify_run(True, RUN, project.project_folder, start, project)
+            HmsCmdr._verify_run(True, snap)
     finally:
         logger.removeHandler(caplog.handler)
-    text = caplog.text
-    assert "aborted the run" in text
-    assert "ERROR 20137" in text
+    assert "aborted the run" in caplog.text
+    assert "ERROR 20137" in caplog.text
+
+
+# Review 1, finding 2: a log file shared by two runs
+
+
+@pytest.fixture
+def shared_project(project):
+    """tenk.run and castro.run with "Jan 96 storm" and "Future" writing shared.log."""
+    for name in ("tenk.run", "castro.run"):
+        path = project / name
+        path.write_text(re.sub(r"Log File: .*", "Log File: shared.log", path.read_text()))
+    return project
+
+
+def test_shared_log_runs_are_detected(shared_project):
+    groups = HmsCmdr._shared_log_runs(shared_project, [TENK, FUTURE, "Current"])
+    assert list(groups.values()) == [[TENK, FUTURE, "Current"]]
+
+
+@pytest.mark.parametrize(
+    "target_block, other_block, target_ok",
+    [(TENK_FINISHED, CASTRO_FUTURE_ABORTED, True), (TENK_ABORTED, CASTRO_FUTURE_FINISHED, False)],
+)
+def test_shared_log_credits_each_run_with_its_own_block(shared_project, target_block, other_block, target_ok):
+    snaps = {run: HmsCmdr._snapshot_run(shared_project, run) for run in (TENK, FUTURE)}
+    log, tenk_dss = _paths(shared_project, TENK)
+    _, future_dss = _paths(shared_project, FUTURE)
+    for order in ([target_block, other_block], [other_block, target_block]):
+        log.write_bytes(_bytes(*order))
+        tenk_dss.write_bytes(b"tenk results")
+        future_dss.write_bytes(b"castro results")
+        assert HmsCmdr._verify_run(True, snaps[TENK]) is target_ok
+        assert HmsCmdr._verify_run(True, snaps[FUTURE]) is (not target_ok)
+        for path in (log, tenk_dss, future_dss):
+            path.unlink()
+
+
+def test_shared_log_overwritten_by_a_later_run_fails_the_earlier_run(shared_project):
+    # Observed with HEC-HMS 4.13: in one batch session, a shared Log File holds
+    # only the last run's section.
+    snaps = {run: HmsCmdr._snapshot_run(shared_project, run) for run in (TENK, FUTURE)}
+    log, tenk_dss = _paths(shared_project, TENK)
+    _, future_dss = _paths(shared_project, FUTURE)
+    log.write_bytes(CASTRO_FUTURE_FINISHED.read_bytes())
+    tenk_dss.write_bytes(b"tenk results")
+    future_dss.write_bytes(b"castro results")
+    assert HmsCmdr._verify_run(True, snaps[TENK]) is False
+    assert HmsCmdr._verify_run(True, snaps[FUTURE]) is True
+
+
+# Review 1, finding 5: results DSS (and log) metadata that cannot be found
+
+
+def _edit_tenk_run(folder: Path, pattern: str, replacement: str):
+    path = folder / "tenk.run"
+    text = path.read_text()
+    assert re.search(pattern, text)
+    path.write_text(re.sub(pattern, replacement, text))
+
+
+@pytest.mark.parametrize(
+    "pattern, replacement, words",
+    [
+        (r"     DSS File: .*\n", "", "DSS File"),             # entry missing
+        (r"DSS File: .*", "DSS File: ", "DSS File"),          # entry blank
+        (r"     Log File: .*\n", "", "Log File"),             # log entry missing
+    ],
+)
+def test_missing_output_metadata_fails_clearly(project, pattern, replacement, words, caplog):
+    _edit_tenk_run(project, pattern, replacement)
+    snap = HmsCmdr._snapshot_run(project, TENK)
+    (project / "Jan_96_storm.log").write_bytes(TENK_FINISHED.read_bytes())
+    (project / "Jan_96_storm.dss").write_bytes(b"results")
+    logger = logging.getLogger("hms_commander.HmsCmdr")
+    logger.addHandler(caplog.handler)
+    try:
+        with caplog.at_level(logging.ERROR, logger="hms_commander.HmsCmdr"):
+            assert HmsCmdr._verify_run(True, snap) is False
+    finally:
+        logger.removeHandler(caplog.handler)
+    assert words in caplog.text and "cannot be verified" in caplog.text
+
+
+def test_run_missing_from_the_run_files_fails(project):
+    snap = HmsCmdr._snapshot_run(project, "No such run")
+    assert "not defined" in snap["problem"]
+    assert HmsCmdr._verify_run(True, snap) is False
+
+
+def test_run_metadata_is_read_from_the_working_folder(project):
+    # The .run file as it is now, not a DataFrame loaded earlier
+    _edit_tenk_run(project, r"DSS File: .*", "DSS File: renamed.dss")
+    _, dss = _paths(project)
+    assert dss.name == "renamed.dss"
 
 
 # ---------------------------------------------------------------------------
-# Version selection
+# Version selection (review 1, findings 3 and 4)
 # ---------------------------------------------------------------------------
+
+def _layout(tmp_path, names):
+    """A folder layout like C:/Program Files/HEC/HEC-HMS with the given versions."""
+    base = tmp_path / "HEC-HMS"
+    base.mkdir(exist_ok=True)
+    for name in names:
+        (base / name).mkdir()
+        (base / name / "hms.jar").write_bytes(b"")
+    return base
+
 
 @pytest.fixture
 def installs(tmp_path):
-    """A folder layout like C:/Program Files/HEC/HEC-HMS with several versions."""
-    base = tmp_path / "HEC-HMS"
-    for name in ["4.7.1", "4.9", "4.10", "4.11", "4.13"]:
-        (base / name).mkdir(parents=True)
-        (base / name / "hms.jar").write_bytes(b"")
+    base = _layout(tmp_path, ["4.7.1", "4.9", "4.10", "4.11", "4.13"])
     (base / "notes").mkdir()  # not an installation
     return base
 
 
-def _find(installs, version=None):
+def _find(base, version=None):
     return HmsJython.find_hms_executable(
-        version=version, search_paths=[installs], include_defaults=False
+        version=version, search_paths=[base], include_defaults=False
     )
+
+
+def _name(path):
+    return path.name if path is not None else None
 
 
 def test_installs_are_ordered_by_number(installs):
@@ -199,27 +430,77 @@ def test_project_version_is_selected_exactly(installs):
     assert _find(installs, version).name == "4.11"
 
 
-def test_same_major_minor_is_used(installs):
+def test_newer_patch_of_the_same_minor_is_used(installs):
     assert _find(installs, "4.7").name == "4.7.1"
 
 
-def test_next_newer_version_is_used(installs):
+def test_next_newer_minor_is_used(installs):
     assert _find(installs, "4.12").name == "4.13"
     version = HmsPrj().initialize(PROJECT_33).hms_version
     assert version == "3.3"
     assert _find(installs, version).name == "4.7.1"
 
 
-def test_an_older_version_is_never_substituted(installs):
+def test_an_older_minor_is_never_substituted(installs):
     shutil.rmtree(installs / "4.13")
     assert _find(installs, "4.13") is None
     assert _find(installs, "4.14") is None
 
 
-def test_compute_setup_uses_the_project_version(installs, tmp_path):
+@pytest.mark.parametrize(
+    "installed, wanted, expected",
+    [
+        (["4.4", "4.5", "4.13"], "4.4.1", "4.5"),        # older patch skipped
+        (["4.4"], "4.4.1", None),                         # only an older patch
+        (["4.4", "4.4.2", "4.4.3"], "4.4.1", "4.4.3"),    # newer patch, same minor
+        (["4.4.0", "4.5"], "4.4", "4.4.0"),               # 4.4.0 equals 4.4
+        (["4.5", "4.6", "4.6.1"], "4.4.1", "4.5"),        # nearest newer minor
+    ],
+)
+def test_patch_versions(tmp_path, installed, wanted, expected):
+    assert _name(_find(_layout(tmp_path, installed), wanted)) == expected
+
+
+@pytest.mark.parametrize(
+    "installed, wanted, expected",
+    [
+        (["4.10", "4.13"], "4.13-beta", "4.13"),          # release after its beta
+        (["4.13-beta"], "4.13-beta", "4.13-beta"),        # exact name first
+        (["4.13-beta", "4.12"], "4.13", None),            # a beta is older than 4.13
+        (["4.13-beta", "4.13"], None, "4.13"),            # newest is the release
+        (["4.12", "4.13-beta"], "4.12.1", "4.13-beta"),   # next newer minor
+        (["4.13-rc1", "4.13-beta"], "4.13-alpha", "4.13-rc1"),
+    ],
+)
+def test_suffixed_versions(tmp_path, installed, wanted, expected):
+    assert _name(_find(_layout(tmp_path, installed), wanted)) == expected
+
+
+def test_version_ordering():
+    names = ["4.13", "4.13.1", "4.9", "4.13-beta", "4.10", "4.13-rc1", "4.4", "4.4.1"]
+    assert sorted(names, key=HmsJython._parse_version_text) == [
+        "4.4", "4.4.1", "4.9", "4.10", "4.13-beta", "4.13-rc1", "4.13", "4.13.1"
+    ]
+    assert HmsJython._parse_version_text("4.4.0") == HmsJython._parse_version_text("4.4")
+    assert HmsJython._parse_version_text("not a version") is None
+
+
+def test_runtime_version_of_a_suffixed_folder(tmp_path):
+    assert HmsJython._get_hms_version(tmp_path / "4.13-beta") == (4, 13)
+    assert HmsJython._get_hms_version(tmp_path / "4.7.1") == (4, 7, 1)
+
+
+def _project(tmp_path, version=None):
     dest = tmp_path / "A1000000"
     shutil.copytree(PROJECT_411, dest)
-    prj = HmsPrj().initialize(dest)
+    if version is not None:
+        hms = dest / "A1000000.hms"
+        hms.write_text(re.sub(r"Version: .*", f"Version: {version}", hms.read_text()))
+    return HmsPrj().initialize(dest)
+
+
+def test_compute_setup_uses_the_project_version(installs, tmp_path):
+    prj = _project(tmp_path)
     exe = HmsCmdr._ensure_hms_executable(prj, search_paths=[installs], include_defaults=False)
     assert exe.name == "4.11" and prj.hms_exe_path == exe
 
@@ -227,24 +508,50 @@ def test_compute_setup_uses_the_project_version(installs, tmp_path):
 def test_compute_setup_refuses_when_only_older_versions_exist(installs, tmp_path):
     for name in ["4.11", "4.13"]:
         shutil.rmtree(installs / name)
-    dest = tmp_path / "A1000000"
-    shutil.copytree(PROJECT_411, dest)
-    prj = HmsPrj().initialize(dest)
+    prj = _project(tmp_path)
     with pytest.raises(RuntimeError, match="4.11"):
         HmsCmdr._ensure_hms_executable(prj, search_paths=[installs], include_defaults=False)
     assert prj.hms_exe_path is None
 
 
-def test_explicit_executable_is_kept(installs, tmp_path):
-    dest = tmp_path / "A1000000"
-    shutil.copytree(PROJECT_411, dest)
-    prj = HmsPrj().initialize(dest, hms_exe_path=installs / "4.9")
-    exe = HmsCmdr._ensure_hms_executable(prj, search_paths=[installs], include_defaults=False)
-    assert exe == installs / "4.9"
+def test_compute_setup_refuses_an_older_patch(tmp_path):
+    base = _layout(tmp_path, ["4.4"])
+    prj = _project(tmp_path, "4.4.1")
+    with pytest.raises(RuntimeError, match="4.4.1"):
+        HmsCmdr._ensure_hms_executable(prj, search_paths=[base], include_defaults=False)
+
+
+def test_compute_setup_accepts_a_suffixed_project_version(tmp_path):
+    base = _layout(tmp_path, ["4.10", "4.13"])
+    prj = _project(tmp_path, "4.13-beta")
+    exe = HmsCmdr._ensure_hms_executable(prj, search_paths=[base], include_defaults=False)
+    assert exe.name == "4.13"
+
+
+def test_compute_setup_names_an_unparseable_version(tmp_path):
+    base = _layout(tmp_path, ["4.13"])
+    prj = _project(tmp_path, "custom build")
+    with pytest.raises(RuntimeError, match="not a version format"):
+        HmsCmdr._ensure_hms_executable(prj, search_paths=[base], include_defaults=False)
+
+
+def test_explicit_executable_is_kept_with_a_warning_for_an_older_patch(tmp_path, caplog):
+    base = _layout(tmp_path, ["4.4", "4.13"])
+    prj = _project(tmp_path, "4.4.1")
+    prj.hms_exe_path = base / "4.4"
+    logger = logging.getLogger("hms_commander.HmsCmdr")
+    logger.addHandler(caplog.handler)
+    try:
+        with caplog.at_level(logging.WARNING, logger="hms_commander.HmsCmdr"):
+            exe = HmsCmdr._ensure_hms_executable(prj, search_paths=[base], include_defaults=False)
+    finally:
+        logger.removeHandler(caplog.handler)
+    assert exe == base / "4.4"
+    assert "older than the project's version 4.4.1" in caplog.text
 
 
 # ---------------------------------------------------------------------------
-# Real HEC-HMS: tenk with its own version and with a mismatched one
+# Real HEC-HMS
 # ---------------------------------------------------------------------------
 
 def _installed(version):
@@ -254,10 +561,10 @@ def _installed(version):
         return None
 
 
-def _fresh_tenk(tmp_path, name):
-    folder = HmsExamples.extract_project("tenk", version="4.13", output_path=tmp_path / name)
-    for stale in ("Jan_96_storm.dss", "Jan_96_storm.log"):
-        (folder / stale).unlink(missing_ok=True)
+def _fresh(tmp_path, project, name, stale):
+    folder = HmsExamples.extract_project(project, version="4.13", output_path=tmp_path / name)
+    for f in stale:
+        (folder / f).unlink(missing_ok=True)
     return folder
 
 
@@ -267,10 +574,10 @@ def _fresh_tenk(tmp_path, name):
 def test_tenk_computes_with_its_declared_version(tmp_path):
     if _installed("4.13") is None:
         pytest.skip("HEC-HMS 4.13 not installed")
-    folder = _fresh_tenk(tmp_path, "own")
+    folder = _fresh(tmp_path, "tenk", "own", ["Jan_96_storm.dss", "Jan_96_storm.log"])
     prj = HmsPrj().initialize(folder)  # no hms_exe_path: chosen from Version: 4.13
     assert prj.hms_version == "4.13"
-    assert HmsCmdr.compute_run("Jan 96 storm", hms_object=prj, timeout=900) is True
+    assert HmsCmdr.compute_run(TENK, hms_object=prj, timeout=900) is True
     assert Path(prj.hms_exe_path).name == "4.13"
     assert "NOTE 15302" in (folder / "Jan_96_storm.log").read_text()
 
@@ -281,7 +588,45 @@ def test_tenk_computes_with_its_declared_version(tmp_path):
 def test_tenk_on_hms_410_is_reported_as_failed(tmp_path):
     if _installed("4.13") is None or _installed("4.10") is None:
         pytest.skip("HEC-HMS 4.13 sample and HEC-HMS 4.10 both needed")
-    folder = _fresh_tenk(tmp_path, "mismatch")
+    folder = _fresh(tmp_path, "tenk", "mismatch", ["Jan_96_storm.dss", "Jan_96_storm.log"])
     prj = HmsPrj().initialize(folder, hms_exe_path=_installed("4.10"))
-    assert HmsCmdr.compute_run("Jan 96 storm", hms_object=prj, timeout=900) is False
+    assert HmsCmdr.compute_run(TENK, hms_object=prj, timeout=900) is False
     assert "WARNING 15303" in (folder / "Jan_96_storm.log").read_text()
+
+
+@pytest.mark.requires_hms
+@pytest.mark.local_hms
+@pytest.mark.slow
+def test_tenk_recompute_over_shipped_results_is_verified(tmp_path):
+    """The shipped finished log and DSS are replaced by this run's."""
+    if _installed("4.13") is None:
+        pytest.skip("HEC-HMS 4.13 not installed")
+    folder = _fresh(tmp_path, "tenk", "shipped", [])
+    assert (folder / "Jan_96_storm.log").exists()
+    prj = HmsPrj().initialize(folder)
+    assert HmsCmdr.compute_run(TENK, hms_object=prj, timeout=900) is True
+
+
+@pytest.mark.requires_hms
+@pytest.mark.local_hms
+@pytest.mark.slow
+def test_castro_batch_with_separate_and_shared_logs(tmp_path):
+    if _installed("4.13") is None:
+        pytest.skip("HEC-HMS 4.13 not installed")
+    stale = ["Current.dss", "Future.dss", "Current.log", "Future.log"]
+
+    separate = _fresh(tmp_path, "castro", "separate", stale)
+    prj = HmsPrj().initialize(separate)
+    assert HmsCmdr.compute_batch(["Current", "Future"], hms_object=prj) == {
+        "Current": True, "Future": True,
+    }
+
+    shared = _fresh(tmp_path, "castro", "shared", stale)
+    run_file = shared / "castro.run"
+    run_file.write_text(re.sub(r"Log File: .*", "Log File: shared.log", run_file.read_text()))
+    prj = HmsPrj().initialize(shared)
+    # HEC-HMS rewrites the shared log for each run, so only the last run's
+    # section remains; the first run cannot be verified.
+    assert HmsCmdr.compute_batch(["Current", "Future"], hms_object=prj) == {
+        "Current": False, "Future": True,
+    }

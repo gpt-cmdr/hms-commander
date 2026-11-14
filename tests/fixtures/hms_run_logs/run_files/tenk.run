@@ -1,0 +1,18 @@
+Run: Jan 96 storm
+     Description: Base conditions for January 1996
+     Log File: Jan_96_storm.log
+     DSS File: Jan_96_storm.dss
+     Is Save Spatial Results: No
+     Last Modified Date: 16 September 2018
+     Last Modified Time: 13:57:07
+     Last Execution Date: 2 April 2021
+     Last Execution Time: 00:30:07
+     Basin: Tenk 1
+     Precip: Stage3-HRAP
+     Control: Jan 96
+     Save State Type: None
+     Time-Series Output: Save All
+     Time Series Results Manager Start:
+     Time Series Results Manager End:
+End:
+
