@@ -27,7 +27,7 @@ from .LoggingConfig import get_logger
 from .Decorators import log_call
 from .HmsJython import HmsJython
 from ._constants import DEFAULT_EXECUTION_TIMEOUT
-from ._run_lock import OutputLock
+from ._run_lock import OutputLock, move_no_replace, remaining
 
 logger = get_logger(__name__)
 
@@ -103,7 +103,9 @@ class HmsCmdr:
             dest_folder: Optional destination folder for execution
                         (copies project there first)
             overwrite_dest: Whether to overwrite existing destination
-            timeout: Maximum execution time in seconds
+            timeout: Seconds for the whole call: waiting for another compute
+                on the same ``dest_folder`` or output files, and running HEC-HMS
+                (which gets only the time left after any wait)
             save_project: Whether to save project after computation
             max_memory: Maximum JVM heap size (default: "4G")
                        Examples: "4G", "8G", "16G" for large models
@@ -146,7 +148,10 @@ class HmsCmdr:
                 automatically. Also if this thread is already computing with
                 the same output files (a nested call).
             TimeoutError: If another compute holds the run's output files
-                (or ``dest_folder``) for longer than ``timeout`` seconds.
+                (or ``dest_folder``) until ``timeout`` runs out, or no time is
+                left to run HEC-HMS once they are free. ``timeout`` is one
+                budget for waiting and running; HEC-HMS gets only what is
+                left after any wait.
 
         Note:
             Without ``hms_exe_path``, the HEC-HMS version is chosen from the
@@ -168,10 +173,13 @@ class HmsCmdr:
 
         HmsCmdr._ensure_hms_executable(hms_obj)
 
+        # One budget for the whole call: waiting for locks and running HEC-HMS.
+        deadline = time.monotonic() + timeout
+
         # A copied destination folder is locked while it is filled and
         # computed, so a concurrent call cannot replace it meanwhile.
         dest_lock = (
-            OutputLock([Path(dest_folder)], timeout, purpose=f"copy for run '{run_name}'")
+            OutputLock([Path(dest_folder)], deadline, purpose=f"copy for run '{run_name}'")
             if dest_folder else contextlib.nullcontext()
         )
         with dest_lock:
@@ -202,7 +210,8 @@ class HmsCmdr:
                 timeout=timeout,
                 max_memory=max_memory,
                 initial_memory=initial_memory,
-                additional_java_opts=additional_java_opts
+                additional_java_opts=additional_java_opts,
+                deadline=deadline,
             )
 
         if success:
@@ -240,7 +249,9 @@ class HmsCmdr:
             max_workers: Maximum number of parallel workers
             hms_object: Optional HmsPrj instance
             dest_folder: Base folder for worker copies
-            timeout_per_run: Timeout per individual run in seconds
+            timeout_per_run: Seconds for each run, from when it gets a worker
+                folder: waiting for another compute on the same folder or
+                output files, and running HEC-HMS
             max_memory: Maximum JVM heap size (default: "4G")
             initial_memory: Initial JVM heap size (default: "128M")
             additional_java_opts: Extra JVM options
@@ -252,6 +263,9 @@ class HmsCmdr:
             record). If no ``hms_exe_path`` is set, the HEC-HMS version is
             chosen as in :meth:`compute_run`; RuntimeError is raised when no
             installation suits the project's ``Version:``.
+            A run whose worker folder or output files another compute holds
+            until ``timeout_per_run`` runs out is reported as False, with the
+            ``TimeoutError`` logged; the other runs continue.
 
         Example:
             >>> results = HmsCmdr.compute_parallel(
@@ -300,11 +314,14 @@ class HmsCmdr:
             """Execute a single run in a free worker folder."""
             worker_id = free_workers.get()
             worker_folder = base_dest / f"worker_{worker_id}"
+            # The run's budget (lock waits and execution) starts once it has
+            # a worker folder.
+            deadline = time.monotonic() + timeout_per_run
 
             try:
                 # The worker folder is also locked across processes, in case
                 # another call uses the same dest_folder.
-                with OutputLock([worker_folder], timeout_per_run,
+                with OutputLock([worker_folder], deadline,
                                 purpose=f"worker for run '{run_name}'"):
                     # Copy project to worker folder
                     working_project = HmsCmdr._copy_project(
@@ -326,7 +343,8 @@ class HmsCmdr:
                         timeout=timeout_per_run,
                         max_memory=max_memory,
                         initial_memory=initial_memory,
-                        additional_java_opts=additional_java_opts
+                        additional_java_opts=additional_java_opts,
+                        deadline=deadline,
                     )
                 return run_name, success
 
@@ -378,7 +396,8 @@ class HmsCmdr:
             run_names: List of run names to execute
             hms_object: Optional HmsPrj instance
             save_after_each: Whether to save project after each run
-            timeout: Total timeout for all runs in seconds
+            timeout: Seconds for the whole batch: every wait for another
+                compute on the same output files and every HEC-HMS session
             max_memory: Maximum JVM heap size (default: "4G")
             initial_memory: Initial JVM heap size (default: "128M")
             additional_java_opts: Extra JVM options
@@ -396,6 +415,15 @@ class HmsCmdr:
             starts. ``timeout`` then covers all of these sessions together.
             Runs that share a ``DSS File:`` cannot tell from the DSS file
             which of them wrote it, so the log decides.
+
+        Raises:
+            RuntimeError: If the project is not initialized, or no
+                installation suits the project's ``Version:``.
+            TimeoutError: If another compute holds the runs' output files
+                until ``timeout`` runs out, or no time is left to run HEC-HMS
+                once they are free. With per-run sessions, runs completed
+                before that are not reported; a run reached after the budget is
+                used up without waiting is reported as False.
 
         Example:
             >>> results = HmsCmdr.compute_batch(["Run 1", "Run 2", "Run 3"])
@@ -415,6 +443,8 @@ class HmsCmdr:
         logger.info(f"Starting batch execution of {len(run_names)} runs")
 
         project_folder = hms_obj.project_folder
+        # One budget for the whole batch: lock waits and every HEC-HMS session.
+        deadline = time.monotonic() + timeout
         shared = HmsCmdr._shared_log_runs(project_folder, run_names)
         results: Dict[str, bool] = {}
 
@@ -429,10 +459,8 @@ class HmsCmdr:
                     "computing each run in its own HEC-HMS session so that each "
                     "can be verified before the next."
                 )
-            deadline = time.monotonic() + timeout
             for run_name in run_names:
-                remaining = int(deadline - time.monotonic())
-                if remaining <= 0:
+                if remaining(deadline) <= 0:
                     logger.error(
                         f"Run '{run_name}' not computed: the batch timeout of "
                         f"{timeout} s was used up by earlier runs."
@@ -447,10 +475,11 @@ class HmsCmdr:
                 verified, stdout, _ = HmsCmdr._execute_and_verify(
                     run_name, project_folder, script,
                     hms_exe_path=hms_obj.hms_exe_path,
-                    timeout=remaining,
+                    timeout=timeout,
                     max_memory=max_memory,
                     initial_memory=initial_memory,
                     additional_java_opts=additional_java_opts,
+                    deadline=deadline,
                 )
                 results[run_name] = verified
         else:
@@ -465,11 +494,19 @@ class HmsCmdr:
             outputs = []
             for name in run_names:
                 outputs.extend(HmsCmdr._run_output_files(project_folder, name)[:2])
-            with OutputLock(outputs, timeout, purpose=f"batch in {Path(project_folder).name}"):
+            with OutputLock(outputs, deadline, purpose=f"batch in {Path(project_folder).name}"):
                 snapshots = {
                     name: HmsCmdr._snapshot_run(project_folder, name)
                     for name in run_names
                 }
+                session_budget = remaining(deadline)
+                if session_budget <= 0:
+                    for snapshot in snapshots.values():
+                        HmsCmdr._release_snapshot(snapshot)
+                    raise TimeoutError(
+                        "Batch not started: its time budget was used up waiting for "
+                        "other computes on the same files."
+                    )
 
                 # Execute
                 try:
@@ -477,7 +514,7 @@ class HmsCmdr:
                         script_content=script,
                         hms_exe_path=hms_obj.hms_exe_path,
                         working_dir=project_folder,
-                        timeout=timeout,
+                        timeout=session_budget,
                         max_memory=max_memory,
                         initial_memory=initial_memory,
                         additional_java_opts=additional_java_opts
@@ -532,7 +569,9 @@ class HmsCmdr:
             parameter_modifications: Dictionary of element -> parameter changes
             hms_object: Optional HmsPrj instance
             dest_folder: Destination for modified project
-            timeout: Execution timeout in seconds
+            timeout: Seconds for the whole call: waiting for another compute
+                on the same destination or output files, and running HEC-HMS
+                (which gets only the time left after any wait)
             max_memory: Maximum JVM heap size (default: "4G")
             initial_memory: Initial JVM heap size (default: "128M")
             additional_java_opts: Extra JVM options
@@ -544,6 +583,13 @@ class HmsCmdr:
             record). If no ``hms_exe_path`` is set, the HEC-HMS version is
             chosen as in :meth:`compute_run`; RuntimeError is raised when no
             installation suits the project's ``Version:``.
+
+        Raises:
+            RuntimeError: If the project is not initialized, or no
+                installation suits the project's ``Version:``.
+            TimeoutError: If another compute holds ``dest_folder`` or the run's
+                output files until ``timeout`` runs out, or no time is left to
+                run HEC-HMS once they are free.
 
         Example:
             >>> mods = {
@@ -572,7 +618,9 @@ class HmsCmdr:
         # The destination is locked while it is filled and computed, so a
         # concurrent call with the same dest_folder waits instead of
         # replacing it.
-        with OutputLock([dest_folder], timeout, purpose=f"copy for run '{run_name}'"):
+        # One budget for the whole call: waiting for locks and running HEC-HMS.
+        deadline = time.monotonic() + timeout
+        with OutputLock([dest_folder], deadline, purpose=f"copy for run '{run_name}'"):
             # Copy project
             working_project = HmsCmdr._copy_project(
                 hms_obj.project_folder,
@@ -597,7 +645,8 @@ class HmsCmdr:
                 timeout=timeout,
                 max_memory=max_memory,
                 initial_memory=initial_memory,
-                additional_java_opts=additional_java_opts
+                additional_java_opts=additional_java_opts,
+                deadline=deadline,
             )
 
         if success:
@@ -773,6 +822,7 @@ class HmsCmdr:
         max_memory: str = None,
         initial_memory: str = None,
         additional_java_opts: Optional[List[str]] = None,
+        deadline: Optional[float] = None,
     ) -> Tuple[bool, str, str]:
         """
         Lock one run's outputs, snapshot them, execute ``script`` in
@@ -782,27 +832,39 @@ class HmsCmdr:
         across threads and processes from before the snapshot until
         verification and clean-up are done, so another compute cannot write
         them in between and have its outputs credited to this run. Computes
-        on other output files are not blocked. The lock wait counts against
-        ``timeout``.
+        on other output files are not blocked.
+
+        One budget covers waiting and running: ``deadline`` (a
+        ``time.monotonic()`` value; default ``now + timeout``) bounds the
+        lock wait, and HEC-HMS is then given only the time left before it.
 
         Returns:
             Tuple of (verified success, stdout, stderr). If execution raises,
             the prior run log is put back before the exception propagates.
 
         Raises:
-            TimeoutError: If another compute holds the outputs for longer
-                than ``timeout`` seconds.
+            TimeoutError: If the outputs cannot be locked before the
+                deadline, or no time is left to run HEC-HMS once they are.
         """
+        if deadline is None:
+            deadline = time.monotonic() + timeout
         log_path, dss_path, _ = HmsCmdr._run_output_files(project_folder, run_name)
-        with OutputLock([log_path, dss_path], timeout,
+        with OutputLock([log_path, dss_path], deadline,
                         purpose=f"run '{run_name}' in {Path(project_folder).name}"):
             snapshot = HmsCmdr._snapshot_run(project_folder, run_name)
+            run_budget = remaining(deadline)
+            if run_budget <= 0:
+                HmsCmdr._release_snapshot(snapshot)
+                raise TimeoutError(
+                    f"Run '{run_name}' not started: its time budget was used up "
+                    "waiting for other computes on the same files."
+                )
             try:
                 success, stdout, stderr = HmsJython.execute_script(
                     script_content=script,
                     hms_exe_path=hms_exe_path,
                     working_dir=project_folder,
-                    timeout=timeout,
+                    timeout=run_budget,
                     max_memory=max_memory,
                     initial_memory=initial_memory,
                     additional_java_opts=additional_java_opts,
@@ -838,21 +900,6 @@ class HmsCmdr:
             return []
 
     @staticmethod
-    def _move_no_clobber(src: Path, dst: Path) -> None:
-        """Move ``src`` to ``dst``; raise FileExistsError rather than replace an existing ``dst``."""
-        try:
-            os.link(src, dst)        # fails with FileExistsError if dst exists
-        except FileExistsError:
-            raise
-        except OSError:
-            # No hard links here (for example FAT): check, then rename.
-            if dst.exists():
-                raise FileExistsError(f"{dst} already exists")
-            os.rename(src, dst)
-            return
-        os.unlink(src)
-
-    @staticmethod
     def _recover_orphan_backups(log_path: Path) -> List[Path]:
         """
         Deal with backups that an interrupted compute left beside ``log_path``.
@@ -877,7 +924,7 @@ class HmsCmdr:
             return []
         if not log_path.exists() and len(orphans) == 1:
             try:
-                HmsCmdr._move_no_clobber(orphans[0], log_path)
+                move_no_replace(orphans[0], log_path)
                 logger.warning(
                     f"Restored {log_path.name} from {orphans[0].name}, left by an "
                     "interrupted compute that wrote no new log."
@@ -928,7 +975,7 @@ class HmsCmdr:
             snapshot["dss"] = HmsCmdr._file_state(dss_path, _DSS_HASH_LIMIT_BYTES)
             if log_path.exists():
                 backup = log_path.with_name(log_path.name + _LOG_BACKUP_INFIX + uuid.uuid4().hex)
-                HmsCmdr._move_no_clobber(log_path, backup)
+                move_no_replace(log_path, backup)
                 snapshot["log_backup"] = backup
         except OSError as e:
             snapshot["problem"] = f"could not prepare the run outputs before the run: {e}"
@@ -953,7 +1000,7 @@ class HmsCmdr:
             if log_path.exists():
                 backup.unlink(missing_ok=True)
             elif backup.exists():
-                HmsCmdr._move_no_clobber(backup, log_path)
+                move_no_replace(backup, log_path)
         except OSError as e:
             logger.warning(f"Could not tidy the prior run log {backup.name}: {e}")
 

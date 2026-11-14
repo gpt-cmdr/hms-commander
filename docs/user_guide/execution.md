@@ -52,7 +52,10 @@ during the call. Before HEC-HMS starts, HMS Commander reads the run's `Log File:
 [Concurrent Computes](#concurrent-computes)) and then prepares them:
 
 - An existing run log is moved aside to `<log name>.hms-commander-prev-<32 hex>`, a
-  name unique to this call, in the same folder. An existing file is never replaced.
+  name unique to this call, in the same folder. An existing file is never replaced:
+  the move is a hard link and delete, or a no-replace rename (Windows `MoveFile`,
+  Linux `renameat2(RENAME_NOREPLACE)`), or an exclusive create and copy. If none of
+  these is possible, the run fails without moving anything.
   Any run log present after the run was therefore written while this call held the
   lock, even when its bytes equal the earlier log's. If the run writes a new log, the
   backup is deleted, as HEC-HMS replaces a run's log when it computes the run. If
@@ -118,16 +121,35 @@ same way while they are filled and computed.
 - **Independent runs are not held up.** Runs that write their own log and DSS files
   compute at the same time, even in one project folder. Runs that share a log or DSS
   file take turns.
-- **Waiting is bounded.** A compute waits up to its `timeout` for another compute on
-  the same files, then raises `TimeoutError` naming the holder (process id, host,
-  run). A nested compute on the same files in the same thread raises `RuntimeError`
-  at once instead of waiting for itself.
-- **Lock files.** A lock is an operating-system lock on a file named
-  `<file>.hms-commander-lock` beside the locked file. It is deleted on release. If a
-  process dies while holding a lock, the operating system releases it, and the next
-  compute logs a warning naming the dead holder and takes the lock over, so a crash
-  never leaves the project blocked. On a network share, this relies on the share
-  honouring byte-range locks: SMB shares do, NFS may not.
+- **One time budget.** `timeout` (or `timeout_per_run` for `compute_parallel()`)
+  covers both waiting for another compute on the same files and running HEC-HMS.
+  HEC-HMS gets only the time left after any wait; in `compute_batch()` every wait
+  and every session share the one `timeout`. If the files are still held when the
+  budget runs out, or no time is left once they are free, HEC-HMS is not started
+  and `TimeoutError` is raised, naming the holder (process id, host, run).
+  `compute_parallel()` reports such a run as `False` and logs the error. A nested
+  compute on the same files in the same thread raises `RuntimeError` at once
+  instead of waiting for itself.
+- **Lock files.** A lock is an operating-system lock (`msvcrt.locking` on Windows,
+  `fcntl.flock` elsewhere) on a file named `<file>.hms-commander-lock` beside the
+  locked file. Lock files are kept: on release the holder clears its record and
+  unlocks, but never deletes the file. Deleting it could let two processes hold
+  the lock at once on Linux and macOS. An empty lock file is an unlocked lock, and
+  you can delete lock files when no compute is running. If a process dies while
+  holding a lock, the operating system releases it, and the next compute logs a
+  warning naming the dead holder and takes the lock over, so a crash never leaves
+  the project blocked.
+- **What locks cannot cover.**
+  - On a network share, locking depends on the server, the protocol and every
+    client honouring the locks.
+  - The HEC-HMS GUI and other tools do not take these locks.
+  - If a Python process is killed while HEC-HMS is still running for it, a new
+    compute can take over its locks while that HEC-HMS is still writing.
+  - The same files reached by different paths (a mapped drive and a UNC path, or
+    a symbolic link) use different lock files.
+
+  Use one path for a project, and don't start a new compute until an
+  interrupted one's HEC-HMS has stopped.
 - **`compute_parallel()` worker folders.** Each running task takes a free worker
   folder (`worker_0` to `worker_<max_workers - 1>`) and gives it back when done, so
   two runs never share a worker folder at once.

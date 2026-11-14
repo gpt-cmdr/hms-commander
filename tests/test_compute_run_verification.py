@@ -24,7 +24,8 @@ from pathlib import Path
 import pytest
 
 from hms_commander import HmsCmdr, HmsExamples, HmsJython, HmsPrj
-from hms_commander._run_lock import lock_path_for
+from hms_commander import _run_lock
+from hms_commander._run_lock import OutputLock, lock_path_for, move_no_replace
 
 TESTS_DIR = Path(__file__).parent
 LOGS = TESTS_DIR / "fixtures" / "hms_run_logs"
@@ -618,6 +619,11 @@ def _wait_for(events: Path, text: str, limit: float = 60.0):
     raise AssertionError(f"'{text}' not seen in {events}")
 
 
+def _released(lock_file: Path) -> bool:
+    """A lock file left behind after release: kept (never deleted), record cleared."""
+    return lock_file.exists() and lock_file.stat().st_size == 0
+
+
 def _events(events: Path):
     return events.read_text().split("\n")[:-1]
 
@@ -646,7 +652,7 @@ def test_overlapping_computes_of_the_same_run_are_serialized(project, tmp_path):
     assert "result-False A" in seq                            # A is not credited with B's outputs
     assert "result-True B" in seq
     assert log.read_bytes() == TENK_FINISHED.read_bytes()
-    assert not lock_path_for(log).exists() and not lock_path_for(dss).exists()
+    assert _released(lock_path_for(log)) and _released(lock_path_for(dss))
 
 
 def test_independent_runs_in_one_project_are_not_serialized(project, tmp_path):
@@ -697,7 +703,7 @@ def test_a_crashed_holder_does_not_block_and_its_backup_is_recovered(project, tm
     assert a.returncode == 3
     # A died between moving the log aside and verifying
     assert not log.exists() and len(HmsCmdr._log_backups(log)) == 1
-    assert lock_path_for(log).exists()                        # its record is still there
+    assert lock_path_for(log).stat().st_size > 0              # its record is still there
 
     def fake(script_content, hms_exe_path, working_dir=None, **kwargs):
         log.write_bytes(TENK_FINISHED.read_bytes())
@@ -716,7 +722,7 @@ def test_a_crashed_holder_does_not_block_and_its_backup_is_recovered(project, tm
     assert ok is True
     assert "Taking over a stale lock" in caplog.text and f'"pid": {_pid(events, "A")}' in caplog.text
     assert "Restored Jan_96_storm.log" in caplog.text
-    assert _no_backups(log) and not lock_path_for(log).exists()
+    assert _no_backups(log) and _released(lock_path_for(log))
 
 
 def test_a_nested_compute_on_the_same_outputs_is_refused(project, monkeypatch):
@@ -761,6 +767,274 @@ def test_parallel_workers_never_share_a_folder(tmp_path, monkeypatch):
                                        dest_folder=tmp_path / "workers")
     assert set(results) == set(durations)
     assert clashes == []
+
+
+
+# ---------------------------------------------------------------------------
+# Review 4, finding 1: lock files are never deleted, so no two holders
+# ---------------------------------------------------------------------------
+
+@pytest.mark.skipif(os.name == "nt", reason="the unlink race is a POSIX (fcntl) race")
+def test_posix_release_never_lets_two_processes_hold_the_lock(tmp_path, monkeypatch):
+    """
+    The reviewer's interleaving. A unlocks and pauses where it used to delete
+    the lock file; B locks the old file; A resumes. C must still be refused
+    while B holds the lock. When A deleted the file, C created and locked a new
+    file of the same name and held it together with B.
+    """
+    target = tmp_path / "Jan_96_storm.dss"
+    lock_file = lock_path_for(target)
+    a_unlocked, a_resume = threading.Event(), threading.Event()
+    real_unlock = _run_lock._unlock
+
+    def unlock_and_pause(fd):
+        real_unlock(fd)
+        if threading.current_thread().name == "A":
+            a_unlocked.set()
+            assert a_resume.wait(10)
+
+    monkeypatch.setattr(_run_lock, "_unlock", unlock_and_pause)
+    errors, b_holds, b_release = [], threading.Event(), threading.Event()
+
+    def holder_a():
+        try:
+            with OutputLock([target], time.monotonic() + 5, "A"):
+                pass
+        except BaseException as e:      # pragma: no cover - reported below
+            errors.append(e)
+
+    def holder_b():
+        try:
+            assert a_unlocked.wait(10)
+            with OutputLock([target], time.monotonic() + 5, "B"):
+                b_holds.set()
+                assert b_release.wait(10)
+        except BaseException as e:      # pragma: no cover - reported below
+            errors.append(e)
+
+    a = threading.Thread(target=holder_a, name="A")
+    b = threading.Thread(target=holder_b, name="B")
+    a.start()
+    b.start()
+    assert b_holds.wait(10)
+    inode_held_by_b = os.stat(lock_file).st_ino
+    a_resume.set()                      # A finishes its release now
+    a.join(10)
+    assert lock_file.exists() and os.stat(lock_file).st_ino == inode_held_by_b
+    with pytest.raises(TimeoutError):   # C, while B still holds the lock
+        with OutputLock([target], time.monotonic() + 0.5, "C"):
+            pass
+    b_release.set()
+    b.join(10)
+    assert errors == []
+    with OutputLock([target], time.monotonic() + 1, "D"):   # free again afterwards
+        pass
+    assert _released(lock_file)
+
+
+def test_release_keeps_the_lock_file_and_clears_its_record(tmp_path):
+    target = tmp_path / "Jan_96_storm.log"
+    with OutputLock([target], time.monotonic() + 1, "probe"):
+        assert '"purpose": "probe"' in lock_path_for(target).read_text()
+    assert _released(lock_path_for(target))
+    with OutputLock([target], time.monotonic() + 1, "again"):   # reused, no stale warning
+        pass
+    assert _released(lock_path_for(target))
+
+
+def test_a_lock_file_deleted_while_waiting_is_recreated(tmp_path):
+    """Deleting a lock file by hand between computes does no harm."""
+    target = tmp_path / "Jan_96_storm.log"
+    with OutputLock([target], time.monotonic() + 1, "first"):
+        pass
+    lock_path_for(target).unlink()
+    with OutputLock([target], time.monotonic() + 1, "second"):
+        assert lock_path_for(target).exists()
+
+
+# ---------------------------------------------------------------------------
+# Review 4, finding 2: one time budget for waiting and running
+# ---------------------------------------------------------------------------
+
+_HOLDER = r"""
+import sys, time
+from pathlib import Path
+from hms_commander._run_lock import OutputLock
+hold = float(sys.argv[1])
+with OutputLock([Path(p) for p in sys.argv[2:]], time.monotonic() + 30, "holder"):
+    print("READY", flush=True)
+    time.sleep(hold)
+"""
+
+
+def _hold(tmp_path, paths, seconds):
+    script = tmp_path / "holder.py"
+    script.write_text(_HOLDER)
+    env = dict(os.environ, PYTHONPATH=str(REPO_ROOT), PYTHONDONTWRITEBYTECODE="1")
+    proc = subprocess.Popen([sys.executable, str(script), str(seconds), *map(str, paths)],
+                            env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    assert proc.stdout.readline().strip() == "READY", proc.stderr.read()
+    return proc
+
+
+def _recording_hms(monkeypatch, project, sections=None):
+    calls = []
+
+    def fake(script_content, hms_exe_path, working_dir=None, timeout=None, **kwargs):
+        calls.append({"timeout": timeout, "at": time.monotonic()})
+        names = re.findall(r'^run_name = "(.*)"$', script_content, re.M) or ast.literal_eval(
+            re.search(r"^run_names = (\[.*\])$", script_content, re.M).group(1))
+        for name in names:
+            log, dss, _ = HmsCmdr._run_output_files(working_dir, name)
+            log.write_bytes((sections or {}).get(name, TENK_FINISHED).read_bytes())
+            dss.write_bytes(f"results of {name}".encode())
+        return True, "", ""
+
+    monkeypatch.setattr(HmsJython, "execute_script", staticmethod(fake))
+    return calls
+
+
+def test_lock_wait_comes_out_of_the_execution_timeout(project, tmp_path, monkeypatch):
+    """The reviewer's probe: a 1.2 s wait used to be followed by the full 2 s."""
+    log, dss = _paths(project)
+    holder = _hold(tmp_path, [log, dss], 1.2)
+    calls = _recording_hms(monkeypatch, project)
+    start = time.monotonic()
+    ok = HmsCmdr._execute_and_verify(TENK, project, "run_name = \"Jan 96 storm\"\n",
+                                     hms_exe_path=project, timeout=2)[0]
+    holder.communicate(timeout=30)
+    waited = calls[0]["at"] - start
+    assert ok is True and waited >= 0.9
+    assert calls[0]["timeout"] <= 2 - waited + 0.05
+
+
+def test_a_wait_longer_than_the_budget_never_starts_hms(project, tmp_path, monkeypatch):
+    log, dss = _paths(project)
+    log.write_bytes(TENK_ABORTED.read_bytes())
+    holder = _hold(tmp_path, [log, dss], 2.5)
+    calls = _recording_hms(monkeypatch, project)
+    with pytest.raises(TimeoutError, match="Timed out waiting"):
+        HmsCmdr._execute_and_verify(TENK, project, "# script", hms_exe_path=project, timeout=1)
+    holder.communicate(timeout=30)
+    assert calls == []
+
+
+def test_no_time_left_after_locking_refuses_to_start(project, monkeypatch):
+    log, _ = _paths(project)
+    log.write_bytes(TENK_ABORTED.read_bytes())
+    calls = _recording_hms(monkeypatch, project)
+    with pytest.raises(TimeoutError, match="not started"):
+        HmsCmdr._execute_and_verify(TENK, project, "# script", hms_exe_path=project,
+                                    deadline=time.monotonic() - 0.001)
+    assert calls == []
+    assert log.read_bytes() == TENK_ABORTED.read_bytes() and _no_backups(log)
+
+
+def test_batch_shares_one_budget_across_waits_and_sessions(tmp_path, monkeypatch):
+    prj = _batch_project(tmp_path, shared=True)
+    log, tenk_dss, _ = HmsCmdr._run_output_files(prj.project_folder, TENK)
+    holder = _hold(tmp_path, [log, tenk_dss], 1.2)
+    calls = _recording_hms(monkeypatch, prj.project_folder,
+                           {TENK: TENK_FINISHED, FUTURE: CASTRO_FUTURE_FINISHED})
+    start = time.monotonic()
+    results = HmsCmdr.compute_batch([TENK, FUTURE], hms_object=prj, timeout=3)
+    holder.communicate(timeout=30)
+    assert results == {TENK: True, FUTURE: True}
+    for call in calls:   # each session gets only what is left of the 3 s
+        assert call["timeout"] <= 3 - (call["at"] - start) + 0.05
+    assert calls[0]["timeout"] <= 3 - 0.9
+
+
+def test_compute_run_dest_folder_wait_counts_against_timeout(tmp_path, monkeypatch):
+    prj = _batch_project(tmp_path, shared=False)
+    dest = tmp_path / "copy"
+    holder = _hold(tmp_path, [dest], 1.2)
+    calls = _recording_hms(monkeypatch, dest)
+    start = time.monotonic()
+    assert HmsCmdr.compute_run(TENK, hms_object=prj, dest_folder=dest, timeout=2) is True
+    holder.communicate(timeout=30)
+    waited = calls[0]["at"] - start
+    assert waited >= 0.9 and calls[0]["timeout"] <= 2 - waited + 0.05
+
+
+# ---------------------------------------------------------------------------
+# Review 4, finding 3: moves never replace an existing destination
+# ---------------------------------------------------------------------------
+
+def _link_fails_after_dst_appears(monkeypatch, dst: Path, content: bytes = b"user file"):
+    """No hard links here, and another process creates dst just before the move."""
+    def link(src, target, *args, **kwargs):
+        Path(target).write_bytes(content)
+        raise PermissionError(1, "hard links not supported here")
+
+    monkeypatch.setattr(_run_lock.os, "link", link)
+
+
+def test_move_refuses_a_destination_that_appears_when_hard_links_fail(tmp_path, monkeypatch):
+    src, dst = tmp_path / "log", tmp_path / "log.backup"
+    src.write_bytes(b"prior log")
+    _link_fails_after_dst_appears(monkeypatch, dst)
+    with pytest.raises(FileExistsError):
+        move_no_replace(src, dst)
+    assert src.read_bytes() == b"prior log" and dst.read_bytes() == b"user file"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="the exclusive-copy fallback is POSIX only")
+def test_exclusive_copy_fallback_refuses_a_destination_that_appears(tmp_path, monkeypatch):
+    src, dst = tmp_path / "log", tmp_path / "log.backup"
+    src.write_bytes(b"prior log")
+    _link_fails_after_dst_appears(monkeypatch, dst)
+    monkeypatch.setattr(_run_lock, "_renameat2_noreplace", lambda a, b: False)
+    with pytest.raises(FileExistsError):
+        move_no_replace(src, dst)
+    assert src.read_bytes() == b"prior log" and dst.read_bytes() == b"user file"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlinks need privileges on Windows")
+@pytest.mark.parametrize("renameat2", [True, False])
+def test_move_refuses_a_dangling_symlink_destination(tmp_path, monkeypatch, renameat2):
+    src, dst = tmp_path / "log", tmp_path / "log.backup"
+    src.write_bytes(b"prior log")
+    os.symlink(tmp_path / "nowhere", dst)
+    monkeypatch.setattr(_run_lock.os, "link", lambda *a, **k: (_ for _ in ()).throw(PermissionError(1, "no links")))
+    if not renameat2:
+        monkeypatch.setattr(_run_lock, "_renameat2_noreplace", lambda a, b: False)
+    with pytest.raises(FileExistsError):
+        move_no_replace(src, dst)
+    assert src.read_bytes() == b"prior log" and os.path.islink(dst)
+
+
+@pytest.mark.parametrize("fallback", ["platform", "exclusive_copy"])
+def test_move_without_hard_links_moves_when_the_destination_is_free(tmp_path, monkeypatch, fallback):
+    if fallback == "exclusive_copy" and os.name == "nt":
+        pytest.skip("the exclusive-copy fallback is POSIX only")
+    src, dst = tmp_path / "log", tmp_path / "log.backup"
+    src.write_bytes(b"prior log")
+    stamp = src.stat().st_mtime_ns - 5_000_000_000
+    os.utime(src, ns=(stamp, stamp))
+    monkeypatch.setattr(_run_lock.os, "link", lambda *a, **k: (_ for _ in ()).throw(PermissionError(1, "no links")))
+    if fallback == "exclusive_copy":
+        monkeypatch.setattr(_run_lock, "_renameat2_noreplace", lambda a, b: False)
+    move_no_replace(src, dst)
+    assert not src.exists() and dst.read_bytes() == b"prior log"
+    assert abs(dst.stat().st_mtime_ns - stamp) < 2_000_000_000
+
+
+@pytest.mark.skipif(not sys.platform.startswith("linux"), reason="renameat2 is Linux only")
+def test_renameat2_noreplace_on_linux(tmp_path):
+    src, dst = tmp_path / "a", tmp_path / "b"
+    src.write_bytes(b"a")
+    dst.write_bytes(b"b")
+    try:
+        moved = _run_lock._renameat2_noreplace(src, dst)
+    except FileExistsError:
+        moved = None
+    if moved is False:
+        pytest.skip("renameat2(RENAME_NOREPLACE) not available on this file system")
+    assert moved is None and src.read_bytes() == b"a" and dst.read_bytes() == b"b"
+    dst.unlink()
+    assert _run_lock._renameat2_noreplace(src, dst) is True
+    assert not src.exists() and dst.read_bytes() == b"a"
 
 
 # Review 1, finding 5: results DSS (and log) metadata that cannot be found

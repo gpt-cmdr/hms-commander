@@ -1,5 +1,5 @@
 """
-Cross-process locks that give one compute exclusive use of its output files.
+Cross-process locks and no-replace moves for HmsCmdr's run verification.
 
 HmsCmdr proves that a run computed by comparing the run's log and results DSS
 file before and after HEC-HMS runs. That proof only holds if no other compute
@@ -10,28 +10,39 @@ snapshot until verification and clean-up are done.
 How a lock works:
 
 - Each locked path ``P`` has a lock file ``P.hms-commander-lock`` beside it.
-- The lock is an OS byte-range lock on that file: ``msvcrt.locking`` on
-  Windows, ``fcntl.flock`` elsewhere. The operating system releases it when
+- The lock is an OS lock on that file: ``msvcrt.locking`` (a byte-range lock)
+  on Windows, ``fcntl.flock`` elsewhere. The operating system releases it when
   the holding process exits for any reason, so a crashed holder never blocks
-  the project. The next holder finds the dead holder's details still in the
+  the project. The next holder finds the dead holder's record still in the
   file, logs a warning that it is taking over a stale lock, and proceeds.
-- On release the holder clears the file, unlocks it and deletes it. On POSIX,
-  a waiter that then locks the deleted file notices that the path no longer
-  names the file it holds and tries again, so two holders cannot result.
+- **Lock files are persistent.** On release the holder clears its record and
+  unlocks, but never deletes the file, on any platform. Deleting it would let
+  two processes hold "the" lock at once on POSIX: a waiter can lock the old
+  file just before the releasing process removes its name, and a third
+  process then creates and locks a new file under the same name. With
+  persistent files every process always locks the same file. An empty lock
+  file is an unlocked lock; it can be deleted by hand when no compute runs.
+- After locking, a holder checks that the path still names the file it
+  locked (for example, if someone deleted the lock file by hand) and
+  otherwise tries again.
 - Threads in one process conflict like separate processes. A thread that
   asks again for a lock it already holds gets ``RuntimeError`` at once
   instead of waiting for itself.
-- Waiting is bounded: after ``timeout`` seconds, ``TimeoutError`` is raised,
-  naming the current holder.
+- Waiting is bounded by a deadline (``time.monotonic()``); when it passes,
+  ``TimeoutError`` is raised, naming the current holder.
 
-Locks on a network share depend on the share honouring byte-range locks
-(SMB does; NFS ``flock`` may be local to one client).
+Locks on a network share depend on the server, protocol and every client
+honouring the locks. Tools that do not use these locks (the HEC-HMS GUI, for
+example) are not kept out.
 """
 
 from __future__ import annotations
 
+import ctypes
+import errno
 import json
 import os
+import shutil
 import socket
 import threading
 import time
@@ -64,6 +75,11 @@ def lock_path_for(path: Path) -> Path:
     return path.with_name(path.name + LOCK_SUFFIX)
 
 
+def remaining(deadline: float) -> float:
+    """Seconds left until ``deadline`` (a ``time.monotonic()`` value); never negative."""
+    return max(0.0, deadline - time.monotonic())
+
+
 def _key(path: Path) -> str:
     text = os.path.abspath(str(path))
     return os.path.normcase(text)
@@ -89,6 +105,13 @@ def _unlock(fd: int) -> None:
         fcntl.flock(fd, fcntl.LOCK_UN)
 
 
+def _same_file(fd: int, path: Path) -> bool:
+    try:
+        return os.path.samestat(os.fstat(fd), os.stat(path))
+    except OSError:
+        return False
+
+
 def _read_record(path: Path) -> str:
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -103,54 +126,53 @@ class _OneLock:
         self.purpose = purpose
         self.fd: Optional[int] = None
 
+    @property
+    def _target(self) -> str:
+        return self.path.name[:-len(LOCK_SUFFIX)]
+
     def acquire(self, deadline: float) -> None:
         key = _key(self.path)
         me = threading.get_ident()
         with _held_guard:
             if _held.get(key) == me:
                 raise RuntimeError(
-                    f"This thread is already computing with {self.path.name[:-len(LOCK_SUFFIX)]} "
-                    "locked; a nested compute on the same outputs cannot be verified."
+                    f"This thread is already computing with {self._target} locked; "
+                    "a nested compute on the same outputs cannot be verified."
                 )
         waited_logged = False
         while True:
             fd = os.open(str(self.path), os.O_RDWR | os.O_CREAT, 0o644)
             if _try_lock(fd):
-                if os.name != "nt":
-                    # The file may have been deleted by its previous holder
-                    # after this process opened it; then try again.
-                    try:
-                        same = os.path.samestat(os.fstat(fd), os.stat(self.path))
-                    except FileNotFoundError:
-                        same = False
-                    if not same:
-                        _unlock(fd)
-                        os.close(fd)
-                        continue
-                break
+                if _same_file(fd, self.path):
+                    break
+                # The lock file was deleted or replaced after it was opened
+                # (by hand; HMS Commander never deletes it): lock the file the
+                # path names now.
+                _unlock(fd)
+                os.close(fd)
+                continue
             os.close(fd)
             if time.monotonic() >= deadline:
                 holder = _read_record(self.path) or "unknown holder"
                 raise TimeoutError(
                     f"Timed out waiting for another compute that is using "
-                    f"{self.path.name[:-len(LOCK_SUFFIX)]} ({self.path.parent}). "
-                    f"Holder: {holder}"
+                    f"{self._target} ({self.path.parent}). Holder: {holder}"
                 )
             if not waited_logged:
                 holder = _read_record(self.path) or "unknown holder"
                 logger.info(
-                    f"Waiting for another compute that is using "
-                    f"{self.path.name[:-len(LOCK_SUFFIX)]}. Holder: {holder}"
+                    f"Waiting for another compute that is using {self._target}. "
+                    f"Holder: {holder}"
                 )
                 waited_logged = True
-            time.sleep(_POLL_SECONDS)
+            time.sleep(min(_POLL_SECONDS, max(0.01, remaining(deadline))))
 
         self.fd = fd
         previous = _read_record(self.path)
         if previous:
             logger.warning(
-                f"Taking over a stale lock on {self.path.name[:-len(LOCK_SUFFIX)]} "
-                f"left by a compute that ended without releasing it: {previous}"
+                f"Taking over a stale lock on {self._target} left by a compute "
+                f"that ended without releasing it: {previous}"
             )
         record = json.dumps({
             "pid": os.getpid(),
@@ -166,6 +188,7 @@ class _OneLock:
             _held[key] = me
 
     def release(self) -> None:
+        """Clear the record and unlock. The lock file itself is kept (see the module docstring)."""
         if self.fd is None:
             return
         fd, self.fd = self.fd, None
@@ -179,12 +202,6 @@ class _OneLock:
             _unlock(fd)
         finally:
             os.close(fd)
-        try:
-            # On Windows this fails while another process has the file open
-            # (waiting for it); that waiter then holds and later deletes it.
-            self.path.unlink()
-        except OSError:
-            pass
 
 
 class OutputLock:
@@ -195,11 +212,13 @@ class OutputLock:
         paths: The output files or folders to guard. Duplicates and None are
             ignored; locks are taken in a fixed (sorted) order, so two
             computes that need overlapping sets cannot deadlock.
-        timeout: Seconds to wait for all locks before ``TimeoutError``.
+        deadline: ``time.monotonic()`` value after which waiting stops with
+            ``TimeoutError``. The caller's whole time budget, so that time
+            spent waiting is not given again to the work that follows.
         purpose: Text recorded in the lock file, shown to waiters.
     """
 
-    def __init__(self, paths: Iterable[Optional[Path]], timeout: float, purpose: str = ""):
+    def __init__(self, paths: Iterable[Optional[Path]], deadline: float, purpose: str = ""):
         keys: Dict[str, Path] = {}
         for p in paths:
             if p is not None:
@@ -207,14 +226,13 @@ class OutputLock:
         self._locks: List[_OneLock] = [
             _OneLock(lock_path_for(keys[k]), purpose) for k in sorted(keys)
         ]
-        self._timeout = max(0.0, float(timeout))
+        self._deadline = deadline
 
     def __enter__(self) -> "OutputLock":
-        deadline = time.monotonic() + self._timeout
         taken: List[_OneLock] = []
         try:
             for lock in self._locks:
-                lock.acquire(deadline)
+                lock.acquire(self._deadline)
                 taken.append(lock)
         except BaseException:
             for lock in reversed(taken):
@@ -225,3 +243,99 @@ class OutputLock:
     def __exit__(self, *exc) -> None:
         for lock in reversed(self._locks):
             lock.release()
+
+
+# ---------------------------------------------------------------------------
+# Moving a file without ever replacing the destination
+# ---------------------------------------------------------------------------
+
+_AT_FDCWD = -100
+_RENAME_NOREPLACE = 1
+
+
+def _renameat2_noreplace(src: Path, dst: Path) -> bool:
+    """
+    Linux ``renameat2(..., RENAME_NOREPLACE)``: an atomic rename that fails if
+    ``dst`` exists (as any kind of entry, including a dangling symlink).
+
+    Returns:
+        True if moved; False if this system or file system does not provide it.
+
+    Raises:
+        FileExistsError: If ``dst`` exists.
+    """
+    if not os.uname().sysname == "Linux":
+        return False
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        fn = libc.renameat2
+    except (OSError, AttributeError):
+        return False
+    fn.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+    fn.restype = ctypes.c_int
+    if fn(_AT_FDCWD, os.fsencode(str(src)), _AT_FDCWD, os.fsencode(str(dst)), _RENAME_NOREPLACE) == 0:
+        return True
+    err = ctypes.get_errno()
+    if err == errno.EEXIST:
+        raise FileExistsError(err, os.strerror(err), str(dst))
+    if err in (errno.ENOSYS, errno.EINVAL, getattr(errno, "ENOTSUP", -1), getattr(errno, "EOPNOTSUPP", -1)):
+        return False
+    raise OSError(err, os.strerror(err), str(src))
+
+
+def _exclusive_copy(src: Path, dst: Path) -> None:
+    """Create ``dst`` with ``O_CREAT | O_EXCL`` (fails if it exists, or is a symlink), copy ``src`` into it."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(str(dst), flags, 0o644)
+    try:
+        with os.fdopen(fd, "wb") as out, open(src, "rb") as inp:
+            shutil.copyfileobj(inp, out, 1024 * 1024)
+            out.flush()
+            os.fsync(out.fileno())
+    except BaseException:
+        try:
+            os.unlink(dst)          # only the file this call created
+        except OSError:
+            pass
+        raise
+    shutil.copystat(src, dst)
+
+
+def move_no_replace(src: Path, dst: Path) -> None:
+    """
+    Move ``src`` to ``dst``, never replacing an existing ``dst``.
+
+    In order, the first operation the system supports is used; each fails
+    with ``FileExistsError`` if ``dst`` exists:
+
+    1. ``os.link(src, dst)`` then ``os.unlink(src)``;
+    2. Windows: ``os.rename``, which does not replace an existing file;
+       Linux: ``renameat2(RENAME_NOREPLACE)``;
+    3. otherwise (POSIX without hard links or renameat2): create ``dst`` with
+       ``O_CREAT | O_EXCL | O_NOFOLLOW``, copy ``src`` into it, then delete
+       ``src``.
+
+    There is never a check-then-rename. If no step works, ``src`` is left
+    where it was and the error propagates.
+
+    Raises:
+        FileExistsError: If ``dst`` exists.
+        OSError: If the move fails for another reason.
+    """
+    src, dst = Path(src), Path(dst)
+    try:
+        os.link(src, dst)
+    except FileExistsError:
+        raise
+    except OSError:
+        pass            # no hard links here; try the next operation
+    else:
+        os.unlink(src)
+        return
+    if os.name == "nt":
+        os.rename(src, dst)         # MoveFileEx without REPLACE_EXISTING
+        return
+    if _renameat2_noreplace(src, dst):
+        return
+    _exclusive_copy(src, dst)
+    os.unlink(src)
