@@ -1,6 +1,6 @@
 # DSS Native Backend: Example Notebook Qualification
 
-**Date:** 2026-11-06, updated 2026-11-07 (see [Update: fixed notebooks](#update-2026-11-07-fixed-notebooks)) and 2026-11-09 (see [Update: engine 0.1.1 from PyPI](#update-2026-11-09-engine-011-from-pypi)), and 2026-11-12 (see [Update: engine 0.1.2 and revised notebooks](#update-2026-11-12-engine-012-and-revised-notebooks))
+**Date:** 2026-11-06, updated 2026-11-07 (see [Update: fixed notebooks](#update-2026-11-07-fixed-notebooks)) and 2026-11-09 (see [Update: engine 0.1.1 from PyPI](#update-2026-11-09-engine-011-from-pypi)), and 2026-11-12 (see [Update: engine 0.1.2 and revised notebooks](#update-2026-11-12-engine-012-and-revised-notebooks)), and 2026-11-14 (see [Update: native becomes the default](#update-2026-11-14-native-becomes-the-default))
 **Branch:** `feat/fast-dss-notebooks`, from `feat/fast-dss-native-engine` (draft PR #46) after the merge of `origin/main`
 **Scope:** every example notebook that reads or writes DSS through hms-commander, run on the
 `java`, `native` and `shadow` DSS backends (`HMS_COMMANDER_DSS_BACKEND`). This was the final round of
@@ -29,6 +29,43 @@ times from a shared workstation.
 - **Fixes.** No integration defect was found in the hms-commander code that the notebooks
   exercise, so no library change was made. The branch adds the qualification tooling
   (`scripts/dss_notebook_qualification/`) and this report.
+
+## Update 2026-11-14: native becomes the default
+
+With `HMS_COMMANDER_DSS_BACKEND` and `HmsDss.backend` unset, the DSS backend is now
+`native` whenever `ras-commander-fast-dss` imports (it is a core dependency). The 12 current
+notebooks were run again with the variable unset. Every run recorded backend `native` and
+engine 0.1.2.
+
+| Item | Value |
+|---|---|
+| Engine | `ras-commander-fast-dss` 0.1.2 from PyPI (`cp310-abi3-win_amd64`) |
+| Python | 3.12.11, fresh uv venv; hms-commander editable from `feat/native-default-backend` |
+| HEC-HMS | 4.10 (01, 05), 4.13 (the others that compute), all runs through `HmsCmdr` |
+| Runner | nbclient; a final probe cell records the backend and engine version (not committed) |
+
+| Notebook | Outcome | Wall s | Text outputs compared with the committed (`java`) outputs |
+|---|---|---|---|
+| 06_results_dss | pass | 15 | `DSS backend: native`; the `sync` cell no longer prints the Java note; nothing else |
+| 01_basic_workflow | pass | 8 | extraction and project-path lines only (workstation paths) |
+| 05_clone_workflow | pass | 12 | the clone's run fails in HEC-HMS (`ERROR 15256`: the cloned meteorologic model is not set up for the cloned basin model). `compute_run` reports the failure since #50; the committed output predates #50. Not a DSS difference |
+| 101, 102, 106 | pass | 10 / 5 / 28 | the Java start-up lines are gone; nothing else |
+| 104_guide_basin_methods_loss_transform | pass | 11 | Java start-up lines gone; a new pandas `Pandas4Warning` in cell 3 |
+| 105_guide_calibration_validation | pass | 344 | none |
+| 14a_aorc_download | pass | 67 | the grids are written by the native engine (log and backend line); same 124 pathnames |
+| 14b_aorc_grid_setup | pass | 14 | the grid file's `Last Modified` lines; backend log line |
+| 14c_aorc_hms_execution | pass | 37 | the grid file's `Last Modified` lines; same peaks, rain check and warnings |
+| 23_native_gridded_import_and_grid_tools | pass | 124 | `DSS backend ... : native`; the write-time bytes in the thread-count comparison (184 instead of 212) |
+
+The committed outputs of 06, 101, 102, 106, 14a, 14b, 14c and 23 are now this run's
+outputs (the probe cell removed); a scan found no workstation path in them. The committed
+outputs of 01, 05, 104 and 105 were left as they were: 105's text did not change, and a
+re-run of 01, 05 or 104 adds workstation paths or a temporary-file path that this repository
+keeps out of outputs. Their committed outputs already predate this release.
+
+As on 2026-11-12, NSIDC SNODAS tars for notebook 23 were taken from the earlier download of
+the same URLs and checked by the notebook's SHA-256; the USGS WBD, NOAA AORC and MRMS
+sources were live.
 
 ## Update 2026-11-07: fixed notebooks
 

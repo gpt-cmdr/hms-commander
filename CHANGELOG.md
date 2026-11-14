@@ -7,8 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ⚠️ Behaviour change: the native DSS engine is the default backend
+
+- **With `HmsDss.backend` and `HMS_COMMANDER_DSS_BACKEND` unset, DSS reads and writes now
+  use the native engine `ras-commander-fast-dss`** whenever it imports, instead of HEC
+  Monolith (Java). Java is the default only where the engine is not installed or fails to
+  load. The first DSS call logs the backend in use once at INFO on the
+  `hms_commander.dss` logger. `HmsDss`, `DssCore`, `HmsDssGrid`, `HmsResults`, the DSS
+  metadata in `HmsPrj` and `HmsAorc.convert_to_dss_grid` all follow it.
+- **To keep Java:** set `HmsDss.backend = "java"` before the first DSS call, or set the
+  environment variable `HMS_COMMANDER_DSS_BACKEND=java`. Install the Java backend's
+  dependencies with `pip install "hms-commander[dss]"` (pyjnius and ras-commander; Java 8
+  or later). `native` and `shadow` can still be forced the same way; an explicit `native`
+  without the engine raises `ImportError` and never falls back to Java.
+- **What can change in your results** (details in the native backend guide's
+  "Differences from the Java backend"):
+  - missing values read back as NaN instead of HEC's -901, -902 or -3.4028e38 markers
+    (time series and grid cells);
+  - the native writers refuse, before writing, input that Monolith would truncate or
+    alter: DSS6 units or types longer than 8 characters, non-ASCII pathnames, infinity in
+    paired data;
+  - `get_catalog` of a file that is not a DSS file raises instead of returning `[]`.
+- **`ras-commander-fast-dss>=0.1.2,<0.2` is now a core dependency** on CPython for
+  Windows AMD64, Linux x86_64/aarch64 and macOS arm64/x86_64 (it was in the `dss` extra,
+  without macOS). The `dss` extra now holds the Java backend's dependencies only. The
+  engine requires only numpy and pandas, with no version pins. macOS wheels arrive with
+  engine 0.1.3, when the floor moves to `>=0.1.3`.
+
 ### Fixed
 
+- **`write_timeseries` on the Java backend silently moved values** when the times did not
+  follow HEC-DSS's placement for the pathname's E part: a missing hour, hourly times under
+  `15MIN`, month-end days under `1MON`, 29 February then 28 February under `1YEAR`, and
+  similar calendar cases. HEC-DSS stores a regular series by position from its first time.
+  Both backends now raise `ValueError` before writing. Minute, hour and day intervals are
+  checked for a constant step; calendar intervals (week, month, semi-month, tri-month,
+  year) against HEC's own placement, through the engine on a temporary file (skipped with
+  a warning without the engine). Single values are checked too. Valid calendar series,
+  such as a yearly series from 29 February continuing on 1 March, are written as before.
+  Some DSS6 day-of-month offset series that HEC's DSS6 library would keep are refused by
+  this conservative check, and no DSS version change helps them; the error says so.
+- **Native reads of a record of another kind** (`read_timeseries` or `read_grid` on a
+  paired-data or time-series pathname) raised the engine's `DssUnsupportedRecordError`
+  (a `RuntimeError`); they now raise `ValueError`, as the Java backend does.
 - **A script that used `HmsHuc` or `HmsGaugeStudy` could hang at interpreter exit.**
   pygeohydro runs its requests on async-retriever's event-loop thread. In
   async-retriever 0.19.3, the atexit cleanup's `stop()` can wait for ever when that
@@ -39,6 +80,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   The test session's handling of the loop thread (added with the native CI) now calls the
   same code.
+
+### Added
+
+- The native-engine CI job runs the test suite on the default backend and checks that it
+  resolves to native, and has a `macos-latest` leg. That leg is skipped, with the reason
+  in the log, until PyPI has an accepted macOS wheel, and does not block until it has
+  qualified.
 
 ## [0.5.0] - 2026-11-14
 

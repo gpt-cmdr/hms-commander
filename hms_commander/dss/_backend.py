@@ -3,9 +3,10 @@
 ``DssCore``, ``HmsDss`` and ``HmsDssGrid`` read and write DSS files through one of three
 backends:
 
-- ``"java"`` (default in this release): HEC Monolith through pyjnius.
-- ``"native"``: the optional ``ras_commander_fast_dss`` engine (pure Rust). It never
-  starts a JVM and never downloads HEC Monolith.
+- ``"native"`` (the default when the engine imports): the ``ras_commander_fast_dss``
+  engine (pure Rust). It never starts a JVM and never downloads HEC Monolith.
+- ``"java"`` (the default when the engine does not import): HEC Monolith through
+  pyjnius.
 - ``"shadow"``: reads return the native result (or raise the native error); the Java
   path runs as well and every difference is logged. Grid reads return Java's grid and
   only compare the native one. Writes run on Java (its result or error is returned) and
@@ -15,7 +16,8 @@ backends:
   anything else is logged at WARNING as ``unexpected``.
 
 The environment variable ``HMS_COMMANDER_DSS_BACKEND``, when set, overrides the class
-attribute ``HmsDss.backend``. ``CAPABILITIES`` lists the support matrix that
+attribute ``HmsDss.backend``. With neither set, the default is ``"native"`` when the
+engine imports and ``"java"`` otherwise; the backend in use is logged once at INFO. ``CAPABILITIES`` lists the support matrix that
 ``HmsDss.get_capabilities()`` reports.
 
 This module is private. The design, the shadow semantics and the outcome labels mirror
@@ -51,8 +53,10 @@ ENGINE_MODULE = "ras_commander_fast_dss"
 ENV_VAR = "HMS_COMMANDER_DSS_BACKEND"
 #: Allowed backend names.
 BACKENDS = ("java", "native", "shadow")
-#: Default backend for this release.
-DEFAULT_BACKEND = "java"
+#: Default backend when the engine imports (``"java"`` when it does not).
+DEFAULT_BACKEND = "native"
+#: Backend used by default when the engine is missing or fails to load.
+FALLBACK_BACKEND = "java"
 
 #: HEC missing markers that the Java path returns raw (-901, -902, -FLT_MAX).
 JAVA_MISSING_MARKERS = np.array([-901.0, -902.0, float(-np.finfo(np.float32).max)])
@@ -71,6 +75,8 @@ class DssCapabilityError(RuntimeError):
 
 _lock = threading.Lock()
 _fallback_warned = False
+#: (backend, source) last logged by ``effective_backend`` (logged once per change).
+_logged_selection: Optional[Tuple[str, str]] = None
 
 #: Outcome counts of shadow comparisons: key (operation, outcome, label).
 SHADOW_STATS: Counter = Counter()
@@ -93,14 +99,31 @@ def normalize_backend(value: Any, source: str) -> str:
     return name
 
 
-def requested_backend(attribute_value: Any) -> str:
-    """Backend requested by ``HMS_COMMANDER_DSS_BACKEND`` or ``HmsDss.backend``."""
+def backend_selection(attribute_value: Any) -> Tuple[str, str]:
+    """``(backend, source)``: the requested backend and what selected it.
+
+    ``source`` is ``"environment variable HMS_COMMANDER_DSS_BACKEND"``,
+    ``"HmsDss.backend"`` or ``"default"``. The default is ``"native"`` when the engine
+    imports and ``"java"`` otherwise.
+    """
     env_value = os.environ.get(ENV_VAR, "").strip()
     if env_value:
-        return normalize_backend(env_value, f"environment variable {ENV_VAR}")
+        source = f"environment variable {ENV_VAR}"
+        return normalize_backend(env_value, source), source
     if attribute_value is None or str(attribute_value).strip() == "":
-        return DEFAULT_BACKEND
-    return normalize_backend(attribute_value, "HmsDss.backend")
+        return default_backend(), "default"
+    return normalize_backend(attribute_value, "HmsDss.backend"), "HmsDss.backend"
+
+
+def default_backend() -> str:
+    """``"native"`` when ``ras_commander_fast_dss`` imports, else ``"java"``."""
+    return DEFAULT_BACKEND if native_available() else FALLBACK_BACKEND
+
+
+def requested_backend(attribute_value: Any) -> str:
+    """Backend requested by ``HMS_COMMANDER_DSS_BACKEND`` or ``HmsDss.backend``, or
+    the default (``"native"`` when the engine imports, else ``"java"``)."""
+    return backend_selection(attribute_value)[0]
 
 
 def _maybe_native():
@@ -140,7 +163,7 @@ def effective_backend(attribute_value: Any) -> str:
     runs Java only and logs one warning per process.
     """
     global _fallback_warned
-    backend = requested_backend(attribute_value)
+    backend, source = backend_selection(attribute_value)
     if backend == "native":
         import_native()
     elif backend == "shadow" and not native_available():
@@ -152,15 +175,48 @@ def effective_backend(attribute_value: Any) -> str:
                     "installed; using the Java backend only. %s",
                     _NATIVE_INSTALL_HINT,
                 )
-        return "java"
+        backend = "java"
+    _log_selection(backend, source)
     return backend
 
 
+def _log_selection(backend: str, source: str) -> None:
+    """Log the backend in use at INFO, once per process and again only if it changes."""
+    global _logged_selection
+    if _logged_selection == (backend, source):
+        return
+    with _lock:
+        if _logged_selection == (backend, source):
+            return
+        _logged_selection = (backend, source)
+    if source == "default" and backend == "native":
+        logger.info("DSS backend: native (ras-commander-fast-dss %s, the default). "
+                    "Set HmsDss.backend = 'java' or %s=java to use HEC Monolith.",
+                    engine_version() or "version unknown", ENV_VAR)
+    elif source == "default":
+        logger.info("DSS backend: java (HEC Monolith), the default because "
+                    "ras-commander-fast-dss is not installed or failed to load.")
+    else:
+        logger.info("DSS backend: %s (set by %s).", backend, source)
+
+
+def engine_version() -> Optional[str]:
+    """Installed ``ras-commander-fast-dss`` version, or None. Never raises."""
+    try:
+        from importlib.metadata import version
+
+        return version("ras-commander-fast-dss")
+    except Exception:
+        return None
+
+
 def reset_fallback_warning() -> None:
-    """Allow the shadow-fallback warning to be logged again (tests)."""
-    global _fallback_warned
+    """Allow the shadow-fallback warning and the backend INFO line to be logged
+    again (tests)."""
+    global _fallback_warned, _logged_selection
     with _lock:
         _fallback_warned = False
+        _logged_selection = None
 
 
 # ---------------------------------------------------------------------------

@@ -83,9 +83,9 @@ HmsDss.write_timeseries(
 
 ### Choose a DSS backend
 
-DSS calls use HEC Monolith (Java) by default. `HmsDss.backend = "native"` uses the
-optional `ras_commander_fast_dss` engine without Java, and `"shadow"` compares both.
-See [Native DSS Backend](dss_native_backend.md).
+DSS calls use the native `ras_commander_fast_dss` engine by default, without Java.
+`HmsDss.backend = "java"` (or `HMS_COMMANDER_DSS_BACKEND=java`) uses HEC Monolith, and
+`"shadow"` compares both. See [Native DSS Backend](dss_native_backend.md).
 
 ### HEC-HMS 4.9 needs DSS6 grids
 

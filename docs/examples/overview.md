@@ -119,7 +119,7 @@ These notebooks demonstrate hms-commander storm-generation equivalence against r
 
 ### Native DSS and Gridded Precipitation (5-10 minutes)
 
-These notebooks use the optional native DSS engine (`ras-commander-fast-dss`); see the
+These notebooks use the native DSS engine (`ras-commander-fast-dss`, the default backend); see the
 [Native DSS Backend](../user_guide/dss_native_backend.md) guide and the
 [notebook qualification](../development/dss-native-notebook-qualification.md).
 

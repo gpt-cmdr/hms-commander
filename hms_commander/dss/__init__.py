@@ -2,10 +2,10 @@
 hms-commander DSS subpackage: HEC-DSS file operations.
 
 This subpackage provides DSS file reading and writing capabilities. The default
-backend uses HEC Monolith Java libraries via pyjnius; the optional native backend
-uses the ras-commander-fast-dss engine (``ras_commander_fast_dss``) without Java.
-``HmsDss.backend`` (or the environment variable ``HMS_COMMANDER_DSS_BACKEND``)
-selects ``"java"`` (default), ``"native"`` or ``"shadow"``. All dependencies are
+backend is the native ras-commander-fast-dss engine (``ras_commander_fast_dss``), which
+needs no Java; where the engine is not installed the default is HEC Monolith (Java)
+through pyjnius. ``HmsDss.backend`` (or the environment variable
+``HMS_COMMANDER_DSS_BACKEND``) selects ``"native"``, ``"java"`` or ``"shadow"``. All dependencies are
 lazy-loaded to minimize import time and keep optional dependencies truly optional.
 
 Classes:
@@ -16,16 +16,18 @@ Classes:
 Lazy Loading Behavior:
     - `import hms_commander` - DSS not loaded (fast startup)
     - `from hms_commander.dss import DssCore` - DSS subpackage loaded
-    - `DssCore.get_catalog(...)` - pyjnius/Java loaded on first call
-    - HEC Monolith libraries downloaded automatically on first use (~20 MB)
+    - `DssCore.get_catalog(...)` - the engine (native) or pyjnius/Java (java) loads on
+      first call
+    - On the java backend, HEC Monolith libraries are downloaded on first use (~20 MB)
 
 Dependencies:
-    Required at runtime (lazy loaded):
-        - pyjnius: pip install pyjnius
-        - Java JRE/JDK 8+: Must be installed and JAVA_HOME set
+    Native backend (the default): ras-commander-fast-dss, a dependency of hms-commander
+    on CPython for Windows AMD64, Linux x86_64/aarch64 and macOS.
 
-    Auto-downloaded:
-        - HEC Monolith libraries (~20 MB, cached in ~/.hms-commander/dss/)
+    Java backend (HmsDss.backend = "java", or where the engine is not installed):
+        - pyjnius: pip install "hms-commander[dss]"
+        - Java JRE/JDK 8+: Must be installed and JAVA_HOME set
+        - HEC Monolith libraries, auto-downloaded (~20 MB, cached in ~/.hms-commander/dss/)
 
 Usage:
     # Low-level DSS operations

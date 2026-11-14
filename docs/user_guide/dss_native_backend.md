@@ -1,9 +1,10 @@
 # Native DSS backend
 
 HMS Commander reads and writes HEC-DSS files through one of three backends. The
-default uses HEC Monolith (the HEC-DSS Java library) through pyjnius. The native
-backend uses `ras_commander_fast_dss`, a pure-Rust HEC-DSS engine for DSS6 and DSS7
-files, and starts no Java VM. The shadow backend runs both and logs every difference.
+default, the native backend, uses `ras_commander_fast_dss`, a pure-Rust HEC-DSS engine
+for DSS6 and DSS7 files, and starts no Java VM. The Java backend uses HEC Monolith (the
+HEC-DSS Java library) through pyjnius. The shadow backend runs both and logs every
+difference.
 The selection, shadow behavior and comparison labels follow ras-commander's `RasDss`.
 
 The engine is the DSS engine of the RAS Commander native Rust engines. Its reads, writes,
@@ -13,14 +14,30 @@ page covers what hms-commander does with it.
 
 ## Install the engine
 
-The engine is optional and the Java backend stays the default. Install it on its own, or
-with the rest of the DSS stack through the `dss` extra (also part of `all`):
+The engine is a dependency of hms-commander, so `pip install hms-commander` installs it
+wherever it has a wheel. The Java backend's dependencies (pyjnius, ras-commander) come
+with the `dss` extra (also part of `all`):
 
 ```bash
-pip install ras-commander-fast-dss
-# or
-pip install "hms-commander[dss]"
+pip install hms-commander            # includes the native engine
+pip install "hms-commander[dss]"     # adds the Java backend (needs Java 8 or later)
 ```
+
+!!! warning "Behaviour change in the next release: native is the default"
+    Up to 0.5.0 the Java backend was the default and the engine was optional. Now, with
+    `HmsDss.backend` and `HMS_COMMANDER_DSS_BACKEND` unset, hms-commander uses the native
+    engine whenever it imports, and Java only when it does not. The first DSS call logs
+    the backend in use at INFO on the `hms_commander.dss` logger. To keep Java:
+
+    ```python
+    from hms_commander import HmsDss
+    HmsDss.backend = "java"
+    ```
+
+    or set `HMS_COMMANDER_DSS_BACKEND=java` in the environment. Results can change in
+    the ways listed under [Differences from the Java backend](#differences-from-the-java-backend);
+    the main one is that missing values read back as NaN instead of HEC's -901, -902 or
+    -3.4028e38 markers.
 
 !!! note "Availability"
     The engine is published on PyPI as
@@ -32,13 +49,11 @@ pip install "hms-commander[dss]"
     [gpt-cmdr/ras-commander-fast-dss](https://github.com/gpt-cmdr/ras-commander-fast-dss),
     [changelog](https://github.com/gpt-cmdr/ras-commander-fast-dss/blob/main/CHANGELOG.md)).
     0.1.2 ships abi3 wheels for CPython 3.10 and later on Windows x86_64 and on Linux
-    x86_64 and aarch64 (manylinux and musllinux), and an sdist. The `dss` extra requests
-    `ras-commander-fast-dss>=0.1.2,<0.2` only on those platforms, so pip never builds the
-    Rust source distribution; elsewhere the extra installs the Java stack alone.
-
-    There are no macOS wheels. On macOS, install the engine from its sdist yourself
-    (`pip install ras-commander-fast-dss`, which needs a Rust toolchain), or use the Java
-    backend.
+    x86_64 and aarch64 (manylinux and musllinux), and an sdist; 0.1.3 adds macOS wheels.
+    hms-commander requests `ras-commander-fast-dss>=0.1.2,<0.2` only on CPython for
+    Windows AMD64, Linux x86_64/aarch64 and macOS arm64/x86_64, so pip never builds the
+    Rust source distribution. Elsewhere (PyPy, other machines) the engine is not
+    installed and the default backend is Java.
 
 Check the installed engine from Python. The engine defines no `__version__`; ask the
 package metadata, and gate code on `FEATURES` rather than on a version:
@@ -59,13 +74,19 @@ Set the class attribute, or the environment variable, which takes precedence:
 ```python
 from hms_commander import HmsDss
 
-HmsDss.backend = "native"      # "java" (default), "native" or "shadow"
-print(HmsDss.get_backend())    # 'native'
+HmsDss.backend = "java"        # "native", "java" or "shadow"; None (default): native
+print(HmsDss.get_backend())    # 'java'               when the engine imports, else java
 ```
 
 ```bash
-set HMS_COMMANDER_DSS_BACKEND=native
+set HMS_COMMANDER_DSS_BACKEND=java
 ```
+
+With neither set, `HmsDss.get_backend()` returns `native` when `ras_commander_fast_dss`
+imports and `java` when it is missing or fails to load. The first call logs the choice
+once at INFO, for example `DSS backend: native (ras-commander-fast-dss 0.1.2, the
+default)`. An explicit `native` without the engine raises `ImportError`; it never falls
+back to Java.
 
 The setting applies to every DSS call in the process: `DssCore`, `HmsDss`, `HmsDssGrid`,
 and the readers built on them (`HmsResults`, the DSS metadata in `HmsPrj`). One attribute,
@@ -73,8 +94,9 @@ and the readers built on them (`HmsResults`, the DSS metadata in `HmsPrj`). One 
 
 | Backend | Reads and writes through | Without the engine | Returns |
 |---|---|---|---|
-| `java` | HEC Monolith (pyjnius, Java 8+) | works; the engine is never imported | the Java result |
+| unset (default) | `native` when the engine imports, else `java` | uses `java` (logged at INFO) | as the backend it chose |
 | `native` | `ras_commander_fast_dss` | raises `ImportError` | the native result |
+| `java` | HEC Monolith (pyjnius, Java 8+) | works; the engine is never imported | the Java result |
 | `shadow` | reads: native, then Java for comparison; writes: Java, then native on a temporary copy | runs Java only (one warning) | reads: the native result or error (grids: Java's grid); writes: the Java result or error |
 
 `HmsDss.is_available()` follows the selected backend: `native` needs the engine and no
@@ -82,12 +104,12 @@ pyjnius; `java` needs pyjnius; `shadow` needs the engine (without it, shadow run
 
 ### Which backend to use
 
-- **`java`** (default): keep it where results must come from HEC Monolith, or where the
-  engine is not installed. It needs Java 8 or later and pyjnius.
-- **`native`**: use it where Java is unavailable or unwanted, for example in a container,
-  on a locked-down workstation or in a service. No JVM is started and HEC Monolith is
-  never downloaded. Check the [differences](#differences-from-the-java-backend) first;
-  each one is deliberate.
+- **`native`** (default): no JVM is started and HEC Monolith is never downloaded, so it
+  also works in a container, on a locked-down workstation or in a service. Check the
+  [differences](#differences-from-the-java-backend); each one is deliberate.
+- **`java`**: select it where results must come from HEC Monolith, or to reproduce
+  results computed with hms-commander 0.5.0 or earlier. It needs Java 8 or later and
+  pyjnius (`pip install "hms-commander[dss]"`).
 - **`shadow`**: use it to qualify the native backend on your own files before you switch.
   It returns native read results, keeps your files written by Java, and logs every
   difference (see [Shadow mode](#shadow-mode)).
@@ -136,6 +158,48 @@ differences remain:
 | D5 | Java cannot read time-series patterns (`TS-PATTERN` D part) and raises "No data found"; native returns them with stamps in year 3000 | time series |
 | G1 | Native also maps -901/-902 to NaN in grid cells; Java maps only -3.4028e38 | grids |
 | W1 | The native writers refuse input that the Java path writes, before anything is written (next section) | writes |
+| C1 | `get_catalog` of a file that is not a DSS file: Java returns an empty list; native raises the engine's `DssFormatError` | catalogs |
+
+Both backends now behave the same in two cases where they used to differ:
+
+- **Times HEC-DSS would move.** `write_timeseries` refuses, on every backend and before
+  anything is written, times at which HEC-DSS would not store the values. HEC-DSS stores
+  a regular series by position from its first time, and the Java path used to move such
+  values silently.
+    - Minute, hour and day intervals need a constant step; an offset start (such as 00:15
+      for `1HOUR`) is kept.
+    - Week, month, semi-month, tri-month and year intervals must follow HEC's calendar
+      placement. hms-commander checks it by writing the series to a temporary DSS7 file
+      with the engine and reading it back. A yearly series from 29 February continues on
+      1 March (as HEC places it); 29 February, then 28 February is refused, because HEC
+      stores those values on 1 March. Month-end days (31 March, 30 April) under `1MON`
+      are refused, because a `1MON` series is placed at month ends (00:00 of the 1st). A
+      day of the month that a shorter month does not have (the 30th across a 28-day
+      February) is refused, because HEC stores two values at one time there. A weekly
+      series whose first week contains the start of a DSS decade block (for example
+      30 December 2019 to 5 January 2020) is refused, because HEC stores it one week
+      later.
+    - A single value is checked the same way (HEC moves single values too, for example
+      a `1MON` value on 29 February to 1 March). Minute, hour and day intervals keep a
+      single value at any whole minute.
+    - DSS6 files: a yearly series (one value or more) whose first time falls in a leap
+      year after 2 March 00:00 is refused, because HEC's DSS6 library stores it a day
+      later. The same times work in a DSS7 file.
+    - DSS6 files: the check applies HEC-DSS 7's placement, so it also refuses some DSS6
+      series with day-of-month offsets (the 31st under `1MON`, the 15th under
+      `SEMI-MONTH`, a weekly series in a decade-block week) that HEC's DSS6 library would
+      keep. Changing the DSS version does not help: DSS7 does not keep those times either.
+      hms-commander cannot write such a series; use times HEC-DSS 7 keeps (the error
+      names where HEC would store the first refused value). Single monthly, semi-monthly
+      and tri-monthly DSS6 values are the exception: they are checked with a DSS6 dry
+      run and written when HEC's DSS6 library keeps them.
+    - Without the engine the calendar part is skipped, with one warning.
+    For minute, hour and day intervals, write each regular run separately, or fill gaps
+    with NaN (stored as missing).
+- **A record of another kind.** `read_timeseries` and `read_grid` raise `ValueError` for a
+  pathname that holds another kind of record on both backends (the engine's
+  `DssUnsupportedRecordError` is chained). `read_paired_data` and `get_peak_value` still
+  return None.
 
 ## Write rules
 
@@ -156,10 +220,11 @@ differences remain:
   `RasDss` stores blanks there. A call giving all four stores float64 input as float64
   unless `value_type="float"`. `write_multiple_paired_data` has no
   `RasDss` counterpart and keeps its record keys and defaults.
-- **DSS6 text limits.** A DSS6 paired-data record stores at most 8 characters per unit
-  and type. HEC Monolith truncates longer strings without a warning (`CUMULATIVE` is
-  stored as `CUMULATI`). The native writer refuses them with `ValueError` and writes
-  nothing; pass an 8-character string, or write to a DSS7 file.
+- **DSS6 text limits.** A DSS6 paired-data or time-series record stores at most 8
+  characters per unit and type. HEC Monolith truncates longer strings without a warning
+  (`CUMULATIVE` is stored as `CUMULATI`). The native writer refuses them with
+  `ValueError` and writes nothing; pass an 8-character string, or write to a DSS7 file.
+  DSS6 grid units are not limited to 8 characters on either backend.
 - **Atlas 14 temporal curves.** `import_atlas14_temporal` writes one record per quartile
   and probability, `//{region}/{QUARTILE}/{duration}HR//{probability}/`, with the Y type
   `CUMULATIVE` on DSS7 and `CUMULATI` on DSS6. `CUMULATI` is the value HEC Monolith
@@ -552,15 +617,15 @@ separately, and the run times in the
 [notebook qualification](../development/dss-native-notebook-qualification.md) are
 incidental wall times, not measurements.
 
-**Which engine runs.** The default `java` backend reads and writes through HEC Monolith
-(the Java path). The `native` backend uses the engine. `shadow` runs both on every call,
+**Which engine runs.** The default `native` backend uses the engine. The `java` backend
+reads and writes through HEC Monolith (the Java path). `shadow` runs both on every call,
 so it is slower than either; use it to qualify, not for production runs. The SHG route
 (`target_crs="SHG"`) and the `HmsDssGrid` engine tools always use the engine.
 
 - **Reads and catalogs** on the native backend are on par with HEC's C library and
   pydsstools. On very large DSS7 catalogs pydsstools is somewhat faster, because the
   engine validates and normalizes every pathname it returns.
-- **Compared with the default Java backend (HEC Monolith),** whole-dataset reads on the
+- **Compared with the Java backend (HEC Monolith),** whole-dataset reads on the
   native backend are many times faster, because the engine decodes records directly into
   NumPy arrays without a per-record Python or Java crossing. The native backend also
   starts no JVM.
