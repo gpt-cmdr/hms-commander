@@ -241,6 +241,112 @@ def test_java_moves_dss6_yearly_from_late_in_a_leap_year_without_the_check(tmp_p
     assert list(back["datetime"]) != list(times)
 
 
+#: Single values HEC-DSS stores at other times (review 2): (E part, version, time, where HEC
+#: stores it). Each must be refused before anything is written, on every backend.
+SINGLE_MOVED = {
+    "DSS6 yearly, leap year after 2 March (review)": ("1YEAR", 6, "2020-06-15", "2020-06-16"),
+    "DSS7 weekly, first week of a DSS decade block (review)": ("1WEEK", 7, "2019-12-30", "2020-01-06"),
+    "DSS7 monthly, 29 February (review)": ("1MON", 7, "2020-02-29", "2020-03-01"),
+    "DSS7 monthly, 31 January": ("1MON", 7, "2019-01-31", "2019-02-01"),
+    "DSS7 semi-month, mid-month": ("SEMI-MONTH", 7, "2019-01-15", None),
+    "DSS7 yearly, 31 December 12:00": ("1YEAR", 7, "2019-12-31 12:00", None),
+}
+
+#: Single values HEC-DSS keeps at their given time (checked with HEC Monolith, review 2),
+#: including off-grid minutes on fixed intervals and single DSS6 offsets the check now
+#: accepts through a DSS6 dry run.
+SINGLE_KEPT = {
+    "15MIN at 00:07": ("15MIN", (6, 7), "2019-12-31 23:07"),
+    "1HOUR at 00:15": ("1HOUR", (6, 7), "2020-02-29 23:15"),
+    "6HOUR at 03:17": ("6HOUR", (6, 7), "2020-01-01 03:17"),
+    "1DAY at 06:00": ("1DAY", (6, 7), "2020-02-29 06:00"),
+    "1MON at a month end": ("1MON", (6, 7), "2020-03-01"),
+    "1YEAR from 29 February": ("1YEAR", (6, 7), "2020-02-29"),
+    "1WEEK": ("1WEEK", (6, 7), "2020-01-06"),
+    "DSS6 1MON on the 31st": ("1MON", (6,), "2019-01-31"),
+    "DSS6 SEMI-MONTH on the 15th": ("SEMI-MONTH", (6,), "2019-01-15"),
+    "DSS6 TRI-MONTH on the 20th": ("TRI-MONTH", (6,), "2019-01-20"),
+}
+
+
+@pytest.mark.parametrize("case", list(SINGLE_MOVED))
+def test_a_single_value_hec_would_move_is_refused(backend, tmp_path, case):
+    e_part, version, time, stored_at = SINGLE_MOVED[case]
+    target = tmp_path / "one.dss"
+    with pytest.raises(ValueError, match="Refused before writing") as caught:
+        HmsDss.write_timeseries(target, f"//G/FLOW//{e_part}/OBS/", _times(time), [42.0],
+                                dss_version=version)
+    assert not target.exists()
+    if stored_at:
+        assert stored_at in str(caught.value)
+    assert "separately" not in str(caught.value)    # splitting writes is no remedy here
+
+
+@pytest.mark.parametrize("case", ["DSS6 yearly, leap year after 2 March (review)",
+                                  "DSS7 weekly, first week of a DSS decade block (review)",
+                                  "DSS7 monthly, 29 February (review)"])
+def test_java_moves_the_single_value_cases_without_the_check(tmp_path, monkeypatch, case):
+    _java()
+    e_part, version, time, stored_at = SINGLE_MOVED[case]
+    monkeypatch.setattr(DssCore, "_check_regular_stamps", staticmethod(lambda *a, **k: None))
+    HmsDss.backend = "java"
+    target = tmp_path / "moved1.dss"
+    HmsDss.write_timeseries(target, f"//G/FLOW//{e_part}/OBS/", _times(time), [42.0],
+                            dss_version=version)
+    back = HmsDss.read_timeseries(target, HmsDss.get_catalog(target)[0])
+    assert [str(t) for t in back["datetime"]] == [str(pd.Timestamp(stored_at))]
+
+
+def test_one_and_two_dss6_yearly_values_from_the_same_leap_start_are_refused(backend, tmp_path):
+    for times in (_times("2020-06-15"), _times("2020-06-15", "2021-06-15")):
+        with pytest.raises(ValueError, match="DSS6 file"):
+            HmsDss.write_timeseries(tmp_path / "leap.dss", "//G/FLOW//1YEAR/OBS/", times,
+                                    np.arange(len(times), dtype=float), dss_version=6)
+    assert not (tmp_path / "leap.dss").exists()
+
+
+@pytest.mark.parametrize("case", list(SINGLE_KEPT))
+def test_a_single_value_hec_keeps_is_written_at_its_time(backend, tmp_path, case):
+    e_part, versions, time = SINGLE_KEPT[case]
+    for version in versions:
+        target = tmp_path / f"one{version}.dss"
+        HmsDss.write_timeseries(target, f"//G/FLOW//{e_part}/OBS/", _times(time), [42.0],
+                                dss_version=version)
+        _assert_kept(target, _times(time), np.array([42.0]), version)
+
+
+def test_dss6_only_single_offsets_are_still_refused_in_dss7(backend, tmp_path):
+    """The DSS6 dry run qualifies single DSS6 values only; DSS7 keeps its own placement."""
+    with pytest.raises(ValueError, match="2019-02-01"):
+        HmsDss.write_timeseries(tmp_path / "x7.dss", "//G/FLOW//1MON/OBS/",
+                                _times("2019-01-31"), [42.0], dss_version=7)
+
+
+def test_the_dss6_leap_message_names_a_remedy_that_works(backend, tmp_path):
+    times = _times("2020-06-15", "2021-06-15", "2022-06-15")
+    with pytest.raises(ValueError, match="DSS7 file") as caught:
+        HmsDss.write_timeseries(tmp_path / "a.dss", "//G/FLOW//1YEAR/OBS/", times,
+                                np.arange(3.0), dss_version=6)
+    assert "2020-06-16" in str(caught.value)
+    target = tmp_path / "b.dss"            # the advice: the same times in a DSS7 file
+    HmsDss.write_timeseries(target, "//G/FLOW//1YEAR/OBS/", times, np.arange(3.0), dss_version=7)
+    _assert_kept(target, times, np.arange(3.0), 7)
+
+
+def test_a_dss6_over_refusal_says_the_version_does_not_help(backend, tmp_path):
+    """A multi-value DSS6 series HEC's DSS6 library keeps but the check refuses (review 2):
+    the message says why, that DSS7 does not help, and that hms-commander cannot write it."""
+    times = _times("2019-01-31", "2019-03-03", "2019-03-31")   # kept by HEC-DSS 6
+    for version in (6, 7):
+        with pytest.raises(ValueError) as caught:
+            HmsDss.write_timeseries(tmp_path / f"o{version}.dss", "//G/FLOW//1MON/OBS/", times,
+                                    np.arange(3.0), dss_version=version)
+        text = str(caught.value)
+        assert "Changing the DSS version does not help" in text
+        assert ("cannot write those times" in text) is (version == 6)
+        assert "Write it to a DSS7 file" not in text
+
+
 def test_irregular_check_names_the_remedy():
     with pytest.raises(ValueError, match="fill the gaps with NaN"):
         DssCore._prepare_timeseries("//G/FLOW//1HOUR/OBS/", HOURS.delete(2), np.arange(5.0))

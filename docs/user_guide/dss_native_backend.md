@@ -179,12 +179,23 @@ Both backends now behave the same in two cases where they used to differ:
       series whose first week contains the start of a DSS decade block (for example
       30 December 2019 to 5 January 2020) is refused, because HEC stores it one week
       later.
-    - DSS6 files: a yearly series whose first time falls in a leap year after 2 March
-      00:00 is refused (HEC's DSS6 library stores it a day later); write it to a DSS7
-      file. A few DSS6 day-of-month offsets that HEC's DSS6 library keeps are also
-      refused; write those to DSS7.
+    - A single value is checked the same way (HEC moves single values too, for example
+      a `1MON` value on 29 February to 1 March). Minute, hour and day intervals keep a
+      single value at any whole minute.
+    - DSS6 files: a yearly series (one value or more) whose first time falls in a leap
+      year after 2 March 00:00 is refused, because HEC's DSS6 library stores it a day
+      later. The same times work in a DSS7 file.
+    - DSS6 files: the check applies HEC-DSS 7's placement, so it also refuses some DSS6
+      series with day-of-month offsets (the 31st under `1MON`, the 15th under
+      `SEMI-MONTH`, a weekly series in a decade-block week) that HEC's DSS6 library would
+      keep. Changing the DSS version does not help: DSS7 does not keep those times either.
+      hms-commander cannot write such a series; use times HEC-DSS 7 keeps (the error
+      names where HEC would store the first refused value). Single monthly, semi-monthly
+      and tri-monthly DSS6 values are the exception: they are checked with a DSS6 dry
+      run and written when HEC's DSS6 library keeps them.
     - Without the engine the calendar part is skipped, with one warning.
-    Write each regular run separately, or fill gaps with NaN (stored as missing).
+    For minute, hour and day intervals, write each regular run separately, or fill gaps
+    with NaN (stored as missing).
 - **A record of another kind.** `read_timeseries` and `read_grid` raise `ValueError` for a
   pathname that holds another kind of record on both backends (the engine's
   `DssUnsupportedRecordError` is chained). `read_paired_data` and `get_peak_value` still

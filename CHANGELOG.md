@@ -43,8 +43,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Both backends now raise `ValueError` before writing. Minute, hour and day intervals are
   checked for a constant step; calendar intervals (week, month, semi-month, tri-month,
   year) against HEC's own placement, through the engine on a temporary file (skipped with
-  a warning without the engine). Valid calendar series, such as a yearly series from
-  29 February continuing on 1 March, are written as before.
+  a warning without the engine). Single values are checked too. Valid calendar series,
+  such as a yearly series from 29 February continuing on 1 March, are written as before.
+  Some DSS6 day-of-month offset series that HEC's DSS6 library would keep are refused by
+  this conservative check, and no DSS version change helps them; the error says so.
 - **Native reads of a record of another kind** (`read_timeseries` or `read_grid` on a
   paired-data or time-series pathname) raised the engine's `DssUnsupportedRecordError`
   (a `RuntimeError`); they now raise `ValueError`, as the Java backend does.
