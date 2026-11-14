@@ -1,0 +1,92 @@
+NOTE 15301:  Began computing simulation run "Jan 96 storm" at time 13Nov2026, 19:29:02.
+NOTE 10181:  Opened control specifications "Jan 96" at time 13Nov2026, 19:29:02.
+NOTE 20364:  Found no parameter problems in meteorologic model "Stage3-HRAP".
+NOTE 40049:  Found no parameter problems in basin model "Tenk 1".
+WARNING 40017:  Observed Discharge gage "TAHL" at element "Tahlequah" has some missing data.
+WARNING 40017:  Observed Discharge gage "TENK" at element "Tenkiller" has some missing data.
+WARNING 40503: Missing precipitation set to zero for 129 of 129 grid cells at 18Jan1996, 17:00 for gridded subbasin "86".
+WARNING 40503: Missing precipitation set to zero for 84 of 84 grid cells at 18Jan1996, 17:00 for gridded subbasin "85".
+WARNING 40503: Missing precipitation set to zero for 78 of 78 grid cells at 18Jan1996, 17:00 for gridded subbasin "113".
+WARNING 40503: Missing precipitation set to zero for 86 of 86 grid cells at 18Jan1996, 17:00 for gridded subbasin "127".
+WARNING 40503: Missing precipitation set to zero for 129 of 129 grid cells at 18Jan1996, 21:00 for gridded subbasin "86".
+WARNING 40503: Missing precipitation set to zero for 84 of 84 grid cells at 18Jan1996, 21:00 for gridded subbasin "85".
+WARNING 40503: Missing precipitation set to zero for 78 of 78 grid cells at 18Jan1996, 21:00 for gridded subbasin "113".
+WARNING 40503: Missing precipitation set to zero for 86 of 86 grid cells at 18Jan1996, 21:00 for gridded subbasin "127".
+WARNING 40503: Missing precipitation set to zero for 129 of 129 grid cells at 18Jan1996, 22:00 for gridded subbasin "86".
+WARNING 40503: Missing precipitation set to zero for 84 of 84 grid cells at 18Jan1996, 22:00 for gridded subbasin "85".
+WARNING 40503: Missing precipitation set to zero for 78 of 78 grid cells at 18Jan1996, 22:00 for gridded subbasin "113".
+WARNING 40503: Missing precipitation set to zero for 86 of 86 grid cells at 18Jan1996, 22:00 for gridded subbasin "127".
+WARNING 40503: Missing precipitation set to zero for 129 of 129 grid cells at 18Jan1996, 23:00 for gridded subbasin "86".
+WARNING 40503: Missing precipitation set to zero for 84 of 84 grid cells at 18Jan1996, 23:00 for gridded subbasin "85".
+WARNING 40503: Missing precipitation set to zero for 78 of 78 grid cells at 18Jan1996, 23:00 for gridded subbasin "113".
+WARNING 40503: Missing precipitation set to zero for 86 of 86 grid cells at 18Jan1996, 23:00 for gridded subbasin "127".
+WARNING 40503: Missing precipitation set to zero for 129 of 129 grid cells at 19Jan1996, 00:00 for gridded subbasin "86".
+WARNING 40503: Missing precipitation set to zero for 84 of 84 grid cells at 19Jan1996, 00:00 for gridded subbasin "85".
+WARNING 40503: Missing precipitation set to zero for 78 of 78 grid cells at 19Jan1996, 00:00 for gridded subbasin "113".
+WARNING 40503: Missing precipitation set to zero for 86 of 86 grid cells at 19Jan1996, 00:00 for gridded subbasin "127".
+WARNING 40503: Missing precipitation set to zero for 129 of 129 grid cells at 19Jan1996, 01:00 for gridded subbasin "86".
+WARNING 40503: Missing precipitation set to zero for 84 of 84 grid cells at 19Jan1996, 01:00 for gridded subbasin "85".
+WARNING 40503: Missing precipitation set to zero for 78 of 78 grid cells at 19Jan1996, 01:00 for gridded subbasin "113".
+WARNING 40503: Missing precipitation set to zero for 86 of 86 grid cells at 19Jan1996, 01:00 for gridded subbasin "127".
+WARNING 40503: Missing precipitation set to zero for 129 of 129 grid cells at 19Jan1996, 02:00 for gridded subbasin "86".
+WARNING 40503: Missing precipitation set to zero for 84 of 84 grid cells at 19Jan1996, 02:00 for gridded subbasin "85".
+WARNING 40503: Missing precipitation set to zero for 78 of 78 grid cells at 19Jan1996, 02:00 for gridded subbasin "113".
+WARNING 40503: Missing precipitation set to zero for 86 of 86 grid cells at 19Jan1996, 02:00 for gridded subbasin "127".
+WARNING 40503: Missing precipitation set to zero for 129 of 129 grid cells at 19Jan1996, 03:00 for gridded subbasin "86".
+WARNING 40503: Missing precipitation set to zero for 84 of 84 grid cells at 19Jan1996, 03:00 for gridded subbasin "85".
+WARNING 40503: Missing precipitation set to zero for 78 of 78 grid cells at 19Jan1996, 03:00 for gridded subbasin "113".
+WARNING 40503: Missing precipitation set to zero for 86 of 86 grid cells at 19Jan1996, 03:00 for gridded subbasin "127".
+WARNING 40503: Missing precipitation set to zero for 129 of 129 grid cells at 20Jan1996, 00:00 for gridded subbasin "86".
+WARNING 40503: Missing precipitation set to zero for 84 of 84 grid cells at 20Jan1996, 00:00 for gridded subbasin "85".
+WARNING 40503: Missing precipitation set to zero for 78 of 78 grid cells at 20Jan1996, 00:00 for gridded subbasin "113".
+WARNING 40503: Missing precipitation set to zero for 86 of 86 grid cells at 20Jan1996, 00:00 for gridded subbasin "127".
+WARNING 40503: Missing precipitation set to zero for 129 of 129 grid cells at 20Jan1996, 01:00 for gridded subbasin "86".
+WARNING 40503: Missing precipitation set to zero for 84 of 84 grid cells at 20Jan1996, 01:00 for gridded subbasin "85".
+WARNING 40503: Missing precipitation set to zero for 78 of 78 grid cells at 20Jan1996, 01:00 for gridded subbasin "113".
+WARNING 40503: Missing precipitation set to zero for 86 of 86 grid cells at 20Jan1996, 01:00 for gridded subbasin "127".
+WARNING 40503: Missing precipitation set to zero for 129 of 129 grid cells at 20Jan1996, 02:00 for gridded subbasin "86".
+WARNING 40503: Missing precipitation set to zero for 84 of 84 grid cells at 20Jan1996, 02:00 for gridded subbasin "85".
+WARNING 40503: Missing precipitation set to zero for 78 of 78 grid cells at 20Jan1996, 02:00 for gridded subbasin "113".
+WARNING 40503: Missing precipitation set to zero for 86 of 86 grid cells at 20Jan1996, 02:00 for gridded subbasin "127".
+WARNING 40503: Missing precipitation set to zero for 129 of 129 grid cells at 20Jan1996, 03:00 for gridded subbasin "86".
+WARNING 40503: Missing precipitation set to zero for 84 of 84 grid cells at 20Jan1996, 03:00 for gridded subbasin "85".
+WARNING 40503: Missing precipitation set to zero for 78 of 78 grid cells at 20Jan1996, 03:00 for gridded subbasin "113".
+WARNING 40503: Missing precipitation set to zero for 86 of 86 grid cells at 20Jan1996, 03:00 for gridded subbasin "127".
+WARNING 40503: Missing precipitation set to zero for 129 of 129 grid cells at 20Jan1996, 13:00 for gridded subbasin "86".
+WARNING 40503: Missing precipitation set to zero for 84 of 84 grid cells at 20Jan1996, 13:00 for gridded subbasin "85".
+WARNING 40503: Missing precipitation set to zero for 78 of 78 grid cells at 20Jan1996, 13:00 for gridded subbasin "113".
+WARNING 40503: Missing precipitation set to zero for 86 of 86 grid cells at 20Jan1996, 13:00 for gridded subbasin "127".
+WARNING 40503: Missing precipitation set to zero for 129 of 129 grid cells at 20Jan1996, 14:00 for gridded subbasin "86".
+WARNING 40503: Missing precipitation set to zero for 84 of 84 grid cells at 20Jan1996, 14:00 for gridded subbasin "85".
+WARNING 40503: Missing precipitation set to zero for 78 of 78 grid cells at 20Jan1996, 14:00 for gridded subbasin "113".
+WARNING 40503: Missing precipitation set to zero for 86 of 86 grid cells at 20Jan1996, 14:00 for gridded subbasin "127".
+WARNING 40503: Missing precipitation set to zero for 129 of 129 grid cells at 20Jan1996, 15:00 for gridded subbasin "86".
+WARNING 40503: Missing precipitation set to zero for 84 of 84 grid cells at 20Jan1996, 15:00 for gridded subbasin "85".
+WARNING 40503: Missing precipitation set to zero for 78 of 78 grid cells at 20Jan1996, 15:00 for gridded subbasin "113".
+WARNING 40503: Missing precipitation set to zero for 86 of 86 grid cells at 20Jan1996, 15:00 for gridded subbasin "127".
+WARNING 40503: Missing precipitation set to zero for 129 of 129 grid cells at 20Jan1996, 16:00 for gridded subbasin "86".
+WARNING 40503: Missing precipitation set to zero for 84 of 84 grid cells at 20Jan1996, 16:00 for gridded subbasin "85".
+WARNING 40503: Missing precipitation set to zero for 78 of 78 grid cells at 20Jan1996, 16:00 for gridded subbasin "113".
+WARNING 40503: Missing precipitation set to zero for 86 of 86 grid cells at 20Jan1996, 16:00 for gridded subbasin "127".
+WARNING 40503: Missing precipitation set to zero for 129 of 129 grid cells at 20Jan1996, 17:00 for gridded subbasin "86".
+WARNING 40503: Missing precipitation set to zero for 84 of 84 grid cells at 20Jan1996, 17:00 for gridded subbasin "85".
+WARNING 40503: Missing precipitation set to zero for 78 of 78 grid cells at 20Jan1996, 17:00 for gridded subbasin "113".
+WARNING 40503: Missing precipitation set to zero for 86 of 86 grid cells at 20Jan1996, 17:00 for gridded subbasin "127".
+WARNING 40503: Missing precipitation set to zero for 129 of 129 grid cells at 20Jan1996, 18:00 for gridded subbasin "86".
+WARNING 40503: Missing precipitation set to zero for 84 of 84 grid cells at 20Jan1996, 18:00 for gridded subbasin "85".
+WARNING 40503: Missing precipitation set to zero for 78 of 78 grid cells at 20Jan1996, 18:00 for gridded subbasin "113".
+WARNING 40503: Missing precipitation set to zero for 86 of 86 grid cells at 20Jan1996, 18:00 for gridded subbasin "127".
+WARNING 40503: Missing precipitation set to zero for 129 of 129 grid cells at 20Jan1996, 19:00 for gridded subbasin "86".
+WARNING 40503: Missing precipitation set to zero for 84 of 84 grid cells at 20Jan1996, 19:00 for gridded subbasin "85".
+WARNING 40503: Missing precipitation set to zero for 78 of 78 grid cells at 20Jan1996, 19:00 for gridded subbasin "113".
+WARNING 40503: Missing precipitation set to zero for 86 of 86 grid cells at 20Jan1996, 19:00 for gridded subbasin "127".
+WARNING 40503: Missing precipitation set to zero for 129 of 129 grid cells at 20Jan1996, 21:00 for gridded subbasin "86".
+WARNING 40503: Missing precipitation set to zero for 84 of 84 grid cells at 20Jan1996, 21:00 for gridded subbasin "85".
+WARNING 40503: Missing precipitation set to zero for 78 of 78 grid cells at 20Jan1996, 21:00 for gridded subbasin "113".
+WARNING 40503: Missing precipitation set to zero for 86 of 86 grid cells at 20Jan1996, 21:00 for gridded subbasin "127".
+WARNING 40503: Missing precipitation set to zero for 129 of 129 grid cells at 20Jan1996, 22:00 for gridded subbasin "86".
+WARNING 40503: Missing precipitation set to zero for 84 of 84 grid cells at 20Jan1996, 22:00 for gridded subbasin "85".
+WARNING 40503: Missing precipitation set to zero for 78 of 78 grid cells at 20Jan1996, 22:00 for gridded subbasin "113".
+WARNING 40503: Missing precipitation set to zero for 86 of 86 grid cells at 20Jan1996, 22:00 for gridded subbasin "127".
+NOTE 15302:  Finished computing simulation run "Jan 96 storm" at time 13Nov2026, 19:29:05.
+NOTE 15312:  The total runtime for this simulation is 00:03.

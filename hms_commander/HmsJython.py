@@ -92,6 +92,12 @@ JythonHms.Exit(0)
     DEFAULT_MAX_MEMORY = "4G"
     DEFAULT_INITIAL_MEMORY = "128M"
     # 32-bit JVM memory limits (can't exceed ~1.5GB)
+    # Lines printed by the generated compute scripts when a JythonHms call raises.
+    SCRIPT_FAILURE_MARKERS = (
+        "Error opening project:",
+        "Error during computation:",
+    )
+
     MAX_MEMORY_32BIT = "1280M"
     INITIAL_MEMORY_32BIT = "64M"
 
@@ -471,10 +477,24 @@ JythonHms.Exit(0)
             # Note: HMS may return non-zero but still complete successfully
             # The JythonHms.Exit(0) call generates a SystemExit that shows in stderr
             computation_completed = "Computation completed" in stdout
-            project_opened = "Project opened" in stdout
             has_error = "Error" in stderr and "SystemExit: 0" not in stderr
+            # The generated scripts print these lines before JythonHms.Exit(1).
+            # HEC-HMS does not pass that exit code on to the process, so the
+            # lines are the evidence that the script stopped on an error.
+            script_failed = any(
+                marker in stdout for marker in HmsJython.SCRIPT_FAILURE_MARKERS
+            )
 
-            success = (result.returncode == 0 or computation_completed) and not has_error
+            success = (
+                (result.returncode == 0 or computation_completed)
+                and not has_error
+                and not script_failed
+            )
+            if not success:
+                logger.debug(
+                    f"HMS process exit code {result.returncode}; "
+                    f"script failure marker found: {script_failed}"
+                )
 
             return success, stdout, stderr
 
@@ -1174,56 +1194,148 @@ JythonHms.SaveAllProjectComponents()
         return str(output_path)
 
     @staticmethod
+    def _parse_version_text(version: Optional[str]) -> Optional[Tuple[int, ...]]:
+        """Parse "4.13" or "4.7.1" into a tuple; return None when unparseable."""
+        if version is None:
+            return None
+        text = str(version).strip()
+        try:
+            parts = tuple(int(p) for p in text.split('.'))
+        except ValueError:
+            return None
+        return parts or None
+
+    @staticmethod
+    def _installed_hms_versions(
+        search_paths: Optional[List[Union[str, Path]]] = None,
+        include_defaults: bool = True
+    ) -> Dict[str, Path]:
+        """
+        List HEC-HMS installations (folders that contain ``hms.jar``).
+
+        Args:
+            search_paths: Additional base folders to scan
+            include_defaults: Also scan the standard install folders and HEC_HMS_HOME
+
+        Returns:
+            Dict of version folder name -> installation path, newest version first.
+            Folders whose names are not numeric versions are listed last.
+        """
+        bases: List[Path] = []
+        if include_defaults:
+            bases.extend([
+                Path("C:/Program Files/HEC/HEC-HMS"),
+                Path("C:/Program Files (x86)/HEC/HEC-HMS"),
+            ])
+            if os.environ.get("HEC_HMS_HOME"):
+                bases.append(Path(os.environ["HEC_HMS_HOME"]))
+        if search_paths:
+            bases.extend(Path(p) for p in search_paths)
+
+        found: Dict[str, Path] = {}
+        for base in bases:
+            if not base.is_dir():
+                continue
+            # HEC_HMS_HOME may point at an installation itself
+            if (base / "hms.jar").exists() and base.name not in found:
+                found[base.name] = base
+            for item in base.iterdir():
+                if item.is_dir() and (item / "hms.jar").exists() and item.name not in found:
+                    found[item.name] = item
+
+        def sort_key(name: str):
+            parsed = HmsJython._parse_version_text(name)
+            return (parsed is not None, parsed or ())
+
+        return {name: found[name] for name in sorted(found, key=sort_key, reverse=True)}
+
+    @staticmethod
     @log_call
     def find_hms_executable(
         version: Optional[str] = None,
-        search_paths: Optional[List[Union[str, Path]]] = None
+        search_paths: Optional[List[Union[str, Path]]] = None,
+        include_defaults: bool = True
     ) -> Optional[Path]:
         """
         Find HEC-HMS installation on the system.
 
+        Without ``version``, the newest installed version is returned (compared
+        numerically, so 4.13 is preferred over 4.9 and 4.10).
+
+        With ``version`` (for example the ``Version:`` line of a ``.hms`` file),
+        the selection is:
+
+        1. the installation whose folder name equals ``version``;
+        2. otherwise the newest installation with the same major.minor
+           (for example 4.7.1 for a 4.7 project), with a warning;
+        3. otherwise the oldest installation newer than ``version``, with a
+           warning that HEC-HMS may upgrade the project when it saves it;
+        4. otherwise None, with a warning. An older HEC-HMS is never
+           substituted, because it can refuse or abort a newer project.
+
         Args:
             version: Specific version to find (e.g., "4.9", "4.10")
             search_paths: Additional paths to search
+            include_defaults: Also search the standard install folders and
+                HEC_HMS_HOME (default True)
 
         Returns:
             Path to HEC-HMS installation directory, or None if not found
         """
-        # Common installation paths
-        default_paths = [
-            Path("C:/Program Files/HEC/HEC-HMS"),
-            Path("C:/Program Files (x86)/HEC/HEC-HMS"),
-            Path(os.environ.get("HEC_HMS_HOME", "")) if os.environ.get("HEC_HMS_HOME") else None,
-        ]
+        installs = HmsJython._installed_hms_versions(search_paths, include_defaults)
 
-        # Filter None values
-        default_paths = [p for p in default_paths if p]
+        if not installs:
+            logger.warning(
+                "HEC-HMS installation not found. "
+                "See: https://hms-commander.readthedocs.io/getting-started/installation/"
+            )
+            return None
 
-        # Add custom search paths
-        if search_paths:
-            default_paths.extend([Path(p) for p in search_paths])
+        if not version:
+            name, path = next(iter(installs.items()))
+            logger.info(f"Found HEC-HMS {name}: {path}")
+            return path
 
-        # Search for HMS installation
-        for base_path in default_paths:
-            if not base_path.exists():
-                continue
+        version = str(version).strip()
+        if version in installs:
+            logger.info(f"Found HEC-HMS {version}: {installs[version]}")
+            return installs[version]
 
-            # If version specified, look in version subdirectory
-            if version:
-                versioned_path = base_path / version
-                if versioned_path.exists() and (versioned_path / "hms.jar").exists():
-                    logger.info(f"Found HEC-HMS {version}: {versioned_path}")
-                    return versioned_path
+        wanted = HmsJython._parse_version_text(version)
+        available = ", ".join(installs)
+        if wanted is None:
+            logger.warning(
+                f"HEC-HMS version '{version}' is not a numeric version and is not installed. "
+                f"Installed: {available}"
+            )
+            return None
 
-            # Otherwise search for any version
-            for item in base_path.iterdir():
-                if item.is_dir() and (item / "hms.jar").exists():
-                    logger.info(f"Found HEC-HMS: {item}")
-                    return item
+        parsed = {name: HmsJython._parse_version_text(name) for name in installs}
+        parsed = {name: v for name, v in parsed.items() if v is not None}
+
+        same_minor = [n for n, v in parsed.items() if v[:2] == wanted[:2]]
+        if same_minor:
+            name = max(same_minor, key=lambda n: parsed[n])
+            logger.warning(
+                f"HEC-HMS {version} is not installed; using HEC-HMS {name} "
+                f"(same major.minor). Installed: {available}"
+            )
+            return installs[name]
+
+        newer = [n for n, v in parsed.items() if v > wanted]
+        if newer:
+            name = min(newer, key=lambda n: parsed[n])
+            logger.warning(
+                f"HEC-HMS {version} is not installed; using the next newer version, "
+                f"HEC-HMS {name}. HEC-HMS may upgrade the project files to {name} "
+                f"when it saves them. Installed: {available}"
+            )
+            return installs[name]
 
         logger.warning(
-            "HEC-HMS installation not found. "
-            "See: https://hms-commander.readthedocs.io/getting-started/installation/"
+            f"HEC-HMS {version} is not installed and no newer version is available. "
+            f"An older HEC-HMS is not used because it can abort a newer project. "
+            f"Installed: {available}"
         )
         return None
 

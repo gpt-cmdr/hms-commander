@@ -1,0 +1,8 @@
+NOTE 15301:  Began computing simulation run "Jan 96 storm" at time 13Nov2026, 19:28:50.
+NOTE 10181:  Opened control specifications "Jan 96" at time 13Nov2026, 19:28:50.
+WARNING 12522:  No valid data source for variant "Variant-1" of grid "Grid 1" with type "Precipitation".
+     File: 
+     Path: /HRAP/ABRFC/PRECIP////
+ERROR 20137:  Data source is not defined for precipitation grid "Grid 1".
+ERROR 20358:  Found "1" errors in meteorologic model "Stage3-HRAP".
+WARNING 15303:  Aborted run "Jan 96 storm" at time 13Nov2026, 19:28:50.

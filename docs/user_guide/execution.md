@@ -40,8 +40,54 @@ flowchart TD
 from hms_commander import HmsCmdr
 
 # Execute one simulation
-HmsCmdr.compute_run("Run 1")
+if not HmsCmdr.compute_run("Run 1"):
+    raise RuntimeError("Run 1 did not compute; see the log")
 ```
+
+### How Success Is Decided
+
+`compute_run()` returns `True` only when there is evidence that HEC-HMS computed the run
+during the call. All of these must hold:
+
+- The generated Jython script completed. It did not print `Error opening project:` or
+  `Error during computation:`.
+- The run log was written during the call. Its name comes from the run's `Log File:`
+  entry in the `.run` file.
+- The last run in that log has `NOTE 15302` ("Finished computing simulation run"). It has
+  no `ERROR` line and no `WARNING 15303` ("Aborted run").
+- The run's results DSS file (`DSS File:`) was written during the call.
+
+Otherwise the call returns `False` and logs the reason at ERROR level, together with
+the run-log lines involved. Warnings in the log, such as `WARNING 40503` (missing
+precipitation set to zero), do not make a run fail; check for them when they matter.
+`compute_parallel()`, `compute_batch()` and `compute_with_parameters()` apply the same
+checks to each run.
+
+A results DSS file alone is not evidence of a computed run. HEC-HMS 4.10 created
+the `tenk` sample's results DSS file and then aborted the run (`ERROR 20137`, then
+`WARNING 15303`).
+
+### HEC-HMS Version Selection
+
+Without `hms_exe_path`, the installation is chosen from the `Version:` line of the
+project's `.hms` file:
+
+1. the installed version with that exact name;
+2. otherwise the newest installation with the same major.minor (4.7.1 for a 4.7
+   project), with a warning;
+3. otherwise the next newer installation, with a warning. HEC-HMS may upgrade the
+   project files when it saves them.
+
+An older HEC-HMS is never substituted. If only older versions are installed,
+`compute_run()` raises `RuntimeError`. To use a specific installation, pass it
+explicitly:
+
+```python
+init_hms_project(project_folder, hms_exe_path=r"C:/Program Files/HEC/HEC-HMS/4.13")
+```
+
+`HmsJython.find_hms_executable()` without a version returns the newest installation,
+compared as version numbers (4.13 before 4.10 and 4.9).
 
 ### Parallel Execution
 

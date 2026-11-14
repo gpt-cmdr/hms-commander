@@ -1,0 +1,2 @@
+# Real HEC-HMS output: keep the bytes, including mixed line endings
+*.txt -text
