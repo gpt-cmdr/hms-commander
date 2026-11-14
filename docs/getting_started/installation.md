@@ -23,10 +23,16 @@ This includes:
 - Project management and initialization
 - HmsPrj DataFrame access
 - Execution engine (requires HMS installed)
+- DSS reads and writes through the native engine
+  [ras-commander-fast-dss](https://pypi.org/project/ras-commander-fast-dss/), the default
+  DSS backend. No Java is needed. pip installs it on CPython for Windows x86_64, Linux
+  x86_64/aarch64 and macOS (macOS wheels from engine 0.1.3). See
+  [Native DSS Backend](../user_guide/dss_native_backend.md).
 
-### With DSS Support
+### With DSS Support (Java backend)
 
-For DSS file operations and results analysis:
+For the HEC Monolith (Java) DSS backend, `HmsDss.backend = "java"` or `"shadow"`, and the
+ras-commander DSS helpers:
 
 ```bash
 pip install hms-commander[dss]
@@ -34,11 +40,10 @@ pip install hms-commander[dss]
 
 Additional packages:
 - ras-commander (provides DSS functionality)
-- pyjnius (Java bridge for DSS)
-- ras-commander-fast-dss 0.1.2 or later (optional native DSS engine, on CPython with
-  published wheels: Windows x86_64 and Linux x86_64/aarch64. macOS has no wheels and can
-  build it from source. See [Native DSS Backend](../user_guide/dss_native_backend.md).
-  Java stays the default.)
+- pyjnius (Java bridge for DSS; also needs Java 8 or later)
+
+The Java backend is used only when selected, or by default where the engine is not
+installed (for example PyPy or an unsupported platform).
 
 ## Installing from Source
 

@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ⚠️ Behaviour change: the native DSS engine is the default backend
+
+- **With `HmsDss.backend` and `HMS_COMMANDER_DSS_BACKEND` unset, DSS reads and writes now
+  use the native engine `ras-commander-fast-dss`** whenever it imports, instead of HEC
+  Monolith (Java). Java is the default only where the engine is not installed or fails to
+  load. The first DSS call logs the backend in use once at INFO on the
+  `hms_commander.dss` logger. `HmsDss`, `DssCore`, `HmsDssGrid`, `HmsResults`, the DSS
+  metadata in `HmsPrj` and `HmsAorc.convert_to_dss_grid` all follow it.
+- **To keep Java:** set `HmsDss.backend = "java"` before the first DSS call, or set the
+  environment variable `HMS_COMMANDER_DSS_BACKEND=java`. Install the Java backend's
+  dependencies with `pip install "hms-commander[dss]"` (pyjnius and ras-commander; Java 8
+  or later). `native` and `shadow` can still be forced the same way; an explicit `native`
+  without the engine raises `ImportError` and never falls back to Java.
+- **What can change in your results** (details in the native backend guide's
+  "Differences from the Java backend"):
+  - missing values read back as NaN instead of HEC's -901, -902 or -3.4028e38 markers
+    (time series and grid cells);
+  - the native writers refuse, before writing, input that Monolith would truncate or
+    alter: DSS6 units or types longer than 8 characters, non-ASCII pathnames, infinity in
+    paired data;
+  - `get_catalog` of a file that is not a DSS file raises instead of returning `[]`.
+- **`ras-commander-fast-dss>=0.1.2,<0.2` is now a core dependency** on CPython for
+  Windows AMD64, Linux x86_64/aarch64 and macOS arm64/x86_64 (it was in the `dss` extra,
+  without macOS). The `dss` extra now holds the Java backend's dependencies only. The
+  engine requires only numpy and pandas, with no version pins. macOS wheels arrive with
+  engine 0.1.3, when the floor moves to `>=0.1.3`.
+
+### Fixed
+
+- **`write_timeseries` on the Java backend silently moved values** when the times were
+  not regular for the pathname's E part (a missing hour, or hourly times under `15MIN`):
+  HEC Monolith stores a regular series by position from the first time. Both backends now
+  raise `ValueError` before writing; write each regular run separately, or fill gaps with
+  NaN.
+- **Native reads of a record of another kind** (`read_timeseries` or `read_grid` on a
+  paired-data or time-series pathname) raised the engine's `DssUnsupportedRecordError`
+  (a `RuntimeError`); they now raise `ValueError`, as the Java backend does.
+
+### Added
+
+- The native-engine CI job runs the test suite on the default backend and checks that it
+  resolves to native, and has a `macos-latest` leg. That leg is skipped, with the reason
+  in the log, until PyPI has an accepted macOS wheel, and does not block until it has
+  qualified.
+
 ## [0.5.0] - 2026-11-14
 
 ### ⚠️ Behaviour changes (read before upgrading)
