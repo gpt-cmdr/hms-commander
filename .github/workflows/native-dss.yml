@@ -88,6 +88,16 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        # Minimum passed Java-path tests. Off Windows, five file-release tests skip by
+        # design (Windows sharing semantics) and three Java tests pin the Windows HEC
+        # library (see tests/test_dss_java_fixes.py).
+        include:
+          - os: ubuntu-latest
+            java_fixes_min: 28
+            file_release_min: 3
+          - os: windows-latest
+            java_fixes_min: 33
+            file_release_min: 8
     env:
       HMS_COMMANDER_DSS_BACKEND: shadow
     steps:
@@ -138,10 +148,10 @@ jobs:
           --min-total 900
           --min test_dss_engine_wrappers=54
           --min test_dss_native_write_ownership=11
-          --min test_dss_java_fixes=30
+          --min test_dss_java_fixes=${{ matrix.java_fixes_min }}
           --min test_dss_native_backend=110
           --min test_aorc_period_stamps=31
-          --min test_dss_file_release=6
+          --min test_dss_file_release=${{ matrix.file_release_min }}
       - name: Keep the JUnit report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4

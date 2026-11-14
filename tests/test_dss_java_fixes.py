@@ -489,10 +489,19 @@ _DSS6_READ_ONLY_ENDS_PROCESS = pytest.mark.skipif(
     sys.platform != "win32",
     reason="HEC javaHeclib on this platform ends the process on a DSS6 write to a read-only file",
 )
+# On Linux, after the refused DSS7 write HEC Monolith cannot open the file again, even with
+# its permissions restored ("Cannot open data base file", then "Unable to recognize
+# record" on the final read), and a damaged DSS7 file is read without a library failure
+# line. Both were seen in the ubuntu-latest shadow run; both tests pin the Windows library.
+_DSS7_LINUX_LIBRARY = pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="pins the Windows HEC library's DSS7 behaviour; the Linux library differs",
+)
 
 
 @pytest.mark.requires_java
-@pytest.mark.parametrize("version", [pytest.param(6, marks=_DSS6_READ_ONLY_ENDS_PROCESS), 7])
+@pytest.mark.parametrize("version", [pytest.param(6, marks=_DSS6_READ_ONLY_ENDS_PROCESS),
+                                     pytest.param(7, marks=_DSS7_LINUX_LIBRARY)])
 def test_write_to_read_only_file_raises(java, tmp_path, version):
     """HEC Monolith returns normally from a DSS6 time-series write it refused."""
     import stat
@@ -515,7 +524,7 @@ def test_write_to_read_only_file_raises(java, tmp_path, version):
 
 
 @pytest.mark.requires_java
-@pytest.mark.parametrize("version", [6, 7])
+@pytest.mark.parametrize("version", [6, pytest.param(7, marks=_DSS7_LINUX_LIBRARY)])
 def test_read_of_damaged_file_logs_the_library_failure(java, tmp_path, caplog, version):
     target = tmp_path / f"cut{version}.dss"
     times = pd.date_range("2020-01-01 01:00", periods=48, freq="h")
