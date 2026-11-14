@@ -715,10 +715,10 @@ def test_explicit_executable_is_kept_with_a_warning_for_an_older_patch(tmp_path,
 # ---------------------------------------------------------------------------
 
 def _installed(version):
-    try:
-        return HmsExamples.get_hms_exe(version)
-    except (ValueError, FileNotFoundError):
+    """The HEC-HMS executable of ``version``, or None where it is not installed (CI)."""
+    if version not in HmsExamples.detect_installed_versions():
         return None
+    return HmsExamples.get_hms_exe(version)
 
 
 def _fresh(tmp_path, project, name, stale):
