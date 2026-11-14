@@ -235,33 +235,21 @@ def pytest_configure(config):
         _block_network()
 
 
-def _stop_async_retriever_loop():
-    """Stop async-retriever's event-loop thread before interpreter exit.
+def _bound_async_retriever_exit():
+    """Make async-retriever's atexit cleanup use a bounded stop of its loop thread.
 
-    pygeohydro (used by HmsHuc and HmsGaugeStudy) runs requests on async-retriever's
-    singleton loop thread, whose atexit cleanup can hang the process for ever:
-    ``_AsyncLoopThread.stop()`` (async-retriever 0.19.3) checks ``_running.is_set()``,
-    stops the loop, then ``_running.wait()``s; when the loop thread clears the event
-    between the check and the wait, nothing sets it again. Stopping the loop here with
-    a bounded join, and clearing the singleton so the atexit cleanup has nothing to do,
-    avoids that race. Uses private names, so it does nothing if they change.
+    The library does the same at exit once ``HmsHuc`` has used HyRiver
+    (``hms_commander._hyriver_exit``). Tests that call pygeohydro directly do not pass
+    through it, so the session end installs it as well. It does nothing unless the
+    stock async-retriever 0.19.3 is loaded.
     """
-    module = sys.modules.get("async_retriever._utils")
-    loop_class = getattr(module, "_AsyncLoopThread", None) if module else None
-    instance = getattr(loop_class, "_instance", None)
-    if instance is None:
-        return
-    with loop_class._lock:
-        loop_class._instance = None
-    if instance.is_alive():
-        instance.loop.call_soon_threadsafe(instance.loop.stop)
-        instance.join(timeout=30)
-        if instance.is_alive():
-            sys.__stderr__.write("[conftest] async-retriever loop thread did not stop in 30 s\n")
+    from hms_commander._hyriver_exit import install_bounded_stop
+
+    install_bounded_stop()
 
 
 def pytest_unconfigure(config):
-    _stop_async_retriever_loop()
+    _bound_async_retriever_exit()
     seconds = os.environ.get(EXIT_WATCH_ENV, "").strip()
     if not seconds:
         return
