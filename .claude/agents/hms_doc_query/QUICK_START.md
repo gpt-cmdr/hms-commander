@@ -38,7 +38,7 @@ Optional Parameters:
 
 ### Prerequisites
 
-- Python 3.10+
+- Python 3.11.5+
 - hms-commander installed
 - dev-browser plugin (optional, for viewing images)
 

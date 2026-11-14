@@ -48,7 +48,7 @@ Atlas 14 precipitation depths are typically **10-20% higher** than TP-40 for the
 ### Software Requirements
 - HEC-HMS 4.4.1+ (64-bit recommended)
 - hms-commander v0.4.1+
-- Python 3.10+
+- Python 3.11.5+
 - Optional: ras-commander (for DSS comparison)
 
 ### Project Requirements

@@ -215,7 +215,7 @@ Notebook executed successfully. No action needed.
 **Fixes**:
 - Activate correct conda environment (`hmscmdr_local`)
 - Install dependencies (`pip install -e ".[all]"`)
-- Check Python version (requires 3.10+)
+- Check Python version (requires 3.11.5+)
 
 ### Category 2: Missing Data
 

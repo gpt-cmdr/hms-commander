@@ -3,7 +3,7 @@
 ## Identity
 **Project**: hms-commander
 **Purpose**: Python library for automating HEC-HMS (Hydrologic Modeling System) operations
-**Stack**: Python 3.10+, pandas, pathlib, Jython (HMS automation), pyjnius (DSS files)
+**Stack**: Python 3.11.5+, pandas, pathlib, Jython (HMS automation), pyjnius (DSS files)
 
 ## Principles
 

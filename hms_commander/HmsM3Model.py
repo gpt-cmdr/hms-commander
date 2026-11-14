@@ -256,20 +256,12 @@ class HmsM3Model:
         # Try to load from package data file first
         try:
             import importlib.resources as pkg_resources
-            try:
-                # Python 3.9+
-                files = pkg_resources.files('hms_commander.data')
-                csv_path = files.joinpath('m3_hms_catalog.csv')
-                with pkg_resources.as_file(csv_path) as path:
-                    cls._catalog_df = pd.read_csv(path)
-                    logger.debug(f"Loaded catalog from package: {len(cls._catalog_df)} projects")
-                    return cls._catalog_df
-            except (TypeError, AttributeError):
-                # Python 3.8
-                with pkg_resources.open_text('hms_commander.data', 'm3_hms_catalog.csv') as f:
-                    cls._catalog_df = pd.read_csv(f)
-                    logger.debug(f"Loaded catalog from package: {len(cls._catalog_df)} projects")
-                    return cls._catalog_df
+            files = pkg_resources.files('hms_commander.data')
+            csv_path = files.joinpath('m3_hms_catalog.csv')
+            with pkg_resources.as_file(csv_path) as path:
+                cls._catalog_df = pd.read_csv(path)
+                logger.debug(f"Loaded catalog from package: {len(cls._catalog_df)} projects")
+                return cls._catalog_df
         except Exception as e:
             logger.debug(f"Could not load from package resources: {e}")
 

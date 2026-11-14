@@ -86,7 +86,7 @@ Core areas:
 ## Environment
 
 - Default host context is Windows.
-- Python requirement is 3.10+.
+- Python requirement is 3.11.5+.
 - Use `pathlib.Path` for path handling. Accept forward slashes and backslashes.
 - Agent scripts and tools should prefer `uv` for installation and `python` for execution.
 - User-facing documentation should show `pip` commands for broad compatibility.

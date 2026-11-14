@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ⚠️ Breaking changes
+
+- **hms-commander now requires Python 3.11.5 or later** (`requires-python = ">=3.11.5"`).
+  Python 3.10 is end-of-life, and pip will not install this release on it. Users on 3.10
+  can stay on hms-commander 0.5.0.
+  - The floor is 3.11.5, not 3.11.0, because the patched soupsieve releases (3.0.2 and
+    later) require it. The patched Pillow (13.0.0) and tornado (6.6) releases require
+    Python 3.11.
+  - The development `uv.lock` no longer keeps a Python 3.10 branch. That branch held
+    Pillow 12.3.0, tornado 6.5.10 and soupsieve 2.10, which were the subject of every open
+    Dependabot alert on the lock.
+  - The Python 3.10 classifier, the 3.10 CI job, the `py310` black target and an
+    `importlib.resources` fallback for Python 3.8 were removed.
+  - No behaviour changes on Python 3.11.5 and later.
+
 ### Fixed
 
 - **A script that used `HmsHuc` or `HmsGaugeStudy` could hang at interpreter exit.**

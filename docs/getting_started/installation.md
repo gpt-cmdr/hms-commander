@@ -4,7 +4,7 @@ HMS Commander can be installed via pip or from source for development.
 
 ## Requirements
 
-- **Python**: 3.10 or higher
+- **Python**: 3.11.5 or higher
 - **Operating System**: Windows (required for HEC-HMS integration)
 - **HEC-HMS**: Version 3.3+ or 4.4.1+ installed on your system
 
