@@ -380,7 +380,7 @@ print("\n" + "=" * 60)
 | `AttributeError: module 'hms_commander' has no attribute 'X'` | Wrong version or outdated | Upgrade package: `pip install hms-commander --upgrade` |
 | Changes not reflected in Jupyter | Wrong kernel selected | Select correct kernel from dropdown |
 | Jupyter kernel not found | Kernel not installed | Run: `python -m ipykernel install --user --name hmscmdr_local` |
-| `requires Python >=3.10` | Python version too old | Create new environment with Python 3.11 |
+| `requires Python >=3.11.5` | Python version too old | Create new environment with Python 3.11 |
 | `Could not find a version that satisfies the requirement` | PyPI issue or dependency conflict | Check PyPI, or use `pip install -e .` for local |
 | Location shows site-packages but expected editable | Installed as standard, not editable | Reinstall: `pip uninstall hms-commander && pip install -e ".[all]"` |
 

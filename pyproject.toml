@@ -7,7 +7,7 @@ name = "hms-commander"
 version = "0.5.0"
 description = "HEC-HMS automation library for hydrologic modeling - Python API for project management, simulation execution, and results analysis"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11.5"
 license = "MIT"
 authors = [
     {name = "William Katzenmeyer, PE, CFM", email = "billk@clbengineering.com"},
@@ -29,7 +29,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: GIS",
@@ -108,7 +107,7 @@ hms_commander = "hms_commander"
 
 [tool.black]
 line-length = 88
-target-version = ['py310', 'py311', 'py312']
+target-version = ['py311', 'py312']
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

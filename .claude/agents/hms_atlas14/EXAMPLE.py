@@ -13,7 +13,7 @@ Usage:
 Requirements:
     - HEC-HMS 4.4.1+ installed
     - hms-commander v0.4.1+
-    - Python 3.10+
+    - Python 3.11.5+
     - Active internet connection (for Atlas 14 API)
 """
 

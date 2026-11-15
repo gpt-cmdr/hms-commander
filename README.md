@@ -13,7 +13,7 @@
 
 [![PyPI version](https://badge.fury.io/py/hms-commander.svg)](https://pypi.org/project/hms-commander/)
 [![Documentation Status](https://img.shields.io/badge/docs-rascommander.info%2Fhms-1a365d)](https://rascommander.info/hms/)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11.5+](https://img.shields.io/badge/python-3.11.5+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **[📖 Full Documentation](https://rascommander.info/hms/)** | **[CLB Engineering](https://clbengineering.com/)**
@@ -284,7 +284,7 @@ HmsDss.extract_hms_results("results.dss", result_type="flow")
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.11.5+
 - pandas, numpy, tqdm, requests
 
 ### Optional
